@@ -1,0 +1,11 @@
+{
+  "name": "felica-stamp-app",
+  "version": "0.2.6",
+  "description": "Sony RC-S300 FeliCa リーダーで勤怠Webへ打刻を送信する常駐アプリ",
+  "main": "src/main.js",
+  "private": true,
+  "dependencies": {
+    "electron-store": "^10.0.0",
+    "nfc-pcsc": "^0.8.1"
+  }
+}

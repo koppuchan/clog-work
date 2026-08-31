@@ -1,0 +1,1 @@
+import{n as d,c as i}from"./format-DvlY51JY.js";function l(r,n){const[e,s]=d(r,n.start,n.end);return{start:e,end:s}}function f(r,n){const{start:e,end:s}=l(n?.in,r);let a=+e>+s;const c=a?+e:+s,t=a?s:e;t.setHours(0,0,0,0);let u=1;const o=[];for(;+t<=c;)o.push(i(e,t)),t.setDate(t.getDate()+u),t.setHours(0,0,0,0);return a?o.reverse():o}export{f as e};

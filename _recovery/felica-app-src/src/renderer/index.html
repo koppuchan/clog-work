@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'">
+  <title>FeliCa打刻</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>FeliCa打刻</h1>
+      <div id="clock" class="clock">--:--:--</div>
+    </header>
+
+    <section class="config">
+      <h2>接続設定</h2>
+      <label>
+        <span>サーバURL（例: https://clog-work.jp ※ パス /admin/login 等は付けない）</span>
+        <input id="serverUrl" type="text" placeholder="https://clog-work.jp" />
+      </label>
+      <label>
+        <span>会社UUID（管理画面の公開打刻URLに含まれる36文字）</span>
+        <input id="companyUuid" type="text" placeholder="d1b86286-64ca-4f37-a94c-e8a078972efa" />
+      </label>
+      <label>
+        <span>端末名（任意・ログ識別用）</span>
+        <input id="deviceName" type="text" placeholder="本社1F打刻機" />
+      </label>
+      <button id="saveConfig" type="button">設定を保存</button>
+      <p id="configMessage" class="muted"></p>
+    </section>
+
+    <section class="status">
+      <h2>リーダー状態</h2>
+      <p id="readerStatus" class="muted">起動中…</p>
+    </section>
+
+    <section class="mode">
+      <h2>動作モード</h2>
+      <label class="mode-toggle">
+        <input id="registrationMode" type="checkbox">
+        <span>カード登録モード（打刻せず IDm を表示するだけ）</span>
+      </label>
+      <p class="muted">
+        管理画面で「FeliCaカード登録」を行う際に ON にしてください。
+      </p>
+    </section>
+
+    <section class="latest">
+      <h2 id="latestTitle">直近の打刻</h2>
+      <div id="latestStamp" class="latest-card">カードをかざしてください。</div>
+      <button id="copyIdm" type="button" class="copy-btn" style="display:none;">IDm をコピー</button>
+    </section>
+
+    <section class="break-mode">
+      <h2>休憩打刻</h2>
+      <button id="breakStartBtn" type="button" class="break-btn">休憩開始（次の打刻を休憩入りにする）</button>
+      <p class="muted">
+        ボタンを押した直後の1回だけ、カードをかざすと「休憩開始」として記録されます。<br>
+        以降の打刻は「休憩終了 → 退勤」と自動で進みます。<br>
+        ショートカット: <kbd>B</kbd> キーで休憩開始モード ON / <kbd>Esc</kbd> でキャンセル
+      </p>
+    </section>
+
+    <section class="debug">
+      <h2>動作確認（モック）</h2>
+      <label>
+        <span>テスト用 IDm（16進16桁）</span>
+        <input id="mockIdm" type="text" value="0123456789abcdef" />
+      </label>
+      <button id="simulate" type="button">モック送信</button>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

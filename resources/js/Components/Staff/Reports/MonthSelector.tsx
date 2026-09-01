@@ -15,8 +15,10 @@ export function MonthSelector({
   onYearChange,
   onMonthChange,
 }: MonthSelectorProps) {
+  // 過去5年6ヶ月分の勤務実績を参照できるようにする（労務記録の保存義務に対応）。
+  // 年単位の選択のため、遡る年数は 6 年分を用意する。
   const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
+  const years = Array.from({ length: 7 }, (_, i) => currentYear - 6 + i);
   const months = Array.from({ length: 12 }, (_, i) => i);
 
   return (

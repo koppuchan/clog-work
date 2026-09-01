@@ -336,6 +336,7 @@ class UserService
                     'password',
                     'stamp_password',
                     'is_stamp_hidden',
+                    'is_shift_hidden',
                     'is_retired',
                     'retirement_date',
                 ])->filter(function ($value, $key) {

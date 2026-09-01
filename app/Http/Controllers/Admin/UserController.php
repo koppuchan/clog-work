@@ -276,6 +276,7 @@ class UserController extends Controller
                 'email' => $user->email,
                 'department_id' => $user->primaryDepartment()?->first()?->id,
                 'is_stamp_hidden' => $user->is_stamp_hidden,
+                'is_shift_hidden' => $user->is_shift_hidden,
                 'is_retired' => $user->is_retired,
                 'retirement_date' => $user->retirement_date,
                 'shift_patterns' => $userShiftPatterns,

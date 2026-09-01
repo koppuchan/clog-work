@@ -42,6 +42,7 @@ class UpdateUserRequest extends FormRequest
             'department_id' => ['nullable', 'integer', 'exists:departments,id'],
             'shift_patterns' => ['nullable', 'array'],
             'is_stamp_hidden' => ['nullable', 'boolean'],
+            'is_shift_hidden' => ['nullable', 'boolean'],
             // ユーザー個別権限（役割のデフォルト権限を上書きする場合）
             'permissions' => ['nullable', 'array'],
             'permissions.*.resource_id' => ['required', 'integer', 'exists:permission_resources,id'],

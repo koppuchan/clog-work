@@ -90,6 +90,7 @@ export default function EditUserPage({
     approval_permission: 'department' | 'company';
     shift_edit_permission: 'department' | 'company';
     is_stamp_hidden: boolean;
+    is_shift_hidden: boolean;
     is_retired: boolean;
     retirement_date: string;
     role_ids: number[];
@@ -116,6 +117,7 @@ export default function EditUserPage({
     approval_permission: (validatedData?.approval_permission || serverUser?.approval_permission || 'department') as 'department' | 'company',
     shift_edit_permission: (validatedData?.shift_edit_permission || serverUser?.shift_edit_permission || 'department') as 'department' | 'company',
     is_stamp_hidden: validatedData?.is_stamp_hidden !== undefined ? validatedData.is_stamp_hidden : (serverUser?.is_stamp_hidden || false),
+    is_shift_hidden: validatedData?.is_shift_hidden !== undefined ? validatedData.is_shift_hidden : (serverUser?.is_shift_hidden || false),
     is_retired: validatedData?.is_retired !== undefined ? validatedData.is_retired : (serverUser?.is_retired || false),
     retirement_date: validatedData?.retirement_date || serverUser?.retirement_date || '',
     role_ids: validatedData?.role_ids || serverUser?.roles?.map((r: any) => r.id) || [],
@@ -230,6 +232,24 @@ export default function EditUserPage({
                   <span className="text-sm font-medium text-gray-700">打刻画面を非表示にする</span>
                   <p className="text-xs text-gray-500 mt-1">
                     このユーザーの打刻画面を非表示にします。
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            <div>
+              <label className="flex items-start cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={data.is_shift_hidden}
+                  onChange={(e) => setData('is_shift_hidden', e.target.checked)}
+                  className="mt-1 mr-3 h-4 w-4"
+                  disabled={processing}
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">シフト表に表示しない</span>
+                  <p className="text-xs text-gray-500 mt-1">
+                    シフト管理画面の一覧および人数集計から除外します。管理者など、シフトに入らないユーザーに使用します。
                   </p>
                 </div>
               </label>

@@ -200,6 +200,17 @@ class PublicStampController extends Controller
             return response()->json(['success' => false, 'message' => '退職済みのユーザーです。'], 400);
         }
 
+        // 続けてかざした場合に、出勤の直後へ退勤が記録されるのを防ぐ
+        $wait = $this->publicStampService->secondsUntilStampAllowed($company->id, $user->id);
+
+        if ($wait !== null) {
+            return response()->json([
+                'success' => false,
+                'message' => sprintf('打刻を受け付けました。あと %d 秒お待ちください。', $wait),
+                'user' => ['id' => $user->id, 'name' => $user->name],
+            ], 429);
+        }
+
         $status = $this->publicStampService->getCurrentStatus($company->id, $user->id);
 
         if ($status['isOnBreak']) {

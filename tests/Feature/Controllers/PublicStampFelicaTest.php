@@ -32,6 +32,11 @@ class PublicStampFelicaTest extends TestCase
     {
         parent::setUp();
 
+        // 重複防止のクールダウンは既定で有効だが、打刻種別の判定を検証する
+        // テストでは連続して打刻するため無効化する。クールダウン自体の検証は
+        // 専用のテストで行う。
+        config(['attendance.felica_stamp_cooldown_seconds' => 0]);
+
         $this->company = Company::factory()->create(['company_code' => '910001']);
         $this->user = User::factory()->create([
             'name' => '打刻 太郎',
@@ -201,5 +206,45 @@ class PublicStampFelicaTest extends TestCase
 
         // Assert
         $response->assertStatus(400)->assertJson(['success' => false]);
+    }
+
+    /**
+     * @test
+     */
+    public function 短時間に続けてかざすと二度目は受け付けない(): void
+    {
+        // Arrange
+        config(['attendance.felica_stamp_cooldown_seconds' => 10]);
+        $this->tap()->assertOk();
+
+        // Act: 直後に再度かざす
+        $response = $this->tap();
+
+        // Assert: 出勤の直後に退勤が記録されてしまわないこと
+        $response->assertStatus(429)->assertJson(['success' => false]);
+        $this->assertTrue(
+            app(\App\Services\PublicStampService::class)
+                ->getCurrentStatus($this->company->id, $this->user->id)['isWorking']
+        );
+    }
+
+    /**
+     * @test
+     */
+    public function クールダウンを過ぎればもう一度打刻できる(): void
+    {
+        // Arrange
+        config(['attendance.felica_stamp_cooldown_seconds' => 10]);
+        $this->tap()->assertOk();
+
+        // Act
+        $this->travel(11)->seconds();
+        $response = $this->tap();
+
+        // Assert
+        $response->assertOk()->assertJson([
+            'success' => true,
+            'message' => '退勤を記録しました。',
+        ]);
     }
 }

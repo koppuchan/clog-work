@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Repositories\Contracts\TimeRecordRepositoryInterface;
 use App\Services\CompanySettingService;
 use App\Services\DailyWorkSummaryService;
+use App\Services\LaborAlertService;
 use App\Services\RequestService;
 use App\Services\ShiftService;
 use Carbon\CarbonImmutable;
@@ -27,7 +28,8 @@ class ReportController extends Controller
         private readonly RequestService $requestService,
         private readonly TimeRecordRepositoryInterface $timeRecordRepository,
         private readonly ShiftService $shiftService,
-        private readonly CompanySettingService $companySettingService
+        private readonly CompanySettingService $companySettingService,
+        private readonly LaborAlertService $laborAlertService
     ) {}
 
     /**
@@ -250,6 +252,10 @@ class ReportController extends Controller
                 'half_day' => $company?->paid_leave_half_day ?? false,
                 'hourly' => $company?->paid_leave_hourly ?? false,
             ],
+            // 本人に関する労務アラートのみを渡す
+            'laborAlerts' => $this->laborAlertService
+                ->getAlertsForUser($companyId, $user->id, $targetMonth->year, $targetMonth->month)
+                ->toArray(),
         ]);
     }
 

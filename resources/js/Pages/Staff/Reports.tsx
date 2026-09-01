@@ -6,6 +6,7 @@ import type { ShiftDisplayPeriodType } from '@/types/shift';
 import { ApplicationDialog } from '@/Components/Staff/Reports';
 import ApprovedRequestDetailModal from '@/Components/Reports/ApprovedRequestDetailModal';
 import CorrectionDetailModal from '@/Components/Reports/CorrectionDetailModal';
+import LaborAlertPanel, { type LaborAlertItem } from '@/Components/Staff/LaborAlertPanel';
 import WorkReportTable from '@/Components/Reports/WorkReportTable';
 import MonthSelector from '@/Components/MonthSelector';
 import { Clock, CheckCircle, XCircle } from 'lucide-react';
@@ -32,6 +33,7 @@ interface StaffReportsPageProps {
   monthlySummary: MonthlySummary | null;
   timeRecords: TimeRecord[];
   timeRecordCorrections: Record<string, TimeRecordCorrectionItem[]>;
+  laborAlerts: LaborAlertItem[];
   requests: Record<string, RequestData[]>;
   shifts: Record<string, ShiftInfo>;
   todayWorkStart: string | null;
@@ -46,7 +48,7 @@ interface StaffReportsPageProps {
 }
 
 function StaffReportsPage() {
-  const { workSummaries, monthlySummary, timeRecords, timeRecordCorrections, requests, shifts, todayWorkStart, filters, leaveSettings } = usePage<{
+  const { workSummaries, monthlySummary, timeRecords, timeRecordCorrections, requests, shifts, todayWorkStart, filters, leaveSettings, laborAlerts } = usePage<{
     props: StaffReportsPageProps;
   }>().props as unknown as StaffReportsPageProps;
 
@@ -258,6 +260,8 @@ function StaffReportsPage() {
 
   return (
     <div className="space-y-6">
+      <LaborAlertPanel alerts={laborAlerts ?? []} />
+
       <ApprovedRequestDetailModal
         request={selectedRequest}
         onClose={() => setSelectedRequest(null)}

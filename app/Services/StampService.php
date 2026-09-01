@@ -208,6 +208,17 @@ class StampService
     }
 
     /**
+     * ユーザーの直近の打刻レコードを取得する
+     *
+     * @param  int  $companyId  会社ID
+     * @param  int  $userId  ユーザーID
+     */
+    public function findLatestRecord(int $companyId, int $userId): ?TimeRecord
+    {
+        return $this->timeRecordRepository->findLatestByUserId($companyId, $userId);
+    }
+
+    /**
      * 現在の勤務状態を取得
      *
      * isWorking/isOnBreak は最新WORK_STARTからの打刻シーケンスで判定する

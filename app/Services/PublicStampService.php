@@ -8,6 +8,7 @@ use App\Models\Company;
 use App\Models\User;
 use App\Repositories\Contracts\CompanyRepositoryInterface;
 use App\Repositories\Contracts\UserRepositoryInterface;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Hash;
 
@@ -65,6 +66,36 @@ class PublicStampService
     public function findUserByFelicaIdm(string $idm, int $companyId): ?User
     {
         return $this->userRepository->findByFelicaIdm($idm, $companyId);
+    }
+
+    /**
+     * 直前の打刻からの経過が短すぎないか判定する
+     *
+     * FeliCa打刻は「かざす」操作ひとつで打刻種別が決まるため、続けて2回
+     * かざすと出勤の直後に退勤が記録されてしまう。直前の打刻から所定の
+     * 秒数が経過するまでは受け付けない。
+     *
+     * @param  int  $companyId  会社ID
+     * @param  int  $userId  ユーザーID
+     * @return int|null 待機が必要な場合は残り秒数、不要な場合は null
+     */
+    public function secondsUntilStampAllowed(int $companyId, int $userId): ?int
+    {
+        $cooldown = (int) config('attendance.felica_stamp_cooldown_seconds', 10);
+
+        if ($cooldown <= 0) {
+            return null;
+        }
+
+        $latest = $this->stampService->findLatestRecord($companyId, $userId);
+
+        if (! $latest) {
+            return null;
+        }
+
+        $elapsed = CarbonImmutable::now()->diffInSeconds($latest->record_time, absolute: true);
+
+        return $elapsed < $cooldown ? (int) ceil($cooldown - $elapsed) : null;
     }
 
     /**

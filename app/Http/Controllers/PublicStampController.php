@@ -129,7 +129,7 @@ class PublicStampController extends Controller
      */
     public function clockIn(Request $request, string $uuid): JsonResponse
     {
-        return $this->performStamp($request, $uuid, 'clockIn', '出勤を記録しました。');
+        return $this->performStamp($request, $uuid, 'clockIn');
     }
 
     /**
@@ -137,7 +137,7 @@ class PublicStampController extends Controller
      */
     public function clockOut(Request $request, string $uuid): JsonResponse
     {
-        return $this->performStamp($request, $uuid, 'clockOut', '退勤を記録しました。');
+        return $this->performStamp($request, $uuid, 'clockOut');
     }
 
     /**
@@ -145,7 +145,7 @@ class PublicStampController extends Controller
      */
     public function breakStart(Request $request, string $uuid): JsonResponse
     {
-        return $this->performStamp($request, $uuid, 'breakStart', '休憩開始を記録しました。');
+        return $this->performStamp($request, $uuid, 'breakStart');
     }
 
     /**
@@ -153,7 +153,7 @@ class PublicStampController extends Controller
      */
     public function breakEnd(Request $request, string $uuid): JsonResponse
     {
-        return $this->performStamp($request, $uuid, 'breakEnd', '休憩終了を記録しました。');
+        return $this->performStamp($request, $uuid, 'breakEnd');
     }
 
     /**
@@ -215,14 +215,10 @@ class PublicStampController extends Controller
 
         if ($status['isOnBreak']) {
             $method = 'breakEnd';
-            $successMessage = '休憩終了を記録しました。';
         } elseif ($status['isWorking']) {
-            $isBreakStart = ($validated['intent'] ?? null) === 'break-start';
-            $method = $isBreakStart ? 'breakStart' : 'clockOut';
-            $successMessage = $isBreakStart ? '休憩開始を記録しました。' : '退勤を記録しました。';
+            $method = ($validated['intent'] ?? null) === 'break-start' ? 'breakStart' : 'clockOut';
         } else {
             $method = 'clockIn';
-            $successMessage = '出勤を記録しました。';
         }
 
         try {
@@ -236,7 +232,7 @@ class PublicStampController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => $successMessage,
+            'message' => $record->record_type->stampedMessage(),
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
@@ -255,7 +251,7 @@ class PublicStampController extends Controller
     /**
      * 打刻処理の共通メソッド
      */
-    private function performStamp(Request $request, string $uuid, string $method, string $successMessage): JsonResponse
+    private function performStamp(Request $request, string $uuid, string $method): JsonResponse
     {
         $company = $this->publicStampService->findCompanyByUuid($uuid);
 
@@ -291,7 +287,7 @@ class PublicStampController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => $successMessage,
+                'message' => $record->record_type->stampedMessage(),
                 'record' => [
                     'id' => $record->id,
                     'type' => $record->record_type->name,

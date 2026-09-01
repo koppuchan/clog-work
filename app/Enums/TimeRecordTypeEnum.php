@@ -32,6 +32,23 @@ enum TimeRecordTypeEnum: int
     }
 
     /**
+     * 打刻完了時に画面へ表示する文言を取得
+     *
+     * 日付をまたいだ退勤は通常の退勤と区別できるようにする。
+     * 打刻した本人が「いつの勤務として記録されたか」を判断できるようにするため。
+     */
+    public function stampedMessage(): string
+    {
+        return match ($this) {
+            self::WORK_START => '出勤を記録しました。',
+            self::WORK_END => '退勤を記録しました。',
+            self::WORK_END_NEXT_DAY => '退勤（日付越え）を記録しました。',
+            self::BREAK_START => '休憩開始を記録しました。',
+            self::BREAK_END => '休憩終了を記録しました。',
+        };
+    }
+
+    /**
      * 勤務開始かどうか
      */
     public function isWorkStart(): bool

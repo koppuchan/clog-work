@@ -41,7 +41,7 @@ import { useNavigationGuard } from '@/hooks/useNavigationGuard';
  * - useShiftOperations: シフトの選択・編集・一括操作の状態管理
  * - useShiftStats: シフト統計情報の計算
  */
-export default function ShiftsPage({ users: backendUsers, departments: backendDepartments, shifts: backendShifts, shiftPatterns, filters, shiftDisplayPeriod, payrollClosingDay }: ShiftsPageProps) {
+export default function ShiftsPage({ users: backendUsers, departments: backendDepartments, shifts: backendShifts, shiftPatterns, leaves, filters, shiftDisplayPeriod, payrollClosingDay }: ShiftsPageProps) {
   // バックエンドから渡された日付を使用して初期値を設定
   const selectedDate = useMemo(() => new Date(filters.start_date), [filters.start_date]);
   const [showPatternDialog, setShowPatternDialog] = useState<{userId: string, userName: string} | null>(null);
@@ -517,6 +517,7 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
             getMonthlyStats={getMonthlyStats}
             getAllStaffTotals={getAllStaffTotals}
             getShiftCountsByDate={getShiftCountsByDate}
+            leaves={leaves}
           />
 
           <ShiftLegend shiftTypeInfo={shiftTypeInfo} />

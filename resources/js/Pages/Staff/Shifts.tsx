@@ -6,7 +6,7 @@ import { ShiftTable, ShiftLegend } from '@/Components/Staff/Shifts';
 import MonthSelector from '@/Components/MonthSelector';
 import type { StaffShiftsPageProps } from '@/types/staff/shifts';
 
-function StaffShiftsPage({ users, shifts, shiftPatterns, filters, shiftDisplayPeriod, payrollClosingDay }: StaffShiftsPageProps) {
+function StaffShiftsPage({ users, shifts, shiftPatterns, leaves, filters, shiftDisplayPeriod, payrollClosingDay }: StaffShiftsPageProps) {
   const {
     daysInMonth,
     periodMonth,
@@ -47,6 +47,7 @@ function StaffShiftsPage({ users, shifts, shiftPatterns, filters, shiftDisplayPe
         getHoliday={getHoliday}
         getShiftForDate={getShiftForDate}
         getTimeRange={getTimeRange}
+        leaves={leaves}
       />
 
       <ShiftLegend shiftPatterns={shiftPatterns} />

@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\CompanySettingService;
 use App\Services\PermissionService;
+use App\Services\ShiftLeaveService;
 use App\Services\ShiftPatternService;
 use App\Services\ShiftService;
 use Carbon\CarbonImmutable;
@@ -24,7 +25,8 @@ class ShiftController extends Controller
         private readonly ShiftService $shiftService,
         private readonly ShiftPatternService $shiftPatternService,
         private readonly PermissionService $permissionService,
-        private readonly CompanySettingService $companySettingService
+        private readonly CompanySettingService $companySettingService,
+        private readonly ShiftLeaveService $shiftLeaveService
     ) {}
 
     /**
@@ -67,9 +69,18 @@ class ShiftController extends Controller
         // シフトパターン一覧を取得
         $shiftPatterns = $this->shiftPatternService->getShiftPatternsByCompanyId($companyId);
 
+        // 承認済みの休暇をシフト表に反映する（管理者画面と同じ仕様）
+        $leaves = $this->shiftLeaveService->getLeavesForShift(
+            $companyId,
+            collect($shiftData['users'])->pluck('id')->all(),
+            $startDate,
+            $endDate,
+        );
+
         return Inertia::render('Staff/Shifts', [
             'users' => $shiftData['users'],
             'shifts' => $shiftData['shifts'],
+            'leaves' => $leaves,
             'shiftPatterns' => $shiftPatterns,
             'currentUserId' => $userId,
             'scope' => $shiftData['scope'],

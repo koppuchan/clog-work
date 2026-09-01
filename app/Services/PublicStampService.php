@@ -54,6 +54,20 @@ class PublicStampService
     }
 
     /**
+     * FeliCa の IDm から、指定した会社に所属するユーザーを取得
+     *
+     * IDm は全社で一意（uk_users_felica_idm）だが、打刻端末は会社ごとに
+     * 設置されるため、会社への所属も条件に含めて取得する。
+     *
+     * @param  string  $idm  FeliCa IDm（16進数16桁）
+     * @param  int  $companyId  会社ID
+     */
+    public function findUserByFelicaIdm(string $idm, int $companyId): ?User
+    {
+        return $this->userRepository->findByFelicaIdm($idm, $companyId);
+    }
+
+    /**
      * ユーザーが指定した会社に所属しているか確認
      *
      * @param  int  $userId  ユーザーID

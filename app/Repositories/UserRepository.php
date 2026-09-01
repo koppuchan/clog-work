@@ -47,6 +47,22 @@ class UserRepository implements UserRepositoryInterface
     }
 
     /**
+     * FeliCa の IDm と会社IDでユーザーを取得
+     *
+     * @param  string  $idm  FeliCa IDm（16進数16桁）
+     * @param  int  $companyId  会社ID
+     */
+    public function findByFelicaIdm(string $idm, int $companyId): ?User
+    {
+        return $this->user->query()
+            ->where('felica_idm', $idm)
+            ->whereHas('companies', function ($query) use ($companyId) {
+                $query->where('company_id', $companyId);
+            })
+            ->first();
+    }
+
+    /**
      * IDでユーザーをリレーションと共に取得
      *
      * @param  int  $id  ユーザーID

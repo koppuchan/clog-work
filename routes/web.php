@@ -30,6 +30,8 @@ Route::prefix('stamp')->name('public.stamp.')->group(function () {
     Route::post('/{uuid}/clock-out', [PublicStampController::class, 'clockOut'])->name('clock-out');
     Route::post('/{uuid}/break-start', [PublicStampController::class, 'breakStart'])->name('break-start');
     Route::post('/{uuid}/break-end', [PublicStampController::class, 'breakEnd'])->name('break-end');
+    // FeliCa打刻アプリ（常駐アプリ）からの打刻
+    Route::post('/{uuid}/felica', [PublicStampController::class, 'felica'])->name('felica');
 });
 
 // ルートページ - 認証済みならadmin/shiftsへリダイレクト

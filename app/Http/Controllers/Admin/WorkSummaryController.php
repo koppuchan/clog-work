@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreWorkSummaryRequest;
 use App\Http\Requests\UpdateWorkSummaryRequest;
 use App\Services\AttendanceExcelExportService;
+use App\Services\AttendanceIssueService;
 use App\Services\CompanySettingService;
 use App\Services\DailyWorkSummaryService;
 use App\Services\PermissionService;
@@ -37,7 +38,8 @@ class WorkSummaryController extends Controller
         private readonly AttendanceExcelExportService $attendanceExcelExportService,
         private readonly PermissionService $permissionService,
         private readonly ShiftService $shiftService,
-        private readonly CompanySettingService $companySettingService
+        private readonly CompanySettingService $companySettingService,
+        private readonly AttendanceIssueService $attendanceIssueService
     ) {}
 
     /**
@@ -252,6 +254,7 @@ class WorkSummaryController extends Controller
         return Inertia::render('Admin/Reports', [
             'users' => $usersData,
             'workSummaries' => $workSummariesData,
+            'attendanceIssues' => $this->attendanceIssueService->detect(collect($workSummariesData)),
             'timeRecords' => $timeRecordsData,
             'approvedRequests' => $approvedRequestsData,
             'timeRecordCorrections' => $correctionsData,

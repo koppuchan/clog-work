@@ -6,6 +6,7 @@ import { router, usePage } from '@inertiajs/react';
 import ReportExportModal from '@/Components/Reports/ReportExportModal';
 import ApprovedRequestDetailModal from '@/Components/Reports/ApprovedRequestDetailModal';
 import CorrectionDetailModal from '@/Components/Reports/CorrectionDetailModal';
+import AttendanceIssueBanner, { ISSUE_LABELS, type AttendanceIssueMap } from '@/Components/Reports/AttendanceIssueBanner';
 import WorkReportTable from '@/Components/Reports/WorkReportTable';
 import MonthSelector from '@/Components/MonthSelector';
 import ConfirmDialog from '@/Components/ConfirmDialog';
@@ -16,7 +17,7 @@ import { useReports } from '@/hooks/reports/useReports';
 import { getRequestBadgeStyle } from '@/utils/requestStyles';
 
 function ReportsPage() {
-  const { users, workSummaries, timeRecords, approvedRequests, timeRecordCorrections, monthlySummary, canExport, shifts, filters } = usePage<{
+  const { users, workSummaries, timeRecords, approvedRequests, timeRecordCorrections, monthlySummary, canExport, shifts, filters, attendanceIssues } = usePage<{
     props: ReportsPageProps;
   }>().props as unknown as ReportsPageProps;
 
@@ -179,6 +180,14 @@ function ReportsPage() {
                 {req.type.label}
               </button>
             ))}
+            {(attendanceIssues?.[dateStr] ?? []).map((kind) => (
+              <span
+                key={kind}
+                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800"
+              >
+                {ISSUE_LABELS[kind] ?? kind}
+              </span>
+            ))}
             {corrections.length > 0 && (
               <button
                 type="button"
@@ -194,7 +203,7 @@ function ReportsPage() {
         </div>
       );
     },
-    [getApprovedRequestsForDate, timeRecordCorrections]
+    [getApprovedRequestsForDate, timeRecordCorrections, attendanceIssues]
   );
 
   const editColumn = {
@@ -224,6 +233,8 @@ function ReportsPage() {
 
   return (
     <div className="space-y-6">
+      <AttendanceIssueBanner issues={attendanceIssues ?? {}} />
+
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-900">勤務実績</h1>
         {canExport && (

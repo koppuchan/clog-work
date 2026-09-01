@@ -12,6 +12,9 @@ use App\Http\Controllers\Staff\ReportController as StaffReportController;
 use App\Http\Controllers\Staff\RequestController as StaffRequestController;
 use App\Http\Controllers\Staff\ShiftController as StaffShiftController;
 use App\Http\Controllers\Staff\StampController;
+use App\Http\Controllers\SuperAdmin\CompanyController as SuperAdminCompanyController;
+use App\Http\Controllers\SuperAdmin\DashboardController as SuperAdminDashboardController;
+use App\Http\Controllers\SuperAdmin\UserController as SuperAdminUserController;
 use App\Http\Middleware\EnsurePasswordIsChanged;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -148,6 +151,17 @@ Route::middleware(['auth:staff', EnsurePasswordIsChanged::class])->prefix('staff
 
     // 申請
     Route::post('/requests', [StaffRequestController::class, 'store'])->name('requests.store');
+});
+
+// SuperAdmin routes - SaaS運営者用。adminガードで認証したうえでスーパー管理者のみ許可
+Route::middleware(['auth:admin', 'verified', 'super_admin'])->prefix('super-admin')->name('super-admin.')->group(function () {
+    Route::get('/', [SuperAdminDashboardController::class, 'index'])->name('dashboard');
+
+    Route::get('/companies', [SuperAdminCompanyController::class, 'index'])->name('companies');
+    Route::get('/companies/new', [SuperAdminCompanyController::class, 'create'])->name('companies.new');
+    Route::post('/companies', [SuperAdminCompanyController::class, 'store'])->name('companies.store');
+
+    Route::get('/users', [SuperAdminUserController::class, 'index'])->name('users');
 });
 
 // Breezeの認証ルートを読み込む

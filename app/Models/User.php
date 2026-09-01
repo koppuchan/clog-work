@@ -35,6 +35,7 @@ class User extends Authenticatable
         'is_stamp_hidden',
         'is_shift_hidden',
         'is_owner',
+        'is_super_admin',
         'is_retired',
         'retirement_date',
     ];
@@ -66,6 +67,7 @@ class User extends Authenticatable
             'is_stamp_hidden' => 'boolean',
             'is_shift_hidden' => 'boolean',
             'is_owner' => 'boolean',
+            'is_super_admin' => 'boolean',
         ];
     }
 

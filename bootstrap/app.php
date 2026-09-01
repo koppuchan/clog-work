@@ -39,6 +39,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin_or_manager' => \App\Http\Middleware\EnsureUserIsAdminOrManager::class,
             'stamp_visible' => \App\Http\Middleware\EnsureStampIsVisible::class,
+            'super_admin' => \App\Http\Middleware\EnsureUserIsSuperAdmin::class,
         ]);
 
         // 認証済みユーザーのリダイレクト先（guestミドルウェア用）

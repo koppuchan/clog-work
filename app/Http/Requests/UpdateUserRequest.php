@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Repositories\Contracts\UserRepositoryInterface;
 use App\Services\LogService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -182,6 +183,35 @@ class UpdateUserRequest extends FormRequest
         }
 
         return $permissions;
+    }
+
+    /**
+     * バリデーション後の追加チェック
+     */
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator) {
+            $companyId = $this->user()->company_id;
+            $userId = (int) $this->route('user');
+
+            // 個人コードの会社内ユニークチェック
+            // 変更しない場合は自分自身と重複するため、対象から除く
+            $employeeCode = $this->input('employee_code');
+
+            if (empty($employeeCode)) {
+                return;
+            }
+
+            $exists = app(UserRepositoryInterface::class)
+                ->existsByEmployeeCodeInCompany($companyId, $employeeCode, $userId);
+
+            if ($exists) {
+                $validator->errors()->add(
+                    'employee_code',
+                    'この個人コードは既に使用されています。'
+                );
+            }
+        });
     }
 
     /**

@@ -92,6 +92,8 @@ export interface ShiftInfo {
   // break_mode=1（分数のみ指定）の場合の表示用
   break_minutes?: number | null;
   break_mode?: number | null;
+  /** 打刻がない日にシフトの休憩を当てる設定。当てた休憩は薄く表示する */
+  auto_fill_break?: boolean;
 }
 
 /**

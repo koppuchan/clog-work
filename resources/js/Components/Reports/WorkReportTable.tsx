@@ -371,7 +371,16 @@ export default function WorkReportTable({
                           const dateKey = format(date, 'yyyy-MM-dd');
                           const shiftInfo = shifts?.[dateKey];
                           if (shiftInfo?.break_start && shiftInfo?.break_end) {
-                            return `${shiftInfo.break_start}~${shiftInfo.break_end}`;
+                            const text = `${shiftInfo.break_start}~${shiftInfo.break_end}`;
+
+                            // 打刻ではなくシフトから当てた休憩は薄く表示して区別する
+                            return shiftInfo.auto_fill_break ? (
+                              <span className="text-gray-400" title="打刻がないためシフトの休憩を適用しています">
+                                {text}
+                              </span>
+                            ) : (
+                              text
+                            );
                           }
                           return formatMinutesToHM(summary.break_minutes);
                         }

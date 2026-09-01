@@ -166,6 +166,9 @@ class WorkSummaryController extends Controller
                         // 休憩分数とモードもフロントへ渡す
                         'break_minutes' => $pattern->break_minutes,
                         'break_mode' => $pattern->break_mode,
+                        // 打刻がない日にシフトの休憩を当てた場合、
+                        // 打刻された休憩と見分けられるよう画面へ渡す
+                        'auto_fill_break' => (bool) $pattern->auto_fill_break,
                     ],
                 ];
             })->filter();

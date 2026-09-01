@@ -27,3 +27,6 @@ Thumbs.db
 /playwright-report/
 /playwright/.cache/
 /test-results/
+
+# Issue作成用の一時ファイル
+_recovery/__pycache__/

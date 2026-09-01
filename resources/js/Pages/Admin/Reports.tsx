@@ -267,6 +267,10 @@ function ReportsPage() {
       </div>
 
       <WorkReportTable
+        corrections={timeRecordCorrections}
+        onCorrectionClick={(date) =>
+          setSelectedCorrection({ date, items: timeRecordCorrections?.[date] ?? [] })
+        }
         workSummaries={workSummaries}
         monthlySummary={monthlySummary}
         startDate={filters.start_date}

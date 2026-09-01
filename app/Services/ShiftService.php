@@ -252,6 +252,13 @@ class ShiftService
             default => collect([$this->userRepository->findById($userId)]),
         };
 
+        // シフト表に表示しないスタッフは管理者画面と同様に一覧から除く。
+        // ただし本人は自分のシフトを確認できる必要があるため残す。
+        // シフトの取得もこの一覧に絞るため、非表示のスタッフの予定は渡らない。
+        $users = $users->filter(
+            fn ($user) => $user !== null && (! $user->is_shift_hidden || $user->id === $userId)
+        )->values();
+
         // ユーザーが取得できない場合は空を返す
         if ($users->isEmpty() || $users->first() === null) {
             return [

@@ -21,6 +21,14 @@ interface UserRepositoryInterface
     public function findById(int $id): ?User;
 
     /**
+     * FeliCa の IDm と会社IDでユーザーを取得
+     *
+     * @param  string  $idm  FeliCa IDm（16進数16桁）
+     * @param  int  $companyId  会社ID
+     */
+    public function findByFelicaIdm(string $idm, int $companyId): ?User;
+
+    /**
      * IDでユーザーをリレーションと共に取得
      *
      * @param  int  $id  ユーザーID

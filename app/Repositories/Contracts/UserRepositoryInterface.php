@@ -29,6 +29,14 @@ interface UserRepositoryInterface
     public function findByFelicaIdm(string $idm, int $companyId): ?User;
 
     /**
+     * 打刻画面用に、在籍中のユーザーを必要な列だけ取得する
+     *
+     * @param  int  $companyId  会社ID
+     * @return \Illuminate\Database\Eloquent\Collection<int, User>
+     */
+    public function findActiveForStampByCompanyId(int $companyId): \Illuminate\Database\Eloquent\Collection;
+
+    /**
      * IDでユーザーをリレーションと共に取得
      *
      * @param  int  $id  ユーザーID

@@ -116,6 +116,27 @@ class UserRepository implements UserRepositoryInterface
      * @param  int  $companyId  会社ID
      * @return Collection<int, User>
      */
+    /**
+     * 打刻画面用に、在籍中のユーザーを必要な列だけ取得する
+     *
+     * 打刻画面は氏名と個人コードしか使わないため、役割のイーガーロードを行わず
+     * 退職者の除外と並び替えもデータベース側で済ませる。
+     *
+     * @param  int  $companyId  会社ID
+     * @return Collection<int, User>
+     */
+    public function findActiveForStampByCompanyId(int $companyId): Collection
+    {
+        return $this->user->query()
+            ->select(['users.id', 'users.name', 'users.employee_code'])
+            ->whereHas('companies', function ($query) use ($companyId) {
+                $query->where('company_id', $companyId);
+            })
+            ->where('is_retired', false)
+            ->orderBy('name')
+            ->get();
+    }
+
     public function findByCompanyId(int $companyId): Collection
     {
         return $this->user->query()

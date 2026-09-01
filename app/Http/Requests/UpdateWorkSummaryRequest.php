@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\ValidatesBreakPeriods;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -11,6 +12,8 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 class UpdateWorkSummaryRequest extends FormRequest
 {
+    use ValidatesBreakPeriods;
+
     /**
      * リクエストの認可判定
      */
@@ -42,6 +45,8 @@ class UpdateWorkSummaryRequest extends FormRequest
     {
         return [
             function (\Illuminate\Validation\Validator $validator): void {
+                $this->validateBreakPeriodsWithinWork($validator);
+
                 if (! $this->filled('work_start') && ! $this->filled('work_end')) {
                     $validator->errors()->add('work_start', '勤務開始時刻または勤務終了時刻のどちらかは入力してください。');
                 }

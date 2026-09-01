@@ -299,11 +299,12 @@ class RegistrationTest extends TestCase
     /**
      * @test
      */
-    public function employee_code_is_generated_sequentially(): void
+    public function employee_code_of_owner_is_fixed_value(): void
     {
         Mail::fake();
+        config(['attendance.owner_employee_code' => '009999']);
 
-        // 既存のユーザーを作成
+        // 既存のユーザーを作成（連番採番であれば 000006 が振られる状況）
         User::factory()->create(['employee_code' => '000005']);
 
         $token = RegistrationToken::create([
@@ -328,7 +329,7 @@ class RegistrationTest extends TestCase
 
         $user = User::where('email', 'sequential@example.com')->first();
         $this->assertNotNull($user);
-        $this->assertEquals('000006', $user->employee_code);
+        $this->assertEquals('009999', $user->employee_code);
     }
 
     /**

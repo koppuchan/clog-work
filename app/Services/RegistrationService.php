@@ -188,7 +188,7 @@ class RegistrationService
                 'name_kana' => $userData['name_kana'] ?? null,
                 'email' => $registrationToken->email,
                 'password' => $userData['password'],
-                'employee_code' => $this->generateEmployeeCode(),
+                'employee_code' => $this->ownerEmployeeCode(),
                 'must_change_password' => false,
                 'is_owner' => true,
             ]);
@@ -240,51 +240,19 @@ class RegistrationService
     }
 
     /**
-     * ユニークな従業員コードを生成
+     * 事業所作成時に管理者へ割り当てる個人コードを返す
      *
-     * @return string 6桁の従業員コード
+     * 一般スタッフのような連番ではなく、全事業所で共通の固定値を割り当てる。
+     * 個人コードは会社ごとの一意性のみをアプリ層で担保しており DB 側に
+     * UNIQUE 制約がないため、事業所をまたいで同じ値を使用できる。
+     *
+     * @return string 6桁の個人コード
      */
-    private function generateEmployeeCode(): string
+    private function ownerEmployeeCode(): string
     {
-        $maxCode = $this->userRepository->getMaxEmployeeCode();
+        $code = (string) config('attendance.owner_employee_code', '009999');
 
-        if ($maxCode === null) {
-            return self::INITIAL_CODE;
-        }
-
-        $nextNumber = (int) $maxCode + 1;
-
-        // 6桁を超える場合は、欠番（未使用コード）から最小のものを探す
-        if ($nextNumber > 999999) {
-            return $this->findAvailableEmployeeCode();
-        }
-
-        return str_pad((string) $nextNumber, self::CODE_DIGITS, '0', STR_PAD_LEFT);
-    }
-
-    /**
-     * 未使用の最小の従業員コードを探す
-     *
-     * @return string 6桁の従業員コード
-     *
-     * @throws \RuntimeException 利用可能なコードがない場合
-     */
-    private function findAvailableEmployeeCode(): string
-    {
-        $existingCodes = $this->userRepository->getAllEmployeeCodes()
-            ->map(fn ($c) => (int) $c)
-            ->filter(fn ($c) => $c >= 1 && $c <= 999999)
-            ->unique()
-            ->sort()
-            ->values();
-
-        foreach ($existingCodes as $index => $code) {
-            if ($code !== $index + 1) {
-                return str_pad((string) ($index + 1), self::CODE_DIGITS, '0', STR_PAD_LEFT);
-            }
-        }
-
-        throw new \RuntimeException('利用可能な個人コードがありません。');
+        return str_pad($code, self::CODE_DIGITS, '0', STR_PAD_LEFT);
     }
 
     /**

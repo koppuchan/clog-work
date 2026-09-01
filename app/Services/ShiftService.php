@@ -269,12 +269,19 @@ class ShiftService
             ->filter(fn ($shift) => in_array($shift->user_id, $userIds, true));
 
         // ユーザー情報をフォーマット（自分かどうかのフラグ付き）
+        // 部署ごとにまとめて表示できるよう部署名を持たせ、個人コード順に並べる
         $usersFormatted = $users
             ->filter(fn ($user) => $user !== null)
             ->map(fn ($user) => [
                 'id' => $user->id,
                 'name' => $user->name,
+                'employee_code' => $user->employee_code,
+                'department_name' => $user->primaryDepartment()?->first()?->name,
                 'is_self' => $user->id === $userId,
+            ])
+            ->sortBy([
+                fn (array $a, array $b) => ($a['department_name'] ?? '') <=> ($b['department_name'] ?? ''),
+                fn (array $a, array $b) => ($a['employee_code'] ?? '') <=> ($b['employee_code'] ?? ''),
             ])
             ->values()
             ->toArray();

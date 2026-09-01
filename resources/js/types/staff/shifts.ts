@@ -1,6 +1,8 @@
 export interface ShiftUser {
   id: number;
   name: string;
+  employee_code?: string | null;
+  department_name?: string | null;
   is_self: boolean;
 }
 

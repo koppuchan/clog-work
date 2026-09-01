@@ -43,6 +43,12 @@ class UpdateUserRequest extends FormRequest
             'shift_patterns' => ['nullable', 'array'],
             'is_stamp_hidden' => ['nullable', 'boolean'],
             'is_shift_hidden' => ['nullable', 'boolean'],
+            'felica_idm' => [
+                'nullable',
+                'string',
+                'regex:/^[0-9a-fA-F]{16}$/',
+                Rule::unique('users')->ignore($userId),
+            ],
             // ユーザー個別権限（役割のデフォルト権限を上書きする場合）
             'permissions' => ['nullable', 'array'],
             'permissions.*.resource_id' => ['required', 'integer', 'exists:permission_resources,id'],
@@ -86,6 +92,9 @@ class UpdateUserRequest extends FormRequest
 
         $this->merge([
             'permissions' => $permissions,
+            // FeliCa の IDm は大文字小文字を区別せずに扱うため小文字へ寄せる。
+            // 空文字は「登録解除」の意味なので null に変換する。
+            'felica_idm' => $this->normalizeFelicaIdm(),
         ]);
 
         // デバッグログ: merge後の確認
@@ -93,6 +102,23 @@ class UpdateUserRequest extends FormRequest
             'has_permissions' => $this->has('permissions'),
             'permissions_value' => $this->input('permissions'),
         ]);
+    }
+
+    /**
+     * FeliCa の IDm を正規化する
+     *
+     * 大文字小文字を区別せずに扱うため小文字へ寄せ、
+     * 空文字は登録解除を意味するため null に変換する。
+     */
+    private function normalizeFelicaIdm(): ?string
+    {
+        $idm = $this->input('felica_idm');
+
+        if (! is_string($idm) || trim($idm) === '') {
+            return null;
+        }
+
+        return strtolower(trim($idm));
     }
 
     /**

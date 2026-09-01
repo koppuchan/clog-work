@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Repositories\Contracts\UserPermissionRepositoryInterface;
 use App\Repositories\Contracts\UserRepositoryInterface;
 use App\Traits\HasLogService;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -337,6 +338,7 @@ class UserService
                     'stamp_password',
                     'is_stamp_hidden',
                     'is_shift_hidden',
+                    'felica_idm',
                     'is_retired',
                     'retirement_date',
                 ])->filter(function ($value, $key) {
@@ -347,6 +349,17 @@ class UserService
 
                     return true;
                 })->toArray();
+
+                // FeliCaカードの登録日時は、カードが変わったときだけ更新する
+                if (array_key_exists('felica_idm', $userData)) {
+                    $current = $this->userRepository->findById($id);
+
+                    if ($userData['felica_idm'] === null) {
+                        $userData['felica_registered_at'] = null;
+                    } elseif ($current && $userData['felica_idm'] !== $current->felica_idm) {
+                        $userData['felica_registered_at'] = CarbonImmutable::now();
+                    }
+                }
 
                 // ユーザーを更新
                 $updatedUser = $this->userRepository->update($id, $userData);

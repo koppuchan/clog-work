@@ -277,6 +277,8 @@ class UserController extends Controller
                 'department_id' => $user->primaryDepartment()?->first()?->id,
                 'is_stamp_hidden' => $user->is_stamp_hidden,
                 'is_shift_hidden' => $user->is_shift_hidden,
+                'felica_idm' => $user->felica_idm,
+                'felica_registered_at' => $user->felica_registered_at?->format('Y-m-d H:i'),
                 'is_retired' => $user->is_retired,
                 'retirement_date' => $user->retirement_date,
                 'shift_patterns' => $userShiftPatterns,

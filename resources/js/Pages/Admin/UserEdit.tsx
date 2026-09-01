@@ -91,6 +91,7 @@ export default function EditUserPage({
     shift_edit_permission: 'department' | 'company';
     is_stamp_hidden: boolean;
     is_shift_hidden: boolean;
+    felica_idm: string;
     is_retired: boolean;
     retirement_date: string;
     role_ids: number[];
@@ -118,6 +119,7 @@ export default function EditUserPage({
     shift_edit_permission: (validatedData?.shift_edit_permission || serverUser?.shift_edit_permission || 'department') as 'department' | 'company',
     is_stamp_hidden: validatedData?.is_stamp_hidden !== undefined ? validatedData.is_stamp_hidden : (serverUser?.is_stamp_hidden || false),
     is_shift_hidden: validatedData?.is_shift_hidden !== undefined ? validatedData.is_shift_hidden : (serverUser?.is_shift_hidden || false),
+    felica_idm: validatedData?.felica_idm ?? serverUser?.felica_idm ?? '',
     is_retired: validatedData?.is_retired !== undefined ? validatedData.is_retired : (serverUser?.is_retired || false),
     retirement_date: validatedData?.retirement_date || serverUser?.retirement_date || '',
     role_ids: validatedData?.role_ids || serverUser?.roles?.map((r: any) => r.id) || [],
@@ -253,6 +255,43 @@ export default function EditUserPage({
                   </p>
                 </div>
               </label>
+            </div>
+
+            <div>
+              <label htmlFor="felica_idm" className="block text-sm font-medium text-gray-700 mb-2">
+                FeliCaカード
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="felica_idm"
+                  type="text"
+                  value={data.felica_idm}
+                  onChange={(e) => setData('felica_idm', e.target.value.trim())}
+                  placeholder="0123456789abcdef"
+                  maxLength={16}
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 font-mono text-sm"
+                  disabled={processing}
+                />
+                {data.felica_idm && (
+                  <button
+                    type="button"
+                    onClick={() => setData('felica_idm', '')}
+                    className="px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
+                    disabled={processing}
+                  >
+                    登録解除
+                  </button>
+                )}
+              </div>
+              {errors.felica_idm && (
+                <p className="text-xs text-red-600 mt-1">{errors.felica_idm}</p>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                打刻カードのIDm（16進数16桁）を入力します。空にすると登録が解除されます。
+                {serverUser?.felica_registered_at && (
+                  <span className="block">登録日時: {serverUser.felica_registered_at}</span>
+                )}
+              </p>
             </div>
 
             <div>

@@ -18,6 +18,10 @@ BACKUP_CMD="${BACKUP_CMD:-/usr/local/bin/attendance-backup-db}"
 log() { echo "[$(date '+%F %T')] $*"; }
 fail() { log "失敗: $*"; exit 1; }
 
+# アプリの所有者は www-data、実行は root のため git の所有者チェックを許可する
+git config --global --get-all safe.directory | grep -qx "$APPDIR" \
+    || git config --global --add safe.directory "$APPDIR"
+
 cd "$APPDIR" || fail "$APPDIR が見つかりません"
 
 log "===== 1/7 現在の状態 ====="

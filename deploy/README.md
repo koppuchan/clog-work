@@ -2,7 +2,59 @@
 
 サーバー運用に使うスクリプトと手順。
 
+| スクリプト | 用途 | 配置先 |
+| --- | --- | --- |
+| `deploy.sh` | リリース | `/usr/local/bin/attendance-deploy` |
+| `rollback.sh` | 切り戻し | `/usr/local/bin/attendance-rollback` |
+| `backup-db.sh` | 日次バックアップ | `/usr/local/bin/attendance-backup-db` |
+
+## サーバー構成
+
+| 項目 | 値 |
+| --- | --- |
+| ホスト | 153.115.0.90 |
+| OS | Ubuntu 24.04 LTS |
+| Web | nginx 1.24 |
+| PHP | 8.4（`unix:/run/php/php8.4-fpm.sock`） |
+| DB | MySQL 8.0 |
+| Node | 22 |
+| 配置先 | `/var/www/attendance-web` |
+| ドキュメントルート | `/var/www/attendance-web/public` |
+
+## deploy.sh — リリース
+
+```bash
+attendance-deploy          # main の最新を反映
+attendance-deploy v1.2.0   # タグやブランチ、コミットを指定
+```
+
+処理の流れ。
+
+1. 現在のコミットを記録
+2. **データベースをバックアップ**（取得できなければ中断）
+3. コードを取得（変更がなければ何もせず終了）
+4. メンテナンスモードへ
+5. `composer install` / `npm ci` / `npm run build`
+6. `migrate` とキャッシュ生成、権限の再設定
+7. 公開し、`/admin/login` と `/staff/login` が 200 を返すことを確認
+
+**途中で失敗した場合はメンテナンスモードのまま停止します。** 中途半端な状態で公開されるのを避けるためです。原因を確認してから切り戻すか、修正して再実行してください。
+
+最後の応答確認で 200 以外が返った場合は異常終了します。
+
+## rollback.sh — 切り戻し
+
+```bash
+attendance-rollback            # 直前のコミットへ
+attendance-rollback abc1234    # 指定したコミットへ
+```
+
+**コードのみを戻します。データベースは戻しません。**
+
+マイグレーションを含むリリースを戻す場合は、コードを戻したうえでバックアップから復元してください（後述）。
+
 ## backup-db.sh — データベースの日次バックアップ
+
 
 契約プランに自動バックアップが含まれないため、サーバー側で取得する。旧環境と同じく**毎日3時に取得し30日保持**する。
 

@@ -16,6 +16,10 @@ TARGET="${1:-HEAD~1}"
 
 log() { echo "[$(date '+%F %T')] $*"; }
 
+# アプリの所有者は www-data、実行は root のため git の所有者チェックを許可する
+git config --global --get-all safe.directory | grep -qx "$APPDIR" \
+    || git config --global --add safe.directory "$APPDIR"
+
 cd "$APPDIR" || { log "$APPDIR が見つかりません"; exit 1; }
 
 log "現在: $(git log --oneline -1)"

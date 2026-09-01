@@ -118,3 +118,52 @@ gunzip -c "$LATEST" | mysql restore_test
 mysql -N -B restore_test -e "SHOW TABLES;" | wc -l   # 46 になること
 mysql -e "DROP DATABASE restore_test;"
 ```
+
+## setup-mail.sh — メール送信の構築
+
+Gmail は送信ドメイン認証が通らない差出人を拒否する。アプリと同じサーバーから送るため、DKIM 署名を付けたうえで DNS 側の登録が必要になる。
+
+```bash
+bash deploy/setup-mail.sh clog-work.jp
+```
+
+Postfix と OpenDKIM を導入し、鍵を生成して署名を有効にする。実行すると登録すべき DNS レコード3件が表示される。
+
+### Laravel 側の設定
+
+同一ホストの Postfix へ渡すため `sendmail` を使う。
+
+```
+MAIL_MAILER=sendmail
+MAIL_FROM_ADDRESS="no-reply@clog-work.jp"
+```
+
+`smtp` で `127.0.0.1` に繋ぐと、Postfix が提示する自己署名証明書のホスト名が一致せず STARTTLS で失敗する。同一ホスト内の通信のため TLS は不要。
+
+### 必要な DNS レコード
+
+| 種別 | ホスト名 | 内容 |
+| --- | --- | --- |
+| TXT | `@` | `v=spf1 ip4:153.115.0.90 ~all` |
+| TXT | `mail._domainkey` | `setup-mail.sh` が出力する DKIM 公開鍵 |
+| TXT | `_dmarc` | `v=DMARC1; p=none; rua=mailto:postmaster@clog-work.jp` |
+
+### 逆引き（PTR）レコード
+
+**これが未設定だと、他の設定が正しくても Gmail は受け取らない。**
+
+```
+550-5.7.25 The IP address sending this message does not have a PTR record setup
+```
+
+VPSパネルの「逆引きホスト名」を `clog-work.jp` に設定すること。DNS 側の A レコードが同じ IP を指している必要がある（正引きと逆引きの一致）。
+
+### 配送の確認
+
+```bash
+cd /var/www/attendance-web
+php artisan tinker --execute='Mail::raw("test", fn($m) => $m->to("宛先")->subject("test"));'
+sleep 3 && tail -20 /var/log/mail.log
+```
+
+`status=sent` なら成功。`status=bounced` の場合は同じ行に相手側の応答が記録される。

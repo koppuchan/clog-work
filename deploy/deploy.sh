@@ -14,6 +14,8 @@ set -euo pipefail
 APPDIR="${APPDIR:-/var/www/attendance-web}"
 REF="${1:-main}"
 BACKUP_CMD="${BACKUP_CMD:-/usr/local/bin/attendance-backup-db}"
+# nginx はホスト名で振り分けるため、確認時も Host を指定する
+APP_HOST="${APP_HOST:-clog-work.jp}"
 
 log() { echo "[$(date '+%F %T')] $*"; }
 fail() { log "失敗: $*"; exit 1; }
@@ -69,8 +71,10 @@ php artisan up
 trap - ERR
 
 # 応答を確認する。異常なら気づけるよう終了コードに反映する。
+# Host を付けないと nginx の既定サーバに当たり、正常でも 404 になる。
 for path in /admin/login /staff/login; do
-    code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1${path}")"
+    code="$(curl -sk -o /dev/null -w '%{http_code}' \
+        --resolve "${APP_HOST}:443:127.0.0.1" "https://${APP_HOST}${path}")"
     log "  ${path} -> ${code}"
     [ "$code" = "200" ] || fail "${path} が ${code} を返しました。rollback.sh の実行を検討してください。"
 done

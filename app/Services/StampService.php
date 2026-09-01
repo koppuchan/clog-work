@@ -350,11 +350,34 @@ class StampService
             }
         }
 
+        // 出勤から一定時間を超えたセッションは、退勤し忘れたものとして打ち切る。
+        // 打ち切らないと、数日後の打刻が古い出勤に対する退勤として記録される。
+        if ($isWorking && $this->isSessionExpired($latestWorkStart->record_time)) {
+            $isWorking = false;
+            $isOnBreak = false;
+        }
+
         return [
             'isWorking' => $isWorking,
             'isOnBreak' => $isOnBreak,
-            'sessionStart' => $latestWorkStart,
+            'sessionStart' => $isWorking ? $latestWorkStart : null,
         ];
+    }
+
+    /**
+     * 勤務セッションが継続とみなせる時間を超えているか
+     *
+     * @param  \DateTimeInterface  $workStart  出勤打刻の時刻
+     */
+    private function isSessionExpired(\DateTimeInterface $workStart): bool
+    {
+        $maxHours = (int) config('attendance.work_session_max_hours', 24);
+
+        if ($maxHours <= 0) {
+            return false;
+        }
+
+        return CarbonImmutable::parse($workStart)->addHours($maxHours)->isPast();
     }
 
     /**

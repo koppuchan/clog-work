@@ -28,7 +28,7 @@ function BillingPage() {
       features: [
         '1ヶ月間無料でお試し',
         'すべての機能が利用可能',
-        'ユーザー数制限なし',
+        'スタッフ数制限なし',
         '期間終了後は有料プランへ移行が必要'
       ]
     },
@@ -65,7 +65,7 @@ function BillingPage() {
       userLimit: null,
       features: [
         'すべてのビジネス機能',
-        '無制限ユーザー',
+        '無制限スタッフ',
         'カスタム機能開発',
         '専任サポート',
         'オンプレミス対応',
@@ -210,7 +210,7 @@ function BillingPage() {
                   <div className="flex items-center space-x-2">
                     <Users className="h-4 w-4 text-gray-500" />
                     <span className="text-sm text-gray-700">
-                      {plan.userLimit ? `${plan.userLimit}ユーザーまで` : '無制限ユーザー'}
+                      {plan.userLimit ? `${plan.userLimit}スタッフまで` : '無制限スタッフ'}
                     </span>
                   </div>
                 </div>

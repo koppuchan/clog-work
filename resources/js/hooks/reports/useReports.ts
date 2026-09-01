@@ -56,7 +56,7 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     return getHolidayName(date);
   }, []);
 
-  // ユーザー名取得
+  // スタッフ名取得
   const getUserName = useCallback(
     (userId: number | null) => {
       if (!userId) return '不明';
@@ -167,7 +167,7 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     );
   }, []);
 
-  // ユーザー変更ハンドラー
+  // スタッフ変更ハンドラー
   const handleUserChange = useCallback(
     (userId: string) => {
       router.get(
@@ -183,7 +183,7 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     [filters.start_date, filters.end_date]
   );
 
-  // 選択中のユーザー名
+  // 選択中のスタッフ名
   const selectedUserName = useMemo(() => getUserName(selectedUserId), [selectedUserId, getUserName]);
 
   // エクスポート関連

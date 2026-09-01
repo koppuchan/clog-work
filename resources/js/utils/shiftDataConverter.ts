@@ -3,7 +3,7 @@ import { BackendUser, BackendDepartment, BackendShift } from '@/types/shift';
 import { Shift } from '@/types';
 
 /**
- * バックエンドのユーザーデータをフロントエンド形式に変換
+ * バックエンドのスタッフデータをフロントエンド形式に変換
  */
 export function convertBackendUsers(
   backendUsers: BackendUser[],

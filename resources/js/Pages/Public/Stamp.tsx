@@ -178,7 +178,7 @@ export default function PublicStampPage({ company, users }: Props) {
           )}
 
           {!selectedUser ? (
-            // ユーザー選択画面
+            // スタッフ選択画面
             <div className="bg-white shadow rounded-lg p-6">
               <div className="text-center mb-6">
                 <div className="text-6xl font-bold text-gray-900 font-mono mb-2">
@@ -195,7 +195,7 @@ export default function PublicStampPage({ company, users }: Props) {
 
               {users.length === 0 ? (
                 <div className="text-center text-gray-500 py-8">
-                  登録されているユーザーがいません。
+                  登録されているスタッフがいません。
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -227,7 +227,7 @@ export default function PublicStampPage({ company, users }: Props) {
                 className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
               >
                 <ChevronLeft className="w-5 h-5" />
-                <span>ユーザー選択に戻る</span>
+                <span>スタッフ選択に戻る</span>
               </button>
 
               <div className="bg-white shadow rounded-lg p-8">
@@ -239,7 +239,7 @@ export default function PublicStampPage({ company, users }: Props) {
                     {format(currentTime, 'yyyy年MM月dd日 (E)', { locale: ja })}
                   </div>
 
-                  {/* 選択中のユーザー */}
+                  {/* 選択中のスタッフ */}
                   <div className="flex items-center justify-center gap-3 py-4 bg-blue-50 rounded-lg">
                     <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
                       <User className="w-6 h-6 text-blue-600" />
@@ -288,7 +288,7 @@ export default function PublicStampPage({ company, users }: Props) {
                 className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
               >
                 <ChevronLeft className="w-5 h-5" />
-                <span>ユーザー選択に戻る</span>
+                <span>スタッフ選択に戻る</span>
               </button>
 
               <div className="bg-white shadow rounded-lg p-8">
@@ -300,7 +300,7 @@ export default function PublicStampPage({ company, users }: Props) {
                     {format(currentTime, 'yyyy年MM月dd日 (E)', { locale: ja })}
                   </div>
 
-                  {/* 選択中のユーザー */}
+                  {/* 選択中のスタッフ */}
                   <div className="flex items-center justify-center gap-3 py-4 bg-blue-50 rounded-lg">
                     <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
                       <User className="w-6 h-6 text-blue-600" />

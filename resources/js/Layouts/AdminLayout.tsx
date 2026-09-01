@@ -41,7 +41,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     { name: '申請管理', href: '/admin/applications', icon: FileText },
     { name: '勤務実績', href: '/admin/reports', icon: BarChart3 },
     { name: '労務アラート', href: '/admin/alerts', icon: AlertTriangle },
-    { name: 'ユーザー管理', href: '/admin/users', icon: Users },
+    { name: 'スタッフ管理', href: '/admin/users', icon: Users },
     { name: '設定', href: '/admin/settings', icon: Settings },
   ];
 
@@ -154,7 +154,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             })}
           </nav>
 
-          {/* フッター - ユーザー情報 */}
+          {/* フッター - スタッフ情報 */}
           <div className="p-4 border-t border-gray-200">
             {!isCollapsed ? (
               <>

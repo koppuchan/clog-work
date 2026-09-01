@@ -12,7 +12,7 @@ interface Department {
 }
 
 /**
- * 自動採番されたユーザー情報
+ * 自動採番されたスタッフ情報
  */
 interface AutoAssignedUser {
   row: number;
@@ -33,7 +33,7 @@ interface Props {
 /**
  * CSVインポートページコンポーネント
  *
- * CSVファイルからユーザーを一括登録するページ
+ * CSVファイルからスタッフを一括登録するページ
  * - テンプレートダウンロード
  * - ファイル選択・プレビュー
  * - インポート実行
@@ -96,7 +96,7 @@ function UserCsvImportPage({ departments, importSuccess, importErrors, importAut
   const fileError = localError || errors.csv_file;
   // 行ごとのエラー（importFromCsv 由来）
   const rowErrors = importErrors ?? [];
-  // 自動採番されたユーザー一覧
+  // 自動採番されたスタッフ一覧
   const autoAssigned = importAutoAssigned ?? [];
 
   return (
@@ -109,7 +109,7 @@ function UserCsvImportPage({ departments, importSuccess, importErrors, importAut
         >
           <ArrowLeft className="h-5 w-5 text-gray-600" />
         </button>
-        <h1 className="text-2xl font-bold text-gray-900">CSVからユーザーを登録</h1>
+        <h1 className="text-2xl font-bold text-gray-900">CSVからスタッフを登録</h1>
       </div>
 
       {/* 成功メッセージ */}
@@ -167,7 +167,7 @@ function UserCsvImportPage({ departments, importSuccess, importErrors, importAut
                 個人コードを自動採番しました ({autoAssigned.length}件)
               </h3>
               <p className="text-xs text-blue-700 mt-1">
-                個人コードが空欄だったユーザーには、会社内で未使用の番号を自動的に割り当てました。
+                個人コードが空欄だったスタッフには、会社内で未使用の番号を自動的に割り当てました。
               </p>
               <ul className="text-sm text-blue-700 mt-2 space-y-1 list-disc list-inside">
                 {autoAssigned.map((user) => (
@@ -191,7 +191,7 @@ function UserCsvImportPage({ departments, importSuccess, importErrors, importAut
             <div className="flex-1">
               <h2 className="text-lg font-medium text-gray-900 mb-2">テンプレートをダウンロード</h2>
               <p className="text-sm text-gray-600 mb-4">
-                CSVテンプレートをダウンロードして、登録するユーザー情報を入力してください。
+                CSVテンプレートをダウンロードして、登録するスタッフ情報を入力してください。
               </p>
               <a
                 href="/admin/users/csv-template"
@@ -278,7 +278,7 @@ function UserCsvImportPage({ departments, importSuccess, importErrors, importAut
                 <tbody className="divide-y divide-gray-200">
                   <tr>
                     <td className="px-4 py-2 text-sm font-medium text-gray-900 w-32">氏名</td>
-                    <td className="px-4 py-2 text-sm text-gray-500">ユーザーの氏名</td>
+                    <td className="px-4 py-2 text-sm text-gray-500">スタッフの氏名</td>
                   </tr>
                   <tr>
                     <td className="px-4 py-2 text-sm font-medium text-gray-900">役割</td>
@@ -371,7 +371,7 @@ function UserCsvImportPage({ departments, importSuccess, importErrors, importAut
                       メール送信に関するご注意
                     </h3>
                     <p className="text-sm text-amber-800 mt-1 font-medium">
-                      メールアドレスを取り込んだユーザーには、初期パスワード等を記載した案内メールが自動送信されます。
+                      メールアドレスを取り込んだスタッフには、初期パスワード等を記載した案内メールが自動送信されます。
                     </p>
                   </div>
                 </div>

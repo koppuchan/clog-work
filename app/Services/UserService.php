@@ -381,7 +381,7 @@ class UserService
                     // オーナーの管理者ロールは変更不可
                     $currentUser = $this->findById($id);
                     if ($currentUser->isOwner() && ! in_array(self::ADMIN_ROLE_ID, $roleIds, true)) {
-                        throw new BusinessException('最初に作成されたユーザーの役割は変更できません。');
+                        throw new BusinessException('最初に作成されたスタッフの役割は変更できません。');
                     }
 
                     // 管理者から別の役割に変更する場合、唯一の管理者でないことを確認
@@ -443,7 +443,7 @@ class UserService
 
         // オーナーは削除不可
         if ($user->isOwner()) {
-            throw new BusinessException('最初に作成されたユーザーは削除できません。');
+            throw new BusinessException('最初に作成されたスタッフは削除できません。');
         }
 
         // 管理者が1人のみの場合は削除不可

@@ -18,9 +18,9 @@ interface PermissionFieldsProps {
 /**
  * 権限設定フィールドコンポーネント
  *
- * ユーザーの役割に応じて異なる権限設定フィールドを表示：
+ * スタッフの役割に応じて異なる権限設定フィールドを表示：
  *
- * 【一般ユーザー（role_id=3）】
+ * 【一般スタッフ（role_id=3）】
  * - シフト閲覧権限: 本人のみ / 部署全体（選択可能）
  * - 勤務実績閲覧権限: 本人のみ（固定）
  *
@@ -36,7 +36,7 @@ interface PermissionFieldsProps {
  */
 export default function PermissionFields({ role_id, data, setData, processing }: PermissionFieldsProps) {
   // role_id: 1=admin, 2=manager, 3=employee
-  // 一般ユーザーの権限設定
+  // 一般スタッフの権限設定
   if (role_id === 3) {
     return (
       <div className="space-y-6">
@@ -97,7 +97,7 @@ export default function PermissionFields({ role_id, data, setData, processing }:
               <div>
                 <span className="text-sm font-medium text-gray-700">本人のみ（固定）</span>
                 <p className="text-xs text-gray-500 mt-1">
-                  一般ユーザーは自分の勤務実績のみ閲覧できます
+                  一般スタッフは自分の勤務実績のみ閲覧できます
                 </p>
               </div>
             </div>

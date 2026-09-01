@@ -8,7 +8,7 @@ import ConfirmDialog from '@/Components/ConfirmDialog';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
 
 /**
- * ユーザーデータの型定義
+ * スタッフデータの型定義
  */
 interface UserData {
   id: number;
@@ -35,7 +35,7 @@ interface DepartmentData {
 }
 
 /**
- * ユーザー一覧ページのプロップス
+ * スタッフ一覧ページのプロップス
  */
 interface UsersPageProps {
   users: UserData[];
@@ -45,15 +45,15 @@ interface UsersPageProps {
 }
 
 /**
- * ユーザー一覧ページコンポーネント
+ * スタッフ一覧ページコンポーネント
  *
- * 管理者用のユーザー管理画面。以下の機能を提供：
- * - ユーザーの一覧表示
+ * 管理者用のスタッフ管理画面。以下の機能を提供：
+ * - スタッフの一覧表示
  * - 役割（管理者/責任者/一般）によるフィルタリング
  * - 雇用状態（在籍中/退職者/すべて）によるフィルタリング
  * - 名前、フリガナ、個人コード、メールアドレス、部署での検索
  * - 統計情報の表示（在籍者数、管理者数、責任者数）
- * - ユーザーの編集・削除機能
+ * - スタッフの編集・削除機能
  */
 export default function UsersPage({ users, departments, canManageUsers, canResetPassword }: UsersPageProps) {
   // 役割フィルター
@@ -71,7 +71,7 @@ export default function UsersPage({ users, departments, canManageUsers, canReset
   const [dialogProcessing, setDialogProcessing] = useState(false);
 
   /**
-   * ユーザーリストをフィルタリング
+   * スタッフリストをフィルタリング
    * 役割、検索クエリ、雇用状態の3つの条件でフィルタリングする
    */
   const filteredUsers = users.filter(user => {
@@ -116,7 +116,7 @@ export default function UsersPage({ users, departments, canManageUsers, canReset
   };
 
   /**
-   * ユーザー削除処理
+   * スタッフ削除処理
    * 確認ダイアログを表示してから削除リクエストを送信
    */
   const handleDelete = (user: UserData) => {
@@ -126,7 +126,7 @@ export default function UsersPage({ users, departments, canManageUsers, canReset
       return;
     }
     if (user.isOwner) {
-      setErrorMessage('最初に作成されたユーザーは削除できません。');
+      setErrorMessage('最初に作成されたスタッフは削除できません。');
       setTimeout(() => setErrorMessage(null), 5000);
       return;
     }
@@ -136,7 +136,7 @@ export default function UsersPage({ users, departments, canManageUsers, canReset
       return;
     }
     openDialog({
-      title: 'ユーザー削除',
+      title: 'スタッフ削除',
       message: `${user.name} さんを削除しますか？`,
       icon: <Trash2 className="h-6 w-6 text-red-600" />,
       iconBgClass: 'bg-red-100',
@@ -145,7 +145,7 @@ export default function UsersPage({ users, departments, canManageUsers, canReset
       onConfirm: () => {
         router.delete(`/admin/users/${user.id}`, {
           onError: () => {
-            setErrorMessage('ユーザーの削除に失敗しました');
+            setErrorMessage('スタッフの削除に失敗しました');
             setTimeout(() => setErrorMessage(null), 5000);
           }
         });
@@ -187,7 +187,7 @@ export default function UsersPage({ users, departments, canManageUsers, canReset
       <InlineFlashMessage type="error" message={errorMessage} />
 
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">ユーザー管理</h1>
+        <h1 className="text-2xl font-bold text-gray-900">スタッフ管理</h1>
         {canManageUsers && (
           <div className="flex space-x-2">
             <Link
@@ -202,7 +202,7 @@ export default function UsersPage({ users, departments, canManageUsers, canReset
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
             >
               <Plus className="h-4 w-4" />
-              <span>新規ユーザー</span>
+              <span>新規スタッフ</span>
             </Link>
           </div>
         )}
@@ -328,9 +328,9 @@ export default function UsersPage({ users, departments, canManageUsers, canReset
         </div>
       </div>
 
-      {/* ユーザー一覧 */}
+      {/* スタッフ一覧 */}
       <div className="bg-white shadow rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">ユーザー一覧</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">スタッフ一覧</h3>
         <div className="overflow-auto max-h-[70vh]">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50 sticky top-0 z-10 shadow-[0_1px_0_0_rgb(229,231,235)]">
@@ -339,7 +339,7 @@ export default function UsersPage({ users, departments, canManageUsers, canReset
                   個人コード
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  ユーザー
+                  スタッフ
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   メールアドレス
@@ -431,7 +431,7 @@ export default function UsersPage({ users, departments, canManageUsers, canReset
                             user.isSelf
                               ? '自分自身は削除できません'
                               : user.isOwner
-                              ? '最初に作成されたユーザーは削除できません'
+                              ? '最初に作成されたスタッフは削除できません'
                               : user.isLastAdmin
                               ? '会社に管理者が1人しかいないため削除できません'
                               : '削除'

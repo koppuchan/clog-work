@@ -10,7 +10,7 @@ interface ReportFilterPanelProps {
 }
 
 /**
- * 集計対象の月・ユーザーを選択するフィルターパネル
+ * 集計対象の月・スタッフを選択するフィルターパネル
  */
 export default function ReportFilterPanel({
   selectedMonth,

@@ -46,7 +46,7 @@ export default function ReportExportModal({
                 className="w-4 h-4 text-green-600 border-gray-300 focus:ring-green-500"
               />
               <span className="text-sm text-gray-700">
-                選択中のユーザー（{selectedUserName}）
+                選択中のスタッフ（{selectedUserName}）
               </span>
             </label>
             <label className="flex items-center space-x-3 cursor-pointer">

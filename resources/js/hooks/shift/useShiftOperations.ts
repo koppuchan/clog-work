@@ -106,7 +106,7 @@ export function useShiftOperations(
     setSelectedDayForBulk(null);
   };
 
-  // ユーザーのシフトパターンから月次シフトを生成
+  // スタッフのシフトパターンから月次シフトを生成
   const generateShiftFromPattern = (userId: string) => {
     const user = users.find(u => u.id === userId);
     if (!user || !user.shiftPatterns) return;

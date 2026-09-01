@@ -46,7 +46,7 @@ class UserServiceTest extends TestCase
     {
         // Assert
         $this->expectException(NotFoundException::class);
-        $this->expectExceptionMessage('ユーザーが見つかりません。');
+        $this->expectExceptionMessage('スタッフが見つかりません。');
 
         // Act
         $this->service->findById(9999);

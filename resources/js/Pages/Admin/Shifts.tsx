@@ -25,14 +25,14 @@ import { useNavigationGuard } from '@/hooks/useNavigationGuard';
  *
  * 主な機能：
  * - 月次シフトカレンダーの表示と編集
- * - 個別ユーザーのシフトパターン適用
- * - 全ユーザーへのシフトパターン一括適用
+ * - 個別スタッフのシフトパターン適用
+ * - 全スタッフへのシフトパターン一括適用
  * - リアルタイムのシフト統計情報（出勤日数、勤務時間、休日）
  * - セル単位・日単位でのシフト編集
- * - アクティブユーザーの自動フィルタリング（退職者除外）
+ * - アクティブスタッフの自動フィルタリング（退職者除外）
  *
  * データフロー：
- * 1. バックエンドからユーザー、部署、シフト、シフトパターンを取得
+ * 1. バックエンドからスタッフ、部署、シフト、シフトパターンを取得
  * 2. フロントエンド形式に変換（convertBackend*関数）
  * 3. カスタムフックで状態管理とシフト操作ロジックを処理
  * 4. ShiftCalendarコンポーネントで月次カレンダーを表示
@@ -67,7 +67,7 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
 
   const initialShifts = useMemo(() => convertBackendShifts(backendShifts, shiftPatternIdMap), [backendShifts, shiftPatternIdMap]);
 
-  // バックエンドのユーザーデータが変更されたら更新
+  // バックエンドのスタッフデータが変更されたら更新
   useEffect(() => {
     setUsers(initialUsers);
   }, [initialUsers]);
@@ -88,7 +88,7 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
   // 後方互換性のためにmonthDaysも維持
   const monthDays = periodDays;
 
-  // アクティブユーザーをフィルタリング
+  // アクティブスタッフをフィルタリング
   const activeUsers = useMemo(() => filterActiveUsers(users, selectedDate), [users, selectedDate]);
 
   // カスタムフック：シフト操作
@@ -222,8 +222,8 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
   };
 
   /**
-   * ユーザー名クリックハンドラー
-   * バックエンドからユーザーのシフトパターンと勤務可能曜日を取得し、
+   * スタッフ名クリックハンドラー
+   * バックエンドからスタッフのシフトパターンと勤務可能曜日を取得し、
    * シフトパターン適用ダイアログを表示する
    */
   const handleUserNameClick = async (userId: string) => {
@@ -232,7 +232,7 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
 
     setLoadingAction('applying');
     try {
-      // バックエンドからユーザーのシフトパターンと勤務可能曜日を取得
+      // バックエンドからスタッフのシフトパターンと勤務可能曜日を取得
       const response = await axios.get(`/admin/shifts/users/${userId}/info`);
       const { shift_patterns } = response.data;
 
@@ -249,7 +249,7 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
         }
       });
 
-      // ユーザー情報を更新
+      // スタッフ情報を更新
       const updatedUsers = users.map(u =>
         u.id === userId
           ? { ...u, shiftPatterns }
@@ -268,8 +268,8 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
   };
 
   /**
-   * ユーザーのシフトパターンから月次シフトを生成
-   * 選択されたユーザーの曜日別シフトパターンを
+   * スタッフのシフトパターンから月次シフトを生成
+   * 選択されたスタッフの曜日別シフトパターンを
    * 当月の全ての日に適用する
    */
   const generateShiftFromPattern = (userId: string) => {
@@ -335,14 +335,14 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
 
   /**
    * 全員のシフトパターンを一括適用
-   * アクティブな全ユーザーのシフトパターンをバックエンドから取得し、
+   * アクティブな全スタッフのシフトパターンをバックエンドから取得し、
    * 当月の全ての日に一括適用する
    */
   const generateAllUsersShiftPatterns = async () => {
     setShowBulkPatternDialog(false);
     setLoadingAction('applying');
     try {
-      // 全ユーザーのシフトパターンを取得
+      // 全スタッフのシフトパターンを取得
       const updatedUsers = [...users];
 
       for (const user of activeUsers) {
@@ -362,7 +362,7 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
             }
           });
 
-          // ユーザー情報を更新
+          // スタッフ情報を更新
           const userIndex = updatedUsers.findIndex(u => u.id === user.id);
           if (userIndex >= 0) {
             updatedUsers[userIndex] = {
@@ -377,7 +377,7 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
 
       setUsers(updatedUsers);
 
-      // 更新されたユーザー情報を使ってシフトパターンを適用
+      // 更新されたスタッフ情報を使ってシフトパターンを適用
       const periodStartDate = new Date(filters.start_date);
       const periodEndDate = new Date(filters.end_date);
       const newShifts = [...shifts];

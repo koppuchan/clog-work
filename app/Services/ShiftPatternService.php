@@ -288,7 +288,7 @@ class ShiftPatternService
         }
 
         if (UserShiftPattern::where('shift_pattern_id', $id)->exists()) {
-            throw new \RuntimeException('このシフトパターンはユーザーの勤務設定で使用されているため削除できません。');
+            throw new \RuntimeException('このシフトパターンはスタッフの勤務設定で使用されているため削除できません。');
         }
 
         if (Company::where('default_shift_pattern_id', $id)->exists()) {

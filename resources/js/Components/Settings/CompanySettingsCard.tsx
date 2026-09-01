@@ -121,7 +121,7 @@ export default function CompanySettingsCard({
             <div>
               <span className="text-sm font-medium text-gray-700">スタッフ打刻画面を非表示にする</span>
               <p className="text-xs text-gray-500 mt-1">
-                チェックを入れると、全スタッフの打刻画面が非表示になります。部署・ユーザー単位での設定も可能です。
+                チェックを入れると、全スタッフの打刻画面が非表示になります。部署・スタッフ単位での設定も可能です。
               </p>
             </div>
           </label>

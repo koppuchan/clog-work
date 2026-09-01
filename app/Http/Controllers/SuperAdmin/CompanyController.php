@@ -80,7 +80,7 @@ class CompanyController extends Controller
         }
 
         $message = sprintf(
-            '事業所「%s」を削除しました。ユーザー %d 名を削除し、メールアドレスが再利用可能になりました。',
+            '事業所「%s」を削除しました。スタッフ %d 名を削除し、メールアドレスが再利用可能になりました。',
             $result['company_name'],
             $result['deleted_user_count'],
         );

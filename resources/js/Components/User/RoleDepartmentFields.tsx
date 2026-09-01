@@ -23,12 +23,12 @@ interface RoleDepartmentFieldsProps {
 /**
  * 役割・部署選択フィールドコンポーネント
  *
- * ユーザーの役割と部署を選択するフィールド：
+ * スタッフの役割と部署を選択するフィールド：
  * - 役割（管理者/責任者/一般）の選択（必須）
  * - 部署の選択（必須）
  *
  * 役割に応じた権限の自動設定：
- * - 一般ユーザー（role_id=3）: シフト閲覧と勤務実績閲覧を「本人のみ」に設定
+ * - 一般スタッフ（role_id=3）: シフト閲覧と勤務実績閲覧を「本人のみ」に設定
  * - 責任者・管理者: シフト閲覧と勤務実績閲覧を「部署全体」に設定
  */
 export default function RoleDepartmentFields({
@@ -57,7 +57,7 @@ export default function RoleDepartmentFields({
           onChange={(e) => {
             const newRoleId = e.target.value ? parseInt(e.target.value) : undefined;
             // role_idから権限レベルを判定（1: admin, 2: manager, 3: employee）
-            // 一般ユーザーは「本人のみ」、それ以外は「部署全体」をデフォルトに設定
+            // 一般スタッフは「本人のみ」、それ以外は「部署全体」をデフォルトに設定
             const defaultShiftView = newRoleId === 3 ? 'self' : 'department';
             const defaultAttendance = newRoleId === 3 ? 'self' : 'department';
             setData({
@@ -83,7 +83,7 @@ export default function RoleDepartmentFields({
         {isRoleLocked && (
           <p className="text-amber-600 text-xs mt-1">
             {isOwner
-              ? '最初に作成されたユーザーの役割は変更できません'
+              ? '最初に作成されたスタッフの役割は変更できません'
               : '会社に管理者が1人しかいないため、役割を変更できません'}
           </p>
         )}

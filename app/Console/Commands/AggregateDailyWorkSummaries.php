@@ -41,7 +41,13 @@ class AggregateDailyWorkSummaries extends Command
         // 対象日を決定（オプション指定がなければ前日）
         $dateOption = $this->option('date');
         if ($dateOption) {
-            $targetDate = CarbonImmutable::createFromFormat('Y-m-d', $dateOption);
+            // createFromFormat は不正な日付で false ではなく例外を投げる
+            try {
+                $targetDate = CarbonImmutable::createFromFormat('Y-m-d', $dateOption);
+            } catch (\Throwable) {
+                $targetDate = null;
+            }
+
             if (! $targetDate) {
                 $this->logError('日付の形式が不正です。Y-m-d形式で指定してください。');
 

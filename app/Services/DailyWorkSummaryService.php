@@ -43,7 +43,8 @@ class DailyWorkSummaryService
         private readonly UserRepositoryInterface $userRepository,
         private readonly DailyWorkSummaryBatchService $dailyWorkSummaryBatchService,
         private readonly TimeRoundingService $timeRoundingService,
-        private readonly RawStampTimeService $rawStampTimeService
+        private readonly RawStampTimeService $rawStampTimeService,
+        private readonly LateEarlyLeaveDisplay $lateEarlyLeaveDisplay
     ) {}
 
     /**
@@ -764,8 +765,8 @@ class DailyWorkSummaryService
                     $this->formatMinutesToHM($summary?->overtime_minutes ?? 0),
                     $this->formatMinutesToHM($summary?->holiday_minutes ?? 0),
                     $this->formatMinutesToHM($summary?->night_minutes ?? 0),
-                    $this->formatMinutesToHM($summary?->late_minutes ?? 0),
-                    $this->formatMinutesToHM($summary?->early_leave_minutes ?? 0),
+                    $this->formatMinutesToHM($this->lateEarlyLeaveDisplay->lateMinutes($summary)),
+                    $this->formatMinutesToHM($this->lateEarlyLeaveDisplay->earlyLeaveMinutes($summary)),
                     $summary?->note ?? '',
                 ];
 

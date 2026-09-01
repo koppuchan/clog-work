@@ -411,8 +411,10 @@ export default function WorkReportTable({
                       )}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-sm">
-                      {(summary?.late_minutes && summary.late_minutes > 0) ||
-                      (summary?.early_leave_minutes && summary.early_leave_minutes > 0) ? (
+                      {/* 承認済みの休暇がある日は遅刻早退として扱わない */}
+                      {!summary?.leave_type &&
+                      ((summary?.late_minutes && summary.late_minutes > 0) ||
+                        (summary?.early_leave_minutes && summary.early_leave_minutes > 0)) ? (
                         <span className="font-medium text-yellow-600">
                           {formatMinutesToHM((summary?.late_minutes || 0) + (summary?.early_leave_minutes || 0))}
                         </span>

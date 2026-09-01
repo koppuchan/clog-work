@@ -61,6 +61,25 @@ class LaborAlertService
      *   date: string
      * }>
      */
+    /**
+     * 指定したスタッフ本人に関する労務アラートを取得する
+     *
+     * スタッフ画面では他のスタッフのアラートを見せないため、
+     * 会社全体のアラートから本人の分だけを抜き出す。
+     *
+     * @param  int  $companyId  会社ID
+     * @param  int  $userId  スタッフのユーザーID
+     * @param  int  $year  対象年
+     * @param  int  $month  対象月
+     * @return Collection<int, array<string, mixed>>
+     */
+    public function getAlertsForUser(int $companyId, int $userId, int $year, int $month): Collection
+    {
+        return $this->getAlerts($companyId, $year, $month)
+            ->filter(fn (array $alert) => ($alert['user_id'] ?? null) === $userId)
+            ->values();
+    }
+
     public function getAlerts(int $companyId, int $year, int $month): Collection
     {
         // 設定を取得（なければデフォルト値を使用）

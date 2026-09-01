@@ -80,6 +80,7 @@ class UpdateCompanySettingsRequest extends FormRequest
             'shiftPatterns.*.breakMinutes' => ['nullable', 'integer', 'min:0'],
             'shiftPatterns.*.breakStart' => ['nullable', 'date_format:H:i'],
             'shiftPatterns.*.breakEnd' => ['nullable', 'date_format:H:i'],
+            'shiftPatterns.*.autoFillBreak' => ['nullable', 'boolean'],
             'deletedShiftPatternIds' => ['nullable', 'array'],
             'deletedShiftPatternIds.*' => ['integer'],
         ];

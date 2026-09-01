@@ -20,12 +20,14 @@ class ShiftPattern extends Model
         'break_minutes',
         'break_start',
         'break_end',
+        'auto_fill_break',
     ];
 
     protected $casts = [
         'work_minutes' => 'integer',
         'break_mode' => 'integer',
         'break_minutes' => 'integer',
+        'auto_fill_break' => 'boolean',
     ];
 
     /**

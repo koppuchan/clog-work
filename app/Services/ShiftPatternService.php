@@ -167,6 +167,7 @@ class ShiftPatternService
             'break_minutes' => $breakMinutes,
             'break_start' => $data['breakStart'] ?? null,
             'break_end' => $data['breakEnd'] ?? null,
+            'auto_fill_break' => (bool) ($data['autoFillBreak'] ?? false),
         ]);
 
         if (! empty($data['colorId'])) {
@@ -231,6 +232,9 @@ class ShiftPatternService
         }
         if (array_key_exists('breakEnd', $data)) {
             $updateData['break_end'] = $data['breakEnd'];
+        }
+        if (array_key_exists('autoFillBreak', $data)) {
+            $updateData['auto_fill_break'] = (bool) $data['autoFillBreak'];
         }
 
         // break_minutes/work_minutes が未設定の場合、自動計算
@@ -393,6 +397,7 @@ class ShiftPatternService
             'breakMinutes' => $pattern->break_minutes,
             'breakStart' => $this->formatTimeToHHMM($pattern->break_start),
             'breakEnd' => $this->formatTimeToHHMM($pattern->break_end),
+            'autoFillBreak' => (bool) $pattern->auto_fill_break,
             'colorId' => $color?->id,
             'backgroundColor' => $color?->background_color ?? self::DEFAULT_BACKGROUND_COLOR,
             'textColor' => $color?->text_color ?? self::DEFAULT_TEXT_COLOR,

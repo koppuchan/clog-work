@@ -35,6 +35,7 @@ class StoreShiftPatternRequest extends FormRequest
             'breakMinutes' => ['nullable', 'integer', 'min:0'],
             'breakStart' => ['nullable', 'date_format:H:i'],
             'breakEnd' => ['nullable', 'date_format:H:i'],
+            'autoFillBreak' => ['nullable', 'boolean'],
             'colorId' => ['nullable', 'integer', 'exists:shift_colors,id'],
         ];
     }

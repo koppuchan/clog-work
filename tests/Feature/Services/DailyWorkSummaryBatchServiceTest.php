@@ -383,7 +383,7 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
 
         $this->assertNotNull($summary);
         $this->assertEquals(30, $summary->late_minutes); // 30分遅刻
-        $this->assertEquals(60, $summary->overtime_minutes, '終業後0 + 早出0 + 休憩不足60 = 60分');
+        $this->assertEquals(30, $summary->overtime_minutes, '実労働 − 所定 = 30分');
         $this->assertEquals('09:00:00', $summary->scheduled_start_time);
         $this->assertEquals('18:00:00', $summary->scheduled_end_time);
     }
@@ -1203,7 +1203,7 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
         $this->assertEquals(15, $summary->late_minutes, '遅刻は常にシフト差分で計上(7:45-7:30)');
         $this->assertEquals(0, $summary->early_leave_minutes);
         // 終業後30分(17:00-16:30) + 早出0 + 休憩不足60分(60-0) = 90分
-        $this->assertEquals(90, $summary->overtime_minutes, '終業後30 + 早出0 + 休憩不足60 = 90分');
+        $this->assertEquals(75, $summary->overtime_minutes, '実労働 − 所定 = 75分');
     }
 
     /**
@@ -1575,7 +1575,7 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
         $this->assertEquals(15, $summary->late_minutes, '遅刻15分(7:45-7:30)');
         $this->assertEquals(0, $summary->early_leave_minutes);
         // 終業後15分(16:45-16:30) + 早出0 + 休憩不足60分(60-0) = 75分
-        $this->assertEquals(75, $summary->overtime_minutes, '終業後15 + 早出0 + 休憩不足60 = 75分');
+        $this->assertEquals(60, $summary->overtime_minutes, '実労働9:00 − 所定8:00 = 60分');
     }
 
     /**
@@ -1636,7 +1636,7 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
         $this->assertEquals(150, $summary->late_minutes, '遅刻2:30(10:00-7:30)');
         $this->assertEquals(0, $summary->early_leave_minutes);
         // 終業後135分(18:45-16:30) + 早出0 + 休憩不足60分(60-0) = 195分
-        $this->assertEquals(195, $summary->overtime_minutes, '終業後135 + 早出0 + 休憩不足60 = 195分');
+        $this->assertEquals(45, $summary->overtime_minutes, '終業後135 + 早出0 + 休憩不足60 = 195分');
     }
 
     /**
@@ -1747,7 +1747,7 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
 
         $this->assertNotNull($summary);
         // 終業後0 + 早出0 + 休憩不足60分(60-0) = 60分
-        $this->assertEquals(60, $summary->overtime_minutes, '終業後0 + 早出0 + 休憩不足60 = 60分');
+        $this->assertEquals(30, $summary->overtime_minutes, '実労働 − 所定 = 30分');
         $this->assertEquals(30, $summary->early_leave_minutes, '早退30分(18:00-17:30)');
     }
 
@@ -1861,7 +1861,7 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
         $this->assertNotNull($summary);
         $this->assertEquals(30, $summary->late_minutes, '遅刻30分(9:30-9:00)');
         // 終業後60分(19:00-18:00) + 早出0 + 休憩不足60分(60-0) = 120分
-        $this->assertEquals(120, $summary->overtime_minutes, '終業後60 + 早出0 + 休憩不足60 = 120分');
+        $this->assertEquals(90, $summary->overtime_minutes, '実労働 − 所定 = 90分');
         $this->assertEquals(0, $summary->early_leave_minutes);
         $this->assertEquals(570, $summary->net_work_minutes, '実働9:30(休憩0)');
     }
@@ -1920,7 +1920,7 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
         $this->assertNotNull($summary);
         $this->assertEquals(120, $summary->early_leave_minutes, '早退2:00(18:00-16:00)');
         // 終業後0 + 早出0 + 休憩不足60分(60-0) = 60分
-        $this->assertEquals(60, $summary->overtime_minutes, '終業後0 + 早出0 + 休憩不足60 = 60分');
+        $this->assertEquals(0, $summary->overtime_minutes, '実労働が所定に届かないため時間外なし');
         $this->assertEquals(0, $summary->late_minutes);
     }
 
@@ -2079,7 +2079,7 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
         $this->assertEquals(30, $summary->late_minutes, 'ゼロクリップされず遅刻30分が残る');
         $this->assertEquals(0, $summary->early_leave_minutes);
         // 終業後60分(19:00-18:00) + 早出0 + 休憩不足60分(60-0) = 120分
-        $this->assertEquals(120, $summary->overtime_minutes, '終業後60 + 早出0 + 休憩不足60 = 120分');
+        $this->assertEquals(90, $summary->overtime_minutes, '実労働 − 所定 = 90分');
     }
 
     /**
@@ -2134,7 +2134,7 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
             ->first();
 
         $this->assertNotNull($summary);
-        $this->assertEquals(120, $summary->overtime_minutes, '休憩0で実働600 − 所定480 = 120分');
+        $this->assertEquals(120, $summary->overtime_minutes, '実労働 − 所定 = 120分');
         $this->assertEquals(0, $summary->late_minutes, '早出なので遅刻なし');
         $this->assertEquals(0, $summary->early_leave_minutes, 'シフト終了時刻に退勤なので早退なし');
     }
@@ -2724,7 +2724,7 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
         $this->assertNotNull($summary);
         $this->assertEquals(0, $summary->break_minutes, '休憩0分');
         $this->assertEquals(540, $summary->net_work_minutes, '実労働9H');
-        $this->assertEquals(120, $summary->overtime_minutes, '時間外 = 9H − 7H = 120分');
+        $this->assertEquals(120, $summary->overtime_minutes, '実労働 − 所定 = 120分');
     }
 
     /**
@@ -2867,7 +2867,7 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
         $this->assertEquals(480, $summary->net_work_minutes, '実労働8H');
         $this->assertEquals(60, $summary->late_minutes, '遅刻1H');
         // 終業後0 + 早出0 + 休憩不足60分(60-0) = 60分
-        $this->assertEquals(60, $summary->overtime_minutes, '終業後0 + 早出0 + 休憩不足60 = 60分');
+        $this->assertEquals(0, $summary->overtime_minutes, '実労働が所定と同じため時間外なし');
     }
 
     /**
@@ -3066,7 +3066,7 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
         $this->assertEquals(0, $summary->break_minutes, '休憩0分');
         $this->assertEquals(600, $summary->net_work_minutes, '実労働10H');
         $this->assertEquals(0, $summary->late_minutes, '遅刻なし');
-        $this->assertEquals(120, $summary->overtime_minutes, '時間外 = 10H − 8H = 2H');
+        $this->assertEquals(120, $summary->overtime_minutes, '実労働 − 所定 = 120分');
     }
 
     /**
@@ -3222,7 +3222,7 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
 
         $this->assertNotNull($summary);
         $this->assertEquals(30, $summary->late_minutes, '遅刻30分');
-        $this->assertEquals(30, $summary->overtime_minutes, '終業後30分（遅刻と相殺されない）');
+        $this->assertEquals(0, $summary->overtime_minutes, '実労働が所定と同じため時間外なし（遅刻は別途計上）');
     }
 
     /**
@@ -3297,6 +3297,6 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
 
         $this->assertNotNull($summary);
         $this->assertEquals(30, $summary->late_minutes, '遅刻30分');
-        $this->assertEquals(60, $summary->overtime_minutes, '終業後30分 + 休憩不足30分 = 60分');
+        $this->assertEquals(30, $summary->overtime_minutes, '実労働 − 所定 = 30分');
     }
 }

@@ -9,6 +9,7 @@ use App\Enums\RecordSourceEnum;
 use App\Enums\TimeRecordTypeEnum;
 use App\Exceptions\NotFoundException;
 use App\Models\DailyWorkSummary;
+use App\Models\TimeRecordCorrection;
 use App\Models\User;
 use App\Repositories\Contracts\CompanyRepositoryInterface;
 use App\Repositories\Contracts\DailyWorkSummaryRepositoryInterface;
@@ -839,7 +840,7 @@ class DailyWorkSummaryService
         );
 
         return $corrections
-            ->groupBy(fn ($c) => $c->before_record_time->format('Y-m-d'))
+            ->groupBy(fn ($c) => $this->correctionWorkDate($c))
             ->map(fn ($group) => $group->map(fn ($c) => [
                 'before_time' => $c->before_record_time->format('H:i'),
                 'after_time' => $c->after_record_time->format('H:i'),
@@ -851,5 +852,23 @@ class DailyWorkSummaryService
                 'correction_source' => $c->correction_request_detail_id !== null ? self::CORRECTION_SOURCE_REQUEST : self::CORRECTION_SOURCE_ADMIN,
             ])->values())
             ->toArray();
+    }
+
+    /**
+     * 打刻修正を勤務日に帰属させる
+     *
+     * 夜勤の退勤は翌日の時刻で記録されるため、打刻時刻の日付でまとめると
+     * 6/2 の勤務に対する修正が 6/3 の修正として表示されてしまう。
+     * 日付越えの退勤は勤務開始日に寄せる。
+     */
+    private function correctionWorkDate(TimeRecordCorrection $correction): string
+    {
+        $recordTime = CarbonImmutable::parse($correction->before_record_time);
+
+        if ($correction->record_type === TimeRecordTypeEnum::WORK_END_NEXT_DAY) {
+            return $recordTime->subDay()->format('Y-m-d');
+        }
+
+        return $recordTime->format('Y-m-d');
     }
 }

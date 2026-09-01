@@ -238,22 +238,13 @@ function StaffReportsPage() {
             )}
           </div>
           {summary?.note && <span className="text-gray-600">{summary.note}</span>}
-          {dateRequests.length === 0 && corrections.length === 0 && !summary?.note && (
-            <button
-              onClick={() => openApplicationDialog(date)}
-              className="text-xs text-blue-600 hover:text-blue-800 hover:underline text-left"
-            >
-              申請する
-            </button>
-          )}
-          {dateRequests.length === 1 && (
-            <button
-              onClick={() => openApplicationDialog(date)}
-              className="text-xs text-blue-600 hover:text-blue-800 hover:underline text-left"
-            >
-              追加申請
-            </button>
-          )}
+          {/* 打刻修正は履歴であって申請ではないため、その有無で申請を止めない */}
+          <button
+            onClick={() => openApplicationDialog(date)}
+            className="text-xs text-blue-600 hover:text-blue-800 hover:underline text-left"
+          >
+            {dateRequests.length === 0 ? '申請する' : '追加申請'}
+          </button>
         </div>
       );
     },

@@ -66,14 +66,14 @@ export default function SuperAdminCompanies({ companies }: Props) {
         </Link>
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-x-auto">
+      <div className="bg-white rounded-lg shadow overflow-auto max-h-[70vh]">
         {companies.length === 0 ? (
           <p className="px-5 py-10 text-center text-sm text-gray-500">
             事業所がまだ登録されていません。
           </p>
         ) : (
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 text-left text-gray-600">
+            <thead className="bg-gray-50 text-left text-gray-600 sticky top-0 z-10 shadow-[0_1px_0_0_rgb(229,231,235)]">
               <tr>
                 <th className="px-5 py-3 font-medium">会社コード</th>
                 <th className="px-5 py-3 font-medium">事業所名</th>

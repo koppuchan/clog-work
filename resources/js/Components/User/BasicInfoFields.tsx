@@ -77,15 +77,16 @@ export default function BasicInfoFields({ data, setData, errors, processing, isE
             name="employee_code"
             value={data.employee_code}
             onChange={(e) => setData('employee_code', e.target.value)}
-            className={`w-full border border-gray-300 rounded-md p-2 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 ${isEditing ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
-            placeholder="自動採番"
+            className="w-full border border-gray-300 rounded-md p-2 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder={isEditing ? '000001' : '自動採番'}
             pattern="[0-9]{6}"
             maxLength={6}
-            disabled={processing || isEditing}
-            readOnly={isEditing}
+            disabled={processing}
           />
           <p className="text-xs text-gray-500 mt-1">
-            {isEditing ? '個人コードは変更できません' : '未入力の場合は自動採番されます'}
+            {isEditing
+              ? '事業所内で重複しない6桁の数字に変更できます'
+              : '未入力の場合は自動採番されます'}
           </p>
           {errors.employee_code && <p className="text-red-500 text-sm mt-1">{errors.employee_code}</p>}
         </div>

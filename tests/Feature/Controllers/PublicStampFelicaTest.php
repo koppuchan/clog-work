@@ -247,4 +247,44 @@ class PublicStampFelicaTest extends TestCase
             'message' => '退勤を記録しました。',
         ]);
     }
+
+    /**
+     * @test
+     */
+    public function 日付をまたいだ退勤は文言で区別される(): void
+    {
+        // Arrange: 前日に出勤し、日付をまたいで退勤する
+        $this->travelTo(now()->subDay()->setTime(22, 0));
+        app(PublicStampService::class)->clockIn($this->company->id, $this->user->id);
+
+        // Act: 翌日の早朝にかざす
+        $this->travelTo(now()->addHours(8));
+        $response = $this->tap();
+
+        // Assert: 通常の退勤と区別できる文言になる
+        $response->assertOk()->assertJson([
+            'success' => true,
+            'message' => '退勤（日付越え）を記録しました。',
+        ]);
+    }
+
+    /**
+     * @test
+     */
+    public function 同日中の退勤は通常の文言になる(): void
+    {
+        // Arrange
+        $this->travelTo(now()->setTime(9, 0));
+        app(PublicStampService::class)->clockIn($this->company->id, $this->user->id);
+
+        // Act
+        $this->travelTo(now()->addHours(9));
+        $response = $this->tap();
+
+        // Assert
+        $response->assertOk()->assertJson([
+            'success' => true,
+            'message' => '退勤を記録しました。',
+        ]);
+    }
 }

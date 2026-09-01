@@ -24,6 +24,8 @@ interface Props {
   error?: string;
   isLastAdmin?: boolean;
   isOwner?: boolean;
+  /** 直近にかざされた未登録カード。IDmを手で打たずに選べるようにする */
+  recentFelicaCards?: { idm: string; tapped_at: string }[];
 }
 
 /**
@@ -53,7 +55,8 @@ export default function EditUserPage({
   validatedData,
   error,
   isLastAdmin = false,
-  isOwner = false
+  isOwner = false,
+  recentFelicaCards = []
 }: Props) {
   const userId = id;
   const [localErrors, setLocalErrors] = React.useState<Record<string, string>>({});
@@ -286,6 +289,36 @@ export default function EditUserPage({
               {errors.felica_idm && (
                 <p className="text-xs text-red-600 mt-1">{errors.felica_idm}</p>
               )}
+
+              {recentFelicaCards.length > 0 && (
+                <div className="mt-2 border border-gray-200 rounded-lg p-3 bg-gray-50">
+                  <p className="text-xs font-medium text-gray-700 mb-2">
+                    最近かざされた未登録のカード
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {recentFelicaCards.map((card) => (
+                      <button
+                        key={card.idm}
+                        type="button"
+                        onClick={() => setData('felica_idm', card.idm)}
+                        disabled={processing}
+                        className={`flex items-center justify-between px-3 py-2 rounded border text-left text-sm ${
+                          data.felica_idm === card.idm
+                            ? 'bg-blue-50 border-blue-400'
+                            : 'bg-white border-gray-300 hover:bg-gray-100'
+                        }`}
+                      >
+                        <span className="font-mono">{card.idm}</span>
+                        <span className="text-xs text-gray-500">{card.tapped_at}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    打刻端末でカードをかざしてからこの画面を開くと、そのカードを選べます。
+                  </p>
+                </div>
+              )}
+
               <p className="text-xs text-gray-500 mt-1">
                 打刻カードのIDm（16進数16桁）を入力します。空にすると登録が解除されます。
                 {serverUser?.felica_registered_at && (

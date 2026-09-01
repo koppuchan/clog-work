@@ -10,6 +10,7 @@ use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Services\CompanyService;
 use App\Services\DepartmentService;
+use App\Services\FelicaCardRegistrationService;
 use App\Services\PermissionService;
 use App\Services\RoleService;
 use App\Services\ShiftPatternService;
@@ -30,7 +31,8 @@ class UserController extends Controller
         private readonly ShiftPatternService $shiftPatternService,
         private readonly CompanyService $companyService,
         private readonly DepartmentService $departmentService,
-        private readonly PermissionService $permissionService
+        private readonly PermissionService $permissionService,
+        private readonly FelicaCardRegistrationService $felicaCardRegistrationService
     ) {}
 
     /**
@@ -295,9 +297,13 @@ class UserController extends Controller
             // 唯一の管理者かどうかを判定
             $isLastAdmin = $this->userService->isLastAdminInCompany($id, $companyId);
 
+            // かざしたばかりの未登録カードを、IDmを打ち込まずに選べるようにする
+            $recentFelicaCards = $this->felicaCardRegistrationService->recentUnregistered($companyId);
+
             return Inertia::render('Admin/UserEdit', [
                 'id' => $id,
                 'user' => $userData,
+                'recentFelicaCards' => $recentFelicaCards,
                 'roles' => $roles,
                 'departments' => $departments,
                 'shiftPatterns' => $shiftPatterns,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Exceptions\BusinessException;
+use App\Services\FelicaCardRegistrationService;
 use App\Services\PublicStampService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,7 +22,8 @@ use Inertia\Response;
 class PublicStampController extends Controller
 {
     public function __construct(
-        private readonly PublicStampService $publicStampService
+        private readonly PublicStampService $publicStampService,
+        private readonly FelicaCardRegistrationService $felicaCardRegistrationService
     ) {}
 
     /**
@@ -190,6 +192,9 @@ class PublicStampController extends Controller
         $user = $this->publicStampService->findUserByFelicaIdm($idm, $company->id);
 
         if (! $user) {
+            // IDmはカードに印字されていないため、登録画面から選べるよう覚えておく
+            $this->felicaCardRegistrationService->remember($company->id, $idm);
+
             return response()->json([
                 'success' => false,
                 'message' => '登録されていないカードです。管理者にカードの登録を依頼してください。',

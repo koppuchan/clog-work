@@ -254,7 +254,7 @@ class AttendanceExcelExportService
                 $dayRequests = $requestMap->get($dateKey, collect());
                 [$noteLabel, $noteValue] = $this->buildNoteColumns($summary, $dayRequests, $dailyWorkingMinutes);
                 $sheet->setCellValue('R'.$row, $noteLabel);
-                $sheet->setCellValueExplicit('S'.$row, $noteValue, DataType::STRING);
+                $sheet->setCellValueExplicit('S'.$row, $noteValue, DataType::TYPE_STRING);
             }
 
             $currentDate = $currentDate->addDay();
@@ -317,6 +317,12 @@ class AttendanceExcelExportService
         // 出勤している場合
         if ($summary?->work_start !== null) {
             return '出勤';
+        }
+
+        // シフトが割り当てられているのに出退勤がなく、休暇の申請もない日は欠勤。
+        // 集計欄の欠勤日数は =COUNTIFS(B7:B37,"欠勤") でこの表記を数えている。
+        if ($summary?->scheduled_start_time !== null) {
+            return '欠勤';
         }
 
         return '';

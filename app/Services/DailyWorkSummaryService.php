@@ -678,6 +678,36 @@ class DailyWorkSummaryService
     }
 
     /**
+     * 勤務区分を判定する
+     *
+     * 帳票（Excel）と同じ基準で判定する。シフトが割り当てられているのに
+     * 出退勤がなく休暇の申請もない日は欠勤として扱う。
+     *
+     * @param  mixed  $summary  勤務実績
+     * @param  CarbonImmutable  $date  対象日
+     */
+    private function resolveWorkType($summary, CarbonImmutable $date): string
+    {
+        if ($date->isSaturday() || $date->isSunday()) {
+            return $summary?->work_start !== null ? '休出' : '休日';
+        }
+
+        if ($summary?->leave_type !== null) {
+            return $summary->leave_type->label();
+        }
+
+        if ($summary?->work_start !== null) {
+            return '出勤';
+        }
+
+        if ($summary?->scheduled_start_time !== null) {
+            return '欠勤';
+        }
+
+        return '';
+    }
+
+    /**
      * 全従業員の勤務実績を1つのCSVで生成（集計なし）
      *
      * @param  int  $companyId  会社ID
@@ -693,7 +723,7 @@ class DailyWorkSummaryService
         $weekdays = ['日', '月', '火', '水', '木', '金', '土'];
 
         $lines = [];
-        $lines[] = ['氏名', '日付', '曜日', '出勤時刻', '退勤時刻', '勤務時間', '休憩', '実働時間', '時間外', '休日', '深夜', '遅刻', '早退', '備考'];
+        $lines[] = ['氏名', '日付', '曜日', '勤務区分', '出勤時刻', '退勤時刻', '勤務時間', '休憩', '実働時間', '時間外', '休日', '深夜', '遅刻', '早退', '備考'];
 
         foreach ($users as $user) {
             $rawTimes = $this->rawStampTimeService->mapByDate(
@@ -724,6 +754,7 @@ class DailyWorkSummaryService
                     $user->name,
                     $currentDate->format('Y/m/d'),
                     $dayOfWeek,
+                    $this->resolveWorkType($summary, $currentDate),
                     $raw['work_start'] ?? $summary?->work_start?->format('H:i') ?? '',
                     $raw['work_end'] ?? $summary?->work_end?->format('H:i') ?? '',
                     $this->formatMinutesToHM($summary?->work_minutes ?? 0),

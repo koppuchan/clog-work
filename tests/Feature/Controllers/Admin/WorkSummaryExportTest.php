@@ -148,7 +148,7 @@ class WorkSummaryExportTest extends TestCase
         $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
 
         // CSV本体にヘッダー行が含まれている（全員CSVと同形式）
-        $this->assertStringContainsString('氏名,日付,曜日,出勤時刻,退勤時刻', $content);
+        $this->assertStringContainsString('氏名,日付,曜日,勤務区分,出勤時刻,退勤時刻', $content);
         // 出勤・退勤時刻
         $this->assertStringContainsString('09:00', $content);
         $this->assertStringContainsString('18:00', $content);
@@ -234,7 +234,7 @@ class WorkSummaryExportTest extends TestCase
         $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
 
         // ヘッダーと空のデータ行がある（全員CSVと同形式）
-        $this->assertStringContainsString('氏名,日付,曜日,出勤時刻,退勤時刻', $content);
+        $this->assertStringContainsString('氏名,日付,曜日,勤務区分,出勤時刻,退勤時刻', $content);
     }
 
     // ========================================
@@ -338,11 +338,16 @@ class WorkSummaryExportTest extends TestCase
 
         $response->assertStatus(200);
 
-        // レスポンスボディが空でないことを確認（xlsxファイルのマジックバイト: PK）
-        $content = $response->getContent();
+        // ダウンロードレスポンスの本体はファイルなので getContent() では取れない
+        $path = $response->baseResponse->getFile()->getPathname();
+        $content = file_get_contents($path);
+
         $this->assertNotEmpty($content);
         // xlsxはZIP形式なのでPKで始まる
         $this->assertEquals('PK', substr($content, 0, 2));
+
+        // 送信後の削除はテストでは走らないため、次回実行に残さない
+        @unlink($path);
     }
 
     /**

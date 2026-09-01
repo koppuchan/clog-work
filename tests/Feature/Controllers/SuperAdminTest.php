@@ -163,4 +163,41 @@ class SuperAdminTest extends TestCase
         $response->assertSessionHasErrors('owner_email');
         $this->assertNull(Company::where('name', '重複 株式会社')->first());
     }
+
+    /**
+     * @test
+     */
+    public function スーパー管理者は事業所を削除できる(): void
+    {
+        // Arrange
+        $target = Company::factory()->create(['company_code' => '930002', 'name' => '削除対象株式会社']);
+        $owner = User::factory()->create(['email' => 'target-owner@example.com', 'is_owner' => true]);
+        $owner->companies()->attach($target->id, ['is_primary' => true]);
+
+        // Act
+        $response = $this->actingAs($this->superAdmin, 'admin')
+            ->delete("/super-admin/companies/{$target->id}");
+
+        // Assert
+        $response->assertRedirect('/super-admin/companies');
+        $this->assertNull(Company::find($target->id));
+        $this->assertNull(User::find($owner->id));
+    }
+
+    /**
+     * @test
+     */
+    public function 事業所の管理者は事業所を削除できない(): void
+    {
+        // Arrange
+        $target = Company::factory()->create(['company_code' => '930003', 'name' => '保護対象株式会社']);
+
+        // Act
+        $response = $this->actingAs($this->companyAdmin, 'admin')
+            ->delete("/super-admin/companies/{$target->id}");
+
+        // Assert
+        $response->assertForbidden();
+        $this->assertNotNull(Company::find($target->id));
+    }
 }

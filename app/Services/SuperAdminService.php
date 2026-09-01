@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\ErrorCodeEnum;
+use App\Exceptions\BusinessException;
+use App\Exceptions\NotFoundException;
 use App\Models\Company;
 use App\Models\User;
 use App\Repositories\Contracts\CompanyRepositoryInterface;
@@ -142,6 +145,70 @@ class SuperAdminService
 
             return ['company' => $company, 'owner' => $owner->fresh()];
         }, 3);
+    }
+
+    /**
+     * 事業所を削除する
+     *
+     * companies を参照する外部キーはすべて ON DELETE CASCADE のため、
+     * シフト・打刻・申請などの関連データは会社の削除に伴って除去される。
+     *
+     * ただし users は user_companies 経由の多対多であり、会社を削除しても
+     * ユーザー本体と email の一意制約は残る。事業所を消してもメールアドレスが
+     * 再利用できない、という状態を避けるため、その事業所にしか所属していない
+     * ユーザーは明示的に削除する。
+     *
+     * 複数の事業所に所属しているユーザーは、所属だけが外れてアカウントは残る。
+     *
+     * @return array{company_name: string, deleted_user_count: int, released_emails: array<int, string>}
+     *
+     * @throws NotFoundException 会社が見つからない場合
+     * @throws BusinessException 削除できない状態の場合
+     */
+    public function deleteCompany(int $companyId): array
+    {
+        $company = $this->companyRepository->findById($companyId);
+
+        if (! $company) {
+            throw new NotFoundException(ErrorCodeEnum::COMPANY_NOT_FOUND);
+        }
+
+        if ($company->users()->where('is_super_admin', true)->exists()) {
+            throw new BusinessException('スーパー管理者が所属している事業所は削除できません。');
+        }
+
+        return DB::transaction(function () use ($company): array {
+            $companyName = $company->name;
+            $releasedEmails = [];
+            $deletedUserCount = 0;
+
+            foreach ($company->users()->get() as $user) {
+                // 他の事業所にも所属している場合はアカウントを残す
+                if ($user->companies()->count() > 1) {
+                    continue;
+                }
+
+                if ($user->email !== null) {
+                    $releasedEmails[] = $user->email;
+                }
+
+                $user->delete();
+                $deletedUserCount++;
+            }
+
+            $this->companyRepository->delete($company->id);
+
+            $this->logInfo('Company deleted from super admin', [
+                'company_id' => $company->id,
+                'deleted_user_count' => $deletedUserCount,
+            ]);
+
+            return [
+                'company_name' => $companyName,
+                'deleted_user_count' => $deletedUserCount,
+                'released_emails' => $releasedEmails,
+            ];
+        });
     }
 
     /**

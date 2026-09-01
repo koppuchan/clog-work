@@ -3,7 +3,23 @@ import { format, parseISO, eachDayOfInterval, addDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { getHolidayName } from '@/lib/holidays';
 import { formatMinutesToHM } from '@/utils/timeFormat';
-import type { WorkSummary, MonthlySummary, TimeRecord, ShiftInfo } from '@/types/reports';
+import type { WorkSummary, MonthlySummary, TimeRecord, ShiftInfo, TimeRecordCorrectionItem } from '@/types/reports';
+
+type CorrectionMap = Record<string, TimeRecordCorrectionItem[]>;
+
+/** 打刻種別。勤務開始 / 勤務終了 / 日付越え終了 / 休憩開始 / 休憩終了 */
+const WORK_TIME_TYPES = [1, 2, 3];
+const BREAK_TIME_TYPES = [4, 5];
+
+/**
+ * 指定日の指定種別に打刻修正があるか
+ */
+const hasCorrection = (
+  corrections: CorrectionMap | undefined,
+  dateStr: string,
+  types: number[],
+): boolean =>
+  (corrections?.[dateStr] ?? []).some((c) => types.includes(c.record_type.value));
 
 interface BreakPeriod {
   start: string;
@@ -21,6 +37,10 @@ interface WorkReportTableProps {
   summaryLabel: string;
   lastColumnHeader?: string;
   renderLastColumn: (date: Date, summary: WorkSummary | undefined) => React.ReactNode;
+  /** 日付ごとの打刻修正履歴。修正された時刻を強調表示するために使う */
+  corrections?: Record<string, TimeRecordCorrectionItem[]>;
+  /** 修正された時刻がクリックされたときに履歴を開く */
+  onCorrectionClick?: (date: string) => void;
   extraColumns?: {
     header: React.ReactNode;
     render: (date: Date, summary: WorkSummary | undefined) => React.ReactNode;
@@ -47,6 +67,8 @@ export default function WorkReportTable({
   summaryLabel,
   lastColumnHeader = '備考',
   renderLastColumn,
+  corrections,
+  onCorrectionClick,
   extraColumns,
 }: WorkReportTableProps) {
   const daysInMonth = useMemo(() => {
@@ -280,19 +302,53 @@ export default function WorkReportTable({
                         const { rawStart, rawEnd } = getRawWorkTimesForDate(date);
                         const displayStart = rawStart ?? summary?.work_start;
                         const displayEnd = rawEnd ?? summary?.work_end;
+                        const dateStr = format(date, 'yyyy-MM-dd');
+                        const corrected = hasCorrection(corrections, dateStr, WORK_TIME_TYPES);
+
+                        let text: string;
                         if (displayStart && displayEnd) {
-                          return `${displayStart} ~ ${displayEnd}${summary?.is_cross_day ? ' (翌)' : ''}`;
+                          text = `${displayStart} ~ ${displayEnd}${summary?.is_cross_day ? ' (翌)' : ''}`;
+                        } else if (displayStart) {
+                          text = `${displayStart} ~ -`;
+                        } else if (isCurrentDay && todayWorkStart) {
+                          text = `${todayWorkStart} ~ -`;
+                        } else {
+                          return '-';
                         }
-                        if (displayStart) {
-                          return `${displayStart} ~ -`;
+
+                        if (!corrected) {
+                          return text;
                         }
-                        if (isCurrentDay && todayWorkStart) {
-                          return `${todayWorkStart} ~ -`;
-                        }
-                        return '-';
+
+                        // 修正された時刻はオレンジで示し、押すと履歴を開く
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => onCorrectionClick?.(dateStr)}
+                            title="打刻修正あり。クリックで履歴を表示します"
+                            className="font-medium text-orange-600 underline decoration-dotted underline-offset-2 hover:text-orange-700"
+                          >
+                            {text}
+                          </button>
+                        );
                       })()}
                     </td>
-                    <td className="px-3 py-3 text-sm text-gray-900">
+                    <td className={`px-3 py-3 text-sm ${
+                      hasCorrection(corrections, format(date, 'yyyy-MM-dd'), BREAK_TIME_TYPES)
+                        ? 'text-orange-600 font-medium cursor-pointer'
+                        : 'text-gray-900'
+                    }`}
+                      onClick={
+                        hasCorrection(corrections, format(date, 'yyyy-MM-dd'), BREAK_TIME_TYPES)
+                          ? () => onCorrectionClick?.(format(date, 'yyyy-MM-dd'))
+                          : undefined
+                      }
+                      title={
+                        hasCorrection(corrections, format(date, 'yyyy-MM-dd'), BREAK_TIME_TYPES)
+                          ? '休憩の打刻修正あり。クリックで履歴を表示します'
+                          : undefined
+                      }
+                    >
                       {(() => {
                         // 1. 打刻があればそれを優先表示
                         const breakPeriods = getBreakPeriodsForDate(date);

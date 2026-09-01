@@ -15,7 +15,7 @@ import { ShiftLegendProps } from '@/types/shift';
  * - シフトタイプごとに色分け
  *
  * 用途：
- * - ユーザーがシフトの色と意味を理解するためのガイド
+ * - スタッフがシフトの色と意味を理解するためのガイド
  * - シフトカレンダーの下部に配置
  */
 export default function ShiftLegend({ shiftTypeInfo }: ShiftLegendProps) {

@@ -23,7 +23,7 @@ interface WorkScheduleFieldsProps {
 /**
  * 勤務スケジュール設定フィールドコンポーネント
  *
- * ユーザーの勤務スケジュールを設定：
+ * スタッフの勤務スケジュールを設定：
  * - 各曜日のシフトパターン選択（シフトパターン設定あり＝勤務日、休日選択＝非勤務日）
  */
 export default function WorkScheduleFields({

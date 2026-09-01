@@ -104,11 +104,11 @@ enum ErrorCodeEnum: int
             self::AUTH_TOKEN_EXPIRED => 'トークンの有効期限が切れています。',
 
             // USER
-            self::USER_NOT_FOUND => 'ユーザーが見つかりません。',
-            self::USER_ALREADY_EXISTS => 'ユーザーは既に存在します。',
-            self::USER_CREATE_FAILED => 'ユーザーの作成に失敗しました。',
-            self::USER_UPDATE_FAILED => 'ユーザーの更新に失敗しました。',
-            self::USER_DELETE_FAILED => 'ユーザーの削除に失敗しました。',
+            self::USER_NOT_FOUND => 'スタッフが見つかりません。',
+            self::USER_ALREADY_EXISTS => 'スタッフは既に存在します。',
+            self::USER_CREATE_FAILED => 'スタッフの作成に失敗しました。',
+            self::USER_UPDATE_FAILED => 'スタッフの更新に失敗しました。',
+            self::USER_DELETE_FAILED => 'スタッフの削除に失敗しました。',
             self::USER_CSV_IMPORT_FAILED => 'CSVインポートに失敗しました。',
             self::USER_PASSWORD_RESET_FAILED => 'パスワードの初期化に失敗しました。',
             self::USER_EMAIL_SEND_FAILED => 'メールの送信に失敗しました。',

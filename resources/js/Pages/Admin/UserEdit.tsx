@@ -11,7 +11,7 @@ import UserConfirmView from '@/Components/User/UserConfirmView';
 import ValidationErrors from '@/Components/ValidationErrors';
 
 /**
- * ユーザー編集ページのプロップス
+ * スタッフ編集ページのプロップス
  */
 interface Props {
   id: number;
@@ -27,21 +27,21 @@ interface Props {
 }
 
 /**
- * ユーザー編集ページコンポーネント
+ * スタッフ編集ページコンポーネント
  *
- * 既存ユーザーの情報を編集する画面。
+ * 既存スタッフの情報を編集する画面。
  * 新規作成と同様に2ステップのフローを採用：
- * 1. 入力画面（step='input'）: ユーザー情報の編集
+ * 1. 入力画面（step='input'）: スタッフ情報の編集
  * 2. 確認画面（step='confirm'）: 変更内容の確認と確定
  *
  * 新規作成との違い：
- * - 既存のユーザー情報を初期値として表示
+ * - 既存のスタッフ情報を初期値として表示
  * - パスワードフィールドは空の場合、変更しない
  * - 退職日の設定が可能
  * - 退職日に応じて自動的にis_retiredフラグを設定
  *
  * エラーハンドリング：
- * - ユーザーが見つからない場合はエラーメッセージを表示
+ * - スタッフが見つからない場合はエラーメッセージを表示
  */
 export default function EditUserPage({
   id,
@@ -59,8 +59,8 @@ export default function EditUserPage({
   const [localErrors, setLocalErrors] = React.useState<Record<string, string>>({});
 
   /**
-   * ユーザーのrolesから最初のrole_idを取得
-   * 既存ユーザーの役割を初期値として設定するために使用
+   * スタッフのrolesから最初のrole_idを取得
+   * 既存スタッフの役割を初期値として設定するために使用
    */
   const determineRoleId = (user: any): number | undefined => {
     if (!user?.roles || user.roles.length === 0) return undefined;
@@ -137,7 +137,7 @@ export default function EditUserPage({
 
   /**
    * 確認画面での更新確定処理
-   * サーバーにPUTリクエストを送信してユーザー情報を更新
+   * サーバーにPUTリクエストを送信してスタッフ情報を更新
    */
   const handleConfirm = () => {
     router.put(`/admin/users/${userId}`, data);
@@ -160,7 +160,7 @@ export default function EditUserPage({
           >
             <ArrowLeft className="h-5 w-5 text-gray-600" />
           </button>
-          <h1 className="text-2xl font-bold text-gray-900">ユーザーが見つかりません</h1>
+          <h1 className="text-2xl font-bold text-gray-900">スタッフが見つかりません</h1>
         </div>
         <div className="bg-white shadow rounded-lg p-6">
           <p className="text-gray-600">{error}</p>
@@ -179,7 +179,7 @@ export default function EditUserPage({
           <ArrowLeft className="h-5 w-5 text-gray-600" />
         </button>
         <h1 className="text-2xl font-bold text-gray-900">
-          {serverStep === 'input' ? 'ユーザー編集' : 'ユーザー編集 - 確認'}
+          {serverStep === 'input' ? 'スタッフ編集' : 'スタッフ編集 - 確認'}
         </h1>
       </div>
 
@@ -233,7 +233,7 @@ export default function EditUserPage({
                 <div>
                   <span className="text-sm font-medium text-gray-700">打刻画面を非表示にする</span>
                   <p className="text-xs text-gray-500 mt-1">
-                    このユーザーの打刻画面を非表示にします。
+                    このスタッフの打刻画面を非表示にします。
                   </p>
                 </div>
               </label>
@@ -251,7 +251,7 @@ export default function EditUserPage({
                 <div>
                   <span className="text-sm font-medium text-gray-700">シフト表に表示しない</span>
                   <p className="text-xs text-gray-500 mt-1">
-                    シフト管理画面の一覧および人数集計から除外します。管理者など、シフトに入らないユーザーに使用します。
+                    シフト管理画面の一覧および人数集計から除外します。管理者など、シフトに入らないスタッフに使用します。
                   </p>
                 </div>
               </label>
@@ -325,7 +325,7 @@ export default function EditUserPage({
             {data.is_retired && (
               <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded">
                 <p className="text-sm text-red-800">
-                  <strong>注意:</strong> 退職済みとしてマークされています。このユーザーは一覧で区別して表示されます。
+                  <strong>注意:</strong> 退職済みとしてマークされています。このスタッフは一覧で区別して表示されます。
                 </p>
               </div>
             )}

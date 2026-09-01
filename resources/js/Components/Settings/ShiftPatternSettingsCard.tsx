@@ -51,7 +51,7 @@ export default function ShiftPatternSettingsCard({
             ))}
           </select>
           <p className="text-xs text-gray-500 mt-1">
-            ユーザー登録時の勤務日に自動で設定されるシフトパターンを選択します。
+            スタッフ登録時の勤務日に自動で設定されるシフトパターンを選択します。
           </p>
         </div>
       )}
@@ -91,7 +91,7 @@ export default function ShiftPatternSettingsCard({
                   ? 'text-gray-300 cursor-not-allowed p-1'
                   : 'text-red-600 hover:text-red-900 p-1'
                 }
-                title={pattern.isInUse ? 'シフトまたはユーザーで使用中のため削除できません' : ''}
+                title={pattern.isInUse ? 'シフトまたはスタッフで使用中のため削除できません' : ''}
               >
                 <Trash2 className="h-4 w-4" />
               </button>

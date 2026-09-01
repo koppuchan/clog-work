@@ -9,7 +9,7 @@ interface SuperAdminLayoutProps {
 const NAV_ITEMS = [
   { href: '/super-admin', label: 'ダッシュボード', icon: LayoutDashboard },
   { href: '/super-admin/companies', label: '事業所管理', icon: Building2 },
-  { href: '/super-admin/users', label: 'ユーザー一覧', icon: Users },
+  { href: '/super-admin/users', label: 'スタッフ一覧', icon: Users },
 ];
 
 /**

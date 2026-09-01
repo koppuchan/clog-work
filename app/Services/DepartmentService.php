@@ -159,7 +159,7 @@ class DepartmentService
 
         // 所属ユーザーがいる場合は削除不可
         if ($department->users->count() > 0) {
-            throw new \RuntimeException('部署に所属するユーザーがいるため削除できません');
+            throw new \RuntimeException('部署に所属するスタッフがいるため削除できません');
         }
 
         return $this->departmentRepository->delete($id);

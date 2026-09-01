@@ -44,7 +44,7 @@ export function useShiftPage({
   const initialShifts = useMemo(() => convertBackendShifts(backendShifts), [backendShifts]);
   const shiftTypeInfo = useMemo(() => convertShiftPatterns(shiftPatterns), [shiftPatterns]);
 
-  // バックエンドのユーザーデータが変更されたら更新
+  // バックエンドのスタッフデータが変更されたら更新
   useEffect(() => {
     setUsers(initialUsers);
   }, [initialUsers]);
@@ -54,7 +54,7 @@ export function useShiftPage({
   const daysInMonth = getDaysInMonth(selectedDate);
   const monthDays = Array.from({ length: daysInMonth }, (_, i) => addDays(monthStart, i));
 
-  // アクティブユーザーをフィルタリング
+  // アクティブスタッフをフィルタリング
   const activeUsers = useMemo(() => filterActiveUsers(users, selectedDate), [users, selectedDate]);
 
   // カスタムフック：シフト操作
@@ -92,7 +92,7 @@ export function useShiftPage({
     });
   }, []);
 
-  // ユーザー名クリックハンドラー
+  // スタッフ名クリックハンドラー
   const handleUserNameClick = useCallback(
     async (userId: string) => {
       const user = users.find((u) => u.id === userId);
@@ -129,7 +129,7 @@ export function useShiftPage({
     [users, shiftTypeInfo]
   );
 
-  // ユーザーのシフトパターンから月次シフトを生成
+  // スタッフのシフトパターンから月次シフトを生成
   const generateShiftFromPattern = useCallback(
     (userId: string) => {
       shiftOperations.generateShiftFromPattern(userId);

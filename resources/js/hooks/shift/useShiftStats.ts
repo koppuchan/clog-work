@@ -16,7 +16,7 @@ export function useShiftStats(selectedDate: Date, shifts: Shift[], activeUsers: 
       const periodStartStr = options?.startDate || format(selectedDate, 'yyyy-MM-dd');
       const periodEndStr = options?.endDate || format(selectedDate, 'yyyy-MM-dd');
 
-      // ユーザーのシフトを期間内でフィルター
+      // スタッフのシフトを期間内でフィルター
       const userShifts = shifts.filter(shift =>
         shift.userId === userId &&
         shift.date >= periodStartStr &&

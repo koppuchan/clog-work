@@ -1,7 +1,7 @@
 import { Role, DepartmentData as Department, ShiftPattern } from '@/types';
 
 /**
- * ユーザー確認画面のプロップス
+ * スタッフ確認画面のプロップス
  */
 interface UserConfirmViewProps {
   data: {
@@ -37,9 +37,9 @@ interface UserConfirmViewProps {
 }
 
 /**
- * ユーザー確認画面コンポーネント
+ * スタッフ確認画面コンポーネント
  *
- * ユーザー作成・編集の最終確認画面：
+ * スタッフ作成・編集の最終確認画面：
  * - 入力された全ての情報を読み取り専用で表示
  * - 基本情報（氏名、フリガナ、個人コード、メールアドレス）
  * - 役割と部署
@@ -85,7 +85,7 @@ export default function UserConfirmView({
       <div className="space-y-6">
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
           <p className="text-sm font-medium text-gray-700">
-            以下の内容でユーザーを{isEditMode ? '更新' : '作成'}します。内容を確認してください。
+            以下の内容でスタッフを{isEditMode ? '更新' : '作成'}します。内容を確認してください。
           </p>
         </div>
 
@@ -148,7 +148,7 @@ export default function UserConfirmView({
                 <p className="text-2xl font-mono font-bold text-gray-900 tracking-wider">1111</p>
               </div>
               <p className="text-xs text-gray-600">
-                ※ メールアドレスが未入力のため、上記のパスワードをユーザーに直接お伝えください。
+                ※ メールアドレスが未入力のため、上記のパスワードをスタッフに直接お伝えください。
               </p>
             </div>
           </div>

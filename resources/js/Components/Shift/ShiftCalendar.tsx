@@ -15,7 +15,7 @@ interface DepartmentGroup {
  * 月次シフト表を表示する中核コンポーネント。
  *
  * 主な機能：
- * - 部署ごとにユーザーをグループ化して表示
+ * - 部署ごとにスタッフをグループ化して表示
  * - スタッフ名の固定列と横スクロール可能な日付列
  * - 各セルでのシフトタイプ表示と選択
  * - 日付ヘッダークリックでの一括シフト設定
@@ -49,7 +49,7 @@ export default function ShiftCalendar({
   const [cellModalPos, setCellModalPos] = useState<{ top: number; left: number } | null>(null);
   const [isPatternCountsOpen, setIsPatternCountsOpen] = useState(false);
 
-  // ユーザーを部署ごとにグループ化
+  // スタッフを部署ごとにグループ化
   const groupedUsers = useMemo((): DepartmentGroup[] => {
     const groups = new Map<number | 'none', DepartmentGroup>();
 
@@ -215,7 +215,7 @@ export default function ShiftCalendar({
                   {group.department?.name ?? '未所属'}
                 </div>
               </div>
-              {/* 部署内ユーザー */}
+              {/* 部署内スタッフ */}
               <div className="p-1">
                 {group.users.map((user, idx) => (
                   <div
@@ -354,7 +354,7 @@ export default function ShiftCalendar({
                     {group.department?.name ?? '未所属'}
                   </div>
                 </div>
-                {/* 部署内ユーザーのシフト行 */}
+                {/* 部署内スタッフのシフト行 */}
                 <div className="p-1">
                   {group.users.map((user, userIndexInGroup) => {
                     const stats = getMonthlyStats(user.id);

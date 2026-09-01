@@ -30,7 +30,7 @@ export default function SuperAdminCompanies({ companies }: Props) {
    * 事業所の削除確認ダイアログを開く
    *
    * 削除するとシフト・打刻・申請などの関連データがすべて失われ、
-   * その事業所にしか所属していないユーザーも削除される。
+   * その事業所にしか所属していないスタッフも削除される。
    * 取り返しがつかないため、影響を明示したうえで確認する。
    */
   const handleDelete = (company: CompanySummary) => {
@@ -38,7 +38,7 @@ export default function SuperAdminCompanies({ companies }: Props) {
       title: '事業所の削除',
       message: `${company.name} を削除しますか？`,
       description:
-        `所属する ${company.user_count} 名のユーザー、シフト、打刻、勤務実績、申請がすべて削除されます。` +
+        `所属する ${company.user_count} 名のスタッフ、シフト、打刻、勤務実績、申請がすべて削除されます。` +
         'この操作は取り消せません。削除後、管理者のメールアドレスは再登録に使用できるようになります。',
       icon: <Trash2 className="h-6 w-6 text-red-600" />,
       iconBgClass: 'bg-red-100',

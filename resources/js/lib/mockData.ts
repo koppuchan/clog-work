@@ -448,7 +448,7 @@ export const mockShifts: Shift[] = [
   { id: '19', userId: '1', date: '2025-09-29', shiftType: 'day' },
   { id: '20', userId: '1', date: '2025-09-30', shiftType: 'day' },
 
-  // 10月分 - 各ユーザーのshiftPatternsに基づいて生成
+  // 10月分 - 各スタッフのshiftPatternsに基づいて生成
   // 会社定休日: 日曜日（10/5, 12, 19, 26）
   // 祝日: 10/13（スポーツの日・月）
 

@@ -34,8 +34,8 @@ function StampPage({ currentStatus: initialStatus, todayRecords: initialRecords 
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // 別ユーザーへの切り替え（ログアウト→別アカウントログイン）後、
-  // Inertiaのpartial visit等で前ユーザーのstateが残るのを防ぐため、
+  // 別スタッフへの切り替え（ログアウト→別アカウントログイン）後、
+  // Inertiaのpartial visit等で前スタッフのstateが残るのを防ぐため、
   // propsが更新されたらstateを同期し直す。
   useEffect(() => {
     setCurrentStatus(initialStatus);

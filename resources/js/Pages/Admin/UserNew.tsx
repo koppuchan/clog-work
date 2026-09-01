@@ -11,7 +11,7 @@ import UserConfirmView from '@/Components/User/UserConfirmView';
 import ValidationErrors from '@/Components/ValidationErrors';
 
 /**
- * 新規ユーザー作成ページのプロップス
+ * 新規スタッフ作成ページのプロップス
  */
 interface WeekdayFlags {
   sunday: boolean;
@@ -44,10 +44,10 @@ type ShiftPatternsMap = {
 };
 
 /**
- * 新規ユーザー作成ページコンポーネント
+ * 新規スタッフ作成ページコンポーネント
  *
  * 2ステップの作成フロー：
- * 1. 入力画面（step='input'）: ユーザー情報の入力
+ * 1. 入力画面（step='input'）: スタッフ情報の入力
  * 2. 確認画面（step='confirm'）: 入力内容の確認と確定
  *
  * 入力内容：
@@ -117,7 +117,7 @@ export default function NewUserPage({
 
   /**
    * 確認画面での作成確定処理
-   * サーバーにPOSTリクエストを送信してユーザーを作成
+   * サーバーにPOSTリクエストを送信してスタッフを作成
    */
   const handleConfirm = () => {
     router.post('/admin/users', data);
@@ -140,7 +140,7 @@ export default function NewUserPage({
           <ArrowLeft className="h-5 w-5 text-gray-600" />
         </button>
         <h1 className="text-2xl font-bold text-gray-900">
-          {serverStep === 'input' ? '新規ユーザー作成' : '新規ユーザー作成 - 確認'}
+          {serverStep === 'input' ? '新規スタッフ作成' : '新規スタッフ作成 - 確認'}
         </h1>
       </div>
 

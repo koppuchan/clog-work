@@ -19,7 +19,7 @@ function StaffPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // ログインユーザーID（仮: 田中太郎）
+  // ログインスタッフID（仮: 田中太郎）
   const currentUserId = '1'; // 実際は認証システムから取得
 
   // 今月の労働時間を計算

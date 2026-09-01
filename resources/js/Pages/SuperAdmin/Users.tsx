@@ -18,7 +18,7 @@ interface Props {
 }
 
 /**
- * スーパー管理画面の全事業所横断ユーザー一覧
+ * スーパー管理画面の全事業所横断スタッフ一覧
  */
 export default function SuperAdminUsers({ users }: Props) {
   const [keyword, setKeyword] = useState('');
@@ -35,7 +35,7 @@ export default function SuperAdminUsers({ users }: Props) {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">ユーザー一覧</h1>
+      <h1 className="text-2xl font-bold text-gray-900">スタッフ一覧</h1>
 
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -51,7 +51,7 @@ export default function SuperAdminUsers({ users }: Props) {
       <div className="bg-white rounded-lg shadow overflow-auto max-h-[70vh]">
         {filtered.length === 0 ? (
           <p className="px-5 py-10 text-center text-sm text-gray-500">
-            該当するユーザーがいません。
+            該当するスタッフがいません。
           </p>
         ) : (
           <table className="min-w-full text-sm">

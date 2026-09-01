@@ -28,8 +28,8 @@ interface Props {
 export default function SuperAdminDashboard({ statistics, companies }: Props) {
   const cards = [
     { label: '事業所数', value: statistics.company_count, icon: Building2 },
-    { label: '在籍ユーザー数', value: statistics.user_count, icon: Users },
-    { label: '退職済みユーザー数', value: statistics.retired_user_count, icon: UserMinus },
+    { label: '在籍スタッフ数', value: statistics.user_count, icon: Users },
+    { label: '退職済みスタッフ数', value: statistics.retired_user_count, icon: UserMinus },
   ];
 
   const recent = [...companies].slice(-5).reverse();

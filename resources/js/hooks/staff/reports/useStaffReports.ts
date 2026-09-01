@@ -166,7 +166,7 @@ export function useStaffReports() {
 
         attendances.push({
           id: String(workStart?.id ?? workEnd?.id ?? 0),
-          userId: '0', // 現在のユーザー
+          userId: '0', // 現在のスタッフ
           date: dateStr,
           clockIn: workStart?.record_time,
           clockOut: workEnd?.record_time,

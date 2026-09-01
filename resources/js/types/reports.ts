@@ -3,7 +3,7 @@
  */
 
 /**
- * ユーザー情報
+ * スタッフ情報
  */
 export interface ReportUser {
   id: number;

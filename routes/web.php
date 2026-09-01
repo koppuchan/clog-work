@@ -160,6 +160,7 @@ Route::middleware(['auth:admin', 'verified', 'super_admin'])->prefix('super-admi
     Route::get('/companies', [SuperAdminCompanyController::class, 'index'])->name('companies');
     Route::get('/companies/new', [SuperAdminCompanyController::class, 'create'])->name('companies.new');
     Route::post('/companies', [SuperAdminCompanyController::class, 'store'])->name('companies.store');
+    Route::delete('/companies/{company}', [SuperAdminCompanyController::class, 'destroy'])->name('companies.destroy');
 
     Route::get('/users', [SuperAdminUserController::class, 'index'])->name('users');
 });

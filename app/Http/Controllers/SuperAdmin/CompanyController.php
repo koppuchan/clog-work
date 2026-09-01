@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\SuperAdmin;
 
+use App\Exceptions\BusinessException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\SuperAdmin\StoreCompanyRequest;
 use App\Services\SuperAdminService;
@@ -60,5 +61,32 @@ class CompanyController extends Controller
                 $result['company']->company_code,
                 $result['owner']->employee_code,
             ));
+    }
+
+    /**
+     * 事業所を削除
+     *
+     * 関連データはカスケードで削除され、その事業所にしか所属していない
+     * ユーザーもあわせて削除される（メールアドレスの再利用を可能にするため）。
+     */
+    public function destroy(int $company): RedirectResponse
+    {
+        try {
+            $result = $this->superAdminService->deleteCompany($company);
+        } catch (BusinessException $e) {
+            return redirect()
+                ->route('super-admin.companies')
+                ->with('error', $e->getMessage());
+        }
+
+        $message = sprintf(
+            '事業所「%s」を削除しました。ユーザー %d 名を削除し、メールアドレスが再利用可能になりました。',
+            $result['company_name'],
+            $result['deleted_user_count'],
+        );
+
+        return redirect()
+            ->route('super-admin.companies')
+            ->with('success', $message);
     }
 }

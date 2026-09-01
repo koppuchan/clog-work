@@ -193,15 +193,15 @@ export default function WorkReportTable({
               </span>
             </div>
             <div className="text-sm">
-              <span className="text-gray-600">深夜: </span>
-              <span className="font-semibold text-indigo-600">
-                {formatMinutesToHM(monthlySummary?.total_night_minutes || 0)}
+              <span className="text-gray-600">休日: </span>
+              <span className="font-semibold text-red-600">
+                {formatMinutesToHM(monthlySummary?.total_holiday_minutes || 0)}
               </span>
             </div>
             <div className="text-sm">
-              <span className="text-gray-600">遅刻早退: </span>
-              <span className="font-semibold text-yellow-600">
-                {(monthlySummary?.late_count || 0) + (monthlySummary?.early_leave_count || 0)}回
+              <span className="text-gray-600">深夜: </span>
+              <span className="font-semibold text-indigo-600">
+                {formatMinutesToHM(monthlySummary?.total_night_minutes || 0)}
               </span>
             </div>
           </div>

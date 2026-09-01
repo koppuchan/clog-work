@@ -67,6 +67,55 @@ class DailyWorkSummaryServiceTest extends TestCase
     // ========================================
 
     /**
+     * 月間サマリの表示項目「出勤日数 / 労働時間 / 時間外 / 休日 / 深夜」の裏付け。
+     *
+     * 休日は労務アラートが集計している「時間外＋休日」の内訳として表示するため、
+     * 時間外とは別に休日労働時間を月次で合計する必要がある。
+     *
+     * @test
+     */
+    public function calculate_monthly_summary_totals_display_items(): void
+    {
+        // Arrange: 平日1日と休日出勤1日
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2025-01-10',
+            'net_work_minutes' => 540,
+            'overtime_minutes' => 60,
+            'holiday_minutes' => 0,
+            'night_minutes' => 30,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2025-01-12',
+            'net_work_minutes' => 300,
+            'overtime_minutes' => 0,
+            'holiday_minutes' => 300,
+            'night_minutes' => 0,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        // Act
+        $result = $this->service->calculateMonthlySummary(
+            $this->company->id,
+            $this->user->id,
+            '2025-01-01',
+            '2025-01-31'
+        );
+
+        // Assert
+        $this->assertEquals(2, $result['work_days']);
+        $this->assertEquals(840, $result['total_net_work_minutes']);
+        $this->assertEquals(60, $result['total_overtime_minutes']);
+        $this->assertEquals(300, $result['total_holiday_minutes']);
+        $this->assertEquals(30, $result['total_night_minutes']);
+    }
+
+    /**
      * @test
      */
     public function calculate_monthly_summary_counts_full_day_paid_leave(): void

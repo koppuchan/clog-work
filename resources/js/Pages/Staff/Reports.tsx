@@ -6,6 +6,7 @@ import type { ShiftDisplayPeriodType } from '@/types/shift';
 import { ApplicationDialog } from '@/Components/Staff/Reports';
 import ApprovedRequestDetailModal from '@/Components/Reports/ApprovedRequestDetailModal';
 import CorrectionDetailModal from '@/Components/Reports/CorrectionDetailModal';
+import AttendanceIssueBanner, { type AttendanceIssueMap } from '@/Components/Reports/AttendanceIssueBanner';
 import LaborAlertPanel, { type LaborAlertItem } from '@/Components/Staff/LaborAlertPanel';
 import WorkReportTable from '@/Components/Reports/WorkReportTable';
 import MonthSelector from '@/Components/MonthSelector';
@@ -33,6 +34,7 @@ interface StaffReportsPageProps {
   monthlySummary: MonthlySummary | null;
   timeRecords: TimeRecord[];
   timeRecordCorrections: Record<string, TimeRecordCorrectionItem[]>;
+  attendanceIssues: AttendanceIssueMap;
   laborAlerts: LaborAlertItem[];
   requests: Record<string, RequestData[]>;
   shifts: Record<string, ShiftInfo>;
@@ -48,7 +50,7 @@ interface StaffReportsPageProps {
 }
 
 function StaffReportsPage() {
-  const { workSummaries, monthlySummary, timeRecords, timeRecordCorrections, requests, shifts, todayWorkStart, filters, leaveSettings, laborAlerts } = usePage<{
+  const { workSummaries, monthlySummary, timeRecords, timeRecordCorrections, requests, shifts, todayWorkStart, filters, leaveSettings, laborAlerts, attendanceIssues } = usePage<{
     props: StaffReportsPageProps;
   }>().props as unknown as StaffReportsPageProps;
 
@@ -260,6 +262,8 @@ function StaffReportsPage() {
 
   return (
     <div className="space-y-6">
+      <AttendanceIssueBanner issues={attendanceIssues ?? {}} />
+
       <LaborAlertPanel alerts={laborAlerts ?? []} />
 
       <ApprovedRequestDetailModal

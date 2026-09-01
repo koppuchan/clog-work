@@ -8,6 +8,7 @@ use App\Enums\TimeRecordTypeEnum;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Repositories\Contracts\TimeRecordRepositoryInterface;
+use App\Services\AttendanceIssueService;
 use App\Services\CompanySettingService;
 use App\Services\DailyWorkSummaryService;
 use App\Services\LaborAlertService;
@@ -29,7 +30,8 @@ class ReportController extends Controller
         private readonly TimeRecordRepositoryInterface $timeRecordRepository,
         private readonly ShiftService $shiftService,
         private readonly CompanySettingService $companySettingService,
-        private readonly LaborAlertService $laborAlertService
+        private readonly LaborAlertService $laborAlertService,
+        private readonly AttendanceIssueService $attendanceIssueService
     ) {}
 
     /**
@@ -235,6 +237,7 @@ class ReportController extends Controller
 
         return Inertia::render('Staff/Reports', [
             'workSummaries' => $workSummariesData,
+            'attendanceIssues' => $this->attendanceIssueService->detect(collect($workSummariesData)),
             'monthlySummary' => $monthlySummary,
             'timeRecords' => $timeRecordsData,
             'timeRecordCorrections' => $correctionsData,

@@ -31,6 +31,7 @@ class User extends Authenticatable
         'stamp_password',
         'must_change_password',
         'is_stamp_hidden',
+        'is_shift_hidden',
         'is_owner',
         'is_retired',
         'retirement_date',
@@ -60,6 +61,7 @@ class User extends Authenticatable
             'stamp_password' => 'hashed',
             'must_change_password' => 'boolean',
             'is_stamp_hidden' => 'boolean',
+            'is_shift_hidden' => 'boolean',
             'is_owner' => 'boolean',
         ];
     }

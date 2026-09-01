@@ -112,7 +112,7 @@ class UserRepository implements UserRepositoryInterface
 
     /**
      * シフト表示用に会社IDと対象日付でユーザーを取得
-     * 対象日付時点で在籍しているユーザーのみを返す
+     * 対象日付時点で在籍しており、かつシフト表への表示が有効なユーザーのみを返す
      *
      * @param  int  $companyId  会社ID
      * @param  string  $targetDate  対象日付（Y-m-d形式）
@@ -124,6 +124,7 @@ class UserRepository implements UserRepositoryInterface
             ->whereHas('companies', function ($query) use ($companyId) {
                 $query->where('company_id', $companyId);
             })
+            ->where('is_shift_hidden', false)
             ->where(function ($query) use ($targetDate) {
                 // 退職していない、または退職日が対象日付以降のユーザー
                 $query->where('is_retired', false)

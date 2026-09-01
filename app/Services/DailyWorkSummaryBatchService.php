@@ -46,7 +46,8 @@ class DailyWorkSummaryBatchService
         private readonly TimeRecordRepositoryInterface $timeRecordRepository,
         private readonly DailyWorkSummaryRepositoryInterface $dailyWorkSummaryRepository,
         private readonly ShiftRepositoryInterface $shiftRepository,
-        private readonly WorkTimeCalculator $workTimeCalculator
+        private readonly WorkTimeCalculator $workTimeCalculator,
+        private readonly AutoBreakFillService $autoBreakFillService
     ) {}
 
     /**
@@ -286,7 +287,15 @@ class DailyWorkSummaryBatchService
         }
 
         // 休憩時間の計算
-        $breakMinutes = $this->calculateBreakMinutes($timeRecords, $shift, $company);
+        $breakMinutes = $this->calculateBreakMinutes(
+            $timeRecords,
+            $shift,
+            $company,
+            $targetDate,
+            $workStartTime,
+            $workEndTime,
+            $isCrossDay,
+        );
 
         // 実働時間
         $netWorkMinutes = max(0, $workMinutes - $breakMinutes);
@@ -349,8 +358,15 @@ class DailyWorkSummaryBatchService
      * @param  Company  $company  会社
      * @return int 休憩時間（分）
      */
-    private function calculateBreakMinutes(Collection $timeRecords, ?Shift $shift, Company $company): int
-    {
+    private function calculateBreakMinutes(
+        Collection $timeRecords,
+        ?Shift $shift,
+        Company $company,
+        CarbonImmutable $workDate,
+        mixed $workStartTime = null,
+        mixed $workEndTime = null,
+        bool $isCrossDay = false,
+    ): int {
         // 休憩打刻から計算
         $breakStarts = $timeRecords
             ->filter(fn (TimeRecord $r) => $r->record_type->isBreakStart())
@@ -359,6 +375,24 @@ class DailyWorkSummaryBatchService
         $breakEnds = $timeRecords
             ->filter(fn (TimeRecord $r) => $r->record_type->isBreakEnd())
             ->values();
+
+        $pattern = $shift?->shiftPattern;
+        if (! $pattern) {
+            $company->loadMissing('defaultShiftPattern');
+            $pattern = $company->defaultShiftPattern;
+        }
+
+        $hasAnyBreakRecord = $breakStarts->isNotEmpty() || $breakEnds->isNotEmpty();
+
+        // 休憩の打刻が1件もない日は、シフトの休憩時刻で補う（設定で有効な場合のみ）
+        if ($this->autoBreakFillService->isApplicable($pattern, $hasAnyBreakRecord)) {
+            return $this->autoBreakFillService->fillMinutes(
+                $pattern,
+                $workDate,
+                $this->toWorkCarbon($workStartTime),
+                $this->toWorkCarbon($workEndTime, $isCrossDay, $this->toWorkCarbon($workStartTime)),
+            );
+        }
 
         $breakMinutes = 0;
 
@@ -382,6 +416,26 @@ class DailyWorkSummaryBatchService
 
         // 休憩打刻がなければ休憩0分（打刻ベースで計算）
         return $breakMinutes;
+    }
+
+    /**
+     * 勤務時刻を比較可能な形にそろえる
+     *
+     * 日付越えの退勤は翌日として扱わないと休憩の重なりを判定できない。
+     */
+    private function toWorkCarbon(mixed $time, bool $isCrossDay = false, ?CarbonImmutable $start = null): ?CarbonImmutable
+    {
+        if ($time === null) {
+            return null;
+        }
+
+        $carbon = CarbonImmutable::parse($time);
+
+        if ($isCrossDay && $start !== null && $carbon->lt($start)) {
+            $carbon = $carbon->addDay();
+        }
+
+        return $carbon;
     }
 
     /**

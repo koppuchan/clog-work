@@ -72,6 +72,7 @@ export interface SettingsShiftPattern {
   breakMinutes: number | null;
   breakStart: string | null;
   breakEnd: string | null;
+  autoFillBreak?: boolean;
   isInUse: boolean;
   colorId: number | null;
   backgroundColor: string | null;

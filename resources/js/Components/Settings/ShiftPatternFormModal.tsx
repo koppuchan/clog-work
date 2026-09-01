@@ -136,6 +136,28 @@ export default function ShiftPatternFormModal({
               />
             </div>
           </div>
+
+          {/* 休憩時刻が入っているときだけ自動入力を選べる */}
+          {breakStart && breakEnd && (
+            <div>
+              <label className="flex items-start space-x-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={shiftPattern.autoFillBreak ?? false}
+                  onChange={(e) =>
+                    onShiftPatternChange({ ...shiftPattern, autoFillBreak: e.target.checked })
+                  }
+                  className="mt-0.5 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">
+                  休憩打刻の自動入力
+                  <span className="block text-xs text-gray-500">
+                    休憩の打刻が1件もない日に、上の休憩時刻を控除します。打刻がある日は打刻を優先します。
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
           <div className="flex space-x-3 pt-4">
             <button
               type="submit"

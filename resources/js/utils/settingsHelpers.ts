@@ -40,6 +40,7 @@ export const getInitialShiftPatternForm = (): NewShiftPatternForm => ({
   breakMinutes: 60,
   breakStart: null,
   breakEnd: null,
+  autoFillBreak: false,
   isInUse: false,
   colorId: null,
   backgroundColor: null,

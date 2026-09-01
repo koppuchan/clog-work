@@ -93,6 +93,7 @@ export function useShiftPatterns(
       breakMinutes: null,
       breakStart: formatTime(breakStart),
       breakEnd: formatTime(breakEnd),
+      autoFillBreak: formData.autoFillBreak ?? false,
       colorId: selectedColorId,
     };
 
@@ -150,6 +151,7 @@ export function useShiftPatterns(
         breakMinutes: pattern.breakMinutes,
         breakStart: formatTime(pattern.breakStart),
         breakEnd: formatTime(pattern.breakEnd),
+        autoFillBreak: pattern.autoFillBreak ?? false,
       })),
       deletedShiftPatternIds: [],
     };

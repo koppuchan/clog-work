@@ -19,11 +19,29 @@ use Illuminate\Support\Facades\Hash;
  */
 class PublicStampService
 {
+    /**
+     * リクエスト内で取得済みのユーザー
+     *
+     * 打刻処理は所属確認・退職確認・パスワード照合で同じユーザーを引くため、
+     * 同一リクエスト内では取得結果を使い回す。
+     *
+     * @var array<int, User|null>
+     */
+    private array $userCache = [];
+
     public function __construct(
         private readonly CompanyRepositoryInterface $companyRepository,
         private readonly UserRepositoryInterface $userRepository,
         private readonly StampService $stampService
     ) {}
+
+    /**
+     * ユーザーを取得する（同一リクエスト内では再問い合わせしない）
+     */
+    private function user(int $userId): ?User
+    {
+        return $this->userCache[$userId] ??= $this->userRepository->findById($userId);
+    }
 
     /**
      * UUIDから会社を取得
@@ -43,15 +61,13 @@ class PublicStampService
      */
     public function getActiveUsersByCompanyId(int $companyId): Collection
     {
-        return $this->userRepository->findByCompanyId($companyId)
-            ->filter(fn (User $user) => ! $user->is_retired)
+        return $this->userRepository->findActiveForStampByCompanyId($companyId)
             ->map(fn (User $user) => [
                 'id' => $user->id,
                 'name' => $user->name,
                 'employee_code' => $user->employee_code,
             ])
-            ->sortBy('name')
-            ->values();
+            ->toBase();
     }
 
     /**
@@ -106,7 +122,7 @@ class PublicStampService
      */
     public function isUserInCompany(int $userId, int $companyId): bool
     {
-        $user = $this->userRepository->findById($userId);
+        $user = $this->user($userId);
 
         if (! $user) {
             return false;
@@ -122,7 +138,7 @@ class PublicStampService
      */
     public function isUserRetired(int $userId): bool
     {
-        $user = $this->userRepository->findById($userId);
+        $user = $this->user($userId);
 
         if (! $user) {
             return true;
@@ -142,7 +158,7 @@ class PublicStampService
      */
     public function verifyPassword(int $userId, string $password): bool
     {
-        $user = $this->userRepository->findById($userId);
+        $user = $this->user($userId);
 
         if (! $user) {
             return false;

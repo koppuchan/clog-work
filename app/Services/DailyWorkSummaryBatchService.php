@@ -45,7 +45,8 @@ class DailyWorkSummaryBatchService
         private readonly UserRepositoryInterface $userRepository,
         private readonly TimeRecordRepositoryInterface $timeRecordRepository,
         private readonly DailyWorkSummaryRepositoryInterface $dailyWorkSummaryRepository,
-        private readonly ShiftRepositoryInterface $shiftRepository
+        private readonly ShiftRepositoryInterface $shiftRepository,
+        private readonly WorkTimeCalculator $workTimeCalculator
     ) {}
 
     /**
@@ -312,13 +313,10 @@ class DailyWorkSummaryBatchService
 
         // 時間外勤務の計算（時刻ベース + 休憩不足分）
         $overtimeMinutes = $this->calculateOvertimeMinutes(
-            $workStartTime,
-            $workEndTime,
             $scheduledStartTime,
             $scheduledEndTime,
-            $breakMinutes,
+            $netWorkMinutes,
             $shift?->shiftPattern,
-            $isCrossDay
         );
 
         return [
@@ -702,53 +700,28 @@ class DailyWorkSummaryBatchService
      * @param  \DateTimeInterface|null  $workStart  実際の勤務開始時刻（丸め後）
      * @param  \DateTimeInterface|null  $workEnd  実際の勤務終了時刻（丸め後）
      * @param  string|null  $scheduledStartTime  予定開始時刻（HH:MM形式）
-     * @param  string|null  $scheduledEndTime  予定終了時刻（HH:MM形式）
-     * @param  int  $breakMinutes  実際の休憩時間（分）
+     * @param  string|null  $scheduledEndTime  シフト終業（HH:MM形式）
+     * @param  int  $netWorkMinutes  実労働時間（分）
      * @param  \App\Models\ShiftPattern|null  $shiftPattern  シフトパターン
-     * @param  bool  $isCrossDay  日付越えフラグ
-     * @return int 時間外勤務時間（分）
+     * @return int 時間外（分）
      */
     private function calculateOvertimeMinutes(
-        ?\DateTimeInterface $workStart,
-        ?\DateTimeInterface $workEnd,
         ?string $scheduledStartTime,
         ?string $scheduledEndTime,
-        int $breakMinutes,
-        ?\App\Models\ShiftPattern $shiftPattern,
-        bool $isCrossDay
+        int $netWorkMinutes,
+        ?\App\Models\ShiftPattern $shiftPattern
     ): int {
         if ($shiftPattern === null) {
             return 0;
         }
 
-        $overtime = 0;
+        $scheduledWorkMinutes = $this->workTimeCalculator->scheduledWorkMinutes(
+            $scheduledStartTime,
+            $scheduledEndTime,
+            $this->getScheduledBreakMinutes($shiftPattern),
+        );
 
-        // 1. シフト終業後の残業
-        if ($workEnd && $scheduledEndTime) {
-            $workEndCarbon = CarbonImmutable::parse($workEnd);
-            $scheduledEndCarbon = $workEndCarbon->copy()->setTimeFromTimeString($scheduledEndTime);
-
-            if ($workEndCarbon->gt($scheduledEndCarbon)) {
-                $overtime += (int) $scheduledEndCarbon->diffInMinutes($workEndCarbon);
-            }
-        }
-
-        // 2. シフト始業前の早出
-        if ($workStart && $scheduledStartTime) {
-            $workStartCarbon = CarbonImmutable::parse($workStart);
-            $scheduledStartCarbon = $workStartCarbon->copy()->setTimeFromTimeString($scheduledStartTime);
-
-            if ($workStartCarbon->lt($scheduledStartCarbon)) {
-                $overtime += (int) $workStartCarbon->diffInMinutes($scheduledStartCarbon);
-            }
-        }
-
-        // 3. 休憩不足分
-        $scheduledBreakMinutes = $this->getScheduledBreakMinutes($shiftPattern);
-        $breakShortage = max(0, $scheduledBreakMinutes - $breakMinutes);
-        $overtime += $breakShortage;
-
-        return $overtime;
+        return $this->workTimeCalculator->overtimeMinutes($netWorkMinutes, $scheduledWorkMinutes);
     }
 
     /**

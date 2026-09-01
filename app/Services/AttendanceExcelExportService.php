@@ -10,6 +10,7 @@ use App\Repositories\Contracts\DailyWorkSummaryRepositoryInterface;
 use App\Repositories\Contracts\RequestRepositoryInterface;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 
@@ -23,6 +24,11 @@ class AttendanceExcelExportService
     private const HEADER_ROW = 4;
 
     private const DATA_START_ROW = 7;
+
+    /**
+     * 曜日の表記（日曜始まり）
+     */
+    private const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
     public function __construct(
         private readonly DailyWorkSummaryRepositoryInterface $dailyWorkSummaryRepository,
@@ -74,13 +80,12 @@ class AttendanceExcelExportService
         $sheet = $spreadsheet->getActiveSheet();
 
         // ヘッダー部分を設定
-        $this->setHeaderData($sheet, $user, $endDate, $monthlySummary, $dailyWorkingMinutes);
+        $this->setHeaderData($sheet, $user, $endDate);
 
         // 明細部分を設定
         $this->setDetailData($sheet, $summaries, $startDate, $endDate, $requestMap, $dailyWorkingMinutes);
 
         // 合計行を設定（38行目）
-        $this->setTotalRow($sheet, $monthlySummary, $dailyWorkingMinutes);
 
         // 一時ファイルとして保存
         return $this->saveToTempFile($spreadsheet, $user, $endDate);
@@ -145,38 +150,22 @@ class AttendanceExcelExportService
      * @param  \PhpOffice\PhpSpreadsheet\Worksheet\Worksheet  $sheet
      * @param  array<string, int|float>  $monthlySummary
      */
-    private function setHeaderData($sheet, User $user, CarbonImmutable $targetMonth, array $monthlySummary, int $dailyWorkingMinutes): void
+    private function setHeaderData($sheet, User $user, CarbonImmutable $targetMonth): void
     {
-        // 年度を設定（E1）
-        $fiscalYear = $targetMonth->month >= 4 ? $targetMonth->year : $targetMonth->year - 1;
-        $sheet->setCellValue('E1', $fiscalYear.'年度');
+        // 月度
+        $sheet->setCellValue('G1', $targetMonth->month);
 
-        // Row 4: スタッフ情報とサマリー
+        // スタッフの識別情報
         $sheet->setCellValue('A'.self::HEADER_ROW, $user->employee_code ?? '');
         $sheet->setCellValue('B'.self::HEADER_ROW, $user->name);
 
-        // 所属部門
         $user->loadMissing('departments');
         $primaryDepartment = $user->departments->where('pivot.is_primary', true)->first();
         $sheet->setCellValue('D'.self::HEADER_ROW, $primaryDepartment?->name ?? '');
 
-        // サマリーデータ
-        $sheet->setCellValue('E'.self::HEADER_ROW, $monthlySummary['work_days']);
-        $sheet->setCellValue('F'.self::HEADER_ROW, $this->formatDays($monthlySummary['paid_leave_days']));
-        $sheet->setCellValue('G'.self::HEADER_ROW, $this->formatDays($monthlySummary['absence_days']));
-        $sheet->setCellValue('H'.self::HEADER_ROW, $this->formatDays($monthlySummary['special_leave_days']));
-        $sheet->setCellValue('J'.self::HEADER_ROW, $monthlySummary['late_count'] + $monthlySummary['early_leave_count']);
-        $sheet->setCellValue('K'.self::HEADER_ROW, $this->formatMinutesToHM($monthlySummary['total_net_work_minutes']));
-        // L4: 所定時間 = 出勤日数 × 1日所定時間
-        $scheduledMinutes = $monthlySummary['work_days'] * $dailyWorkingMinutes;
-        $sheet->setCellValue('L'.self::HEADER_ROW, $this->formatMinutesToHM($scheduledMinutes));
-        $sheet->setCellValue('M'.self::HEADER_ROW, $this->formatMinutesToHM($monthlySummary['total_overtime_minutes']));
-        $sheet->setCellValue('N'.self::HEADER_ROW, $this->formatMinutesToHM($monthlySummary['total_holiday_minutes']));
-        $sheet->setCellValue('O'.self::HEADER_ROW, $this->formatMinutesToHM($monthlySummary['total_night_minutes']));
-        $sheet->setCellValue('P'.self::HEADER_ROW, $this->formatMinutesToHM($monthlySummary['total_late_minutes'] + $monthlySummary['total_early_leave_minutes']));
+        // 集計欄（H4〜U4）はテンプレート側の数式が算出するため書き込まない。
+        // 値を入れると数式が失われ、シート側で組まれた集計が動かなくなる。
     }
-
-    private const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
     /**
      * 明細部分にデータを設定
@@ -206,49 +195,55 @@ class AttendanceExcelExportService
             $sheet->setCellValue('B'.$row, $workType);
 
             if ($summary) {
-                // C: シフト開始時刻（HH:MM形式）
+                // C: シフト開始
                 $sheet->setCellValue('C'.$row, $this->formatTimeToHM($summary->scheduled_start_time));
 
-                // D: シフト終了時刻（HH:MM形式）
+                // D: シフト終了
                 $sheet->setCellValue('D'.$row, $this->formatTimeToHM($summary->scheduled_end_time));
 
-                // E: シフト休憩時間（現在のデータソースにない）
+                // E・F: シフト休憩の開始・終了
+                $sheet->setCellValue('E'.$row, $this->formatTimeToHM($summary->scheduled_break_start ?? null));
+                $sheet->setCellValue('F'.$row, $this->formatTimeToHM($summary->scheduled_break_end ?? null));
 
-                // F: 出勤時刻
-                $sheet->setCellValue('F'.$row, $summary->work_start?->format('H:i') ?? '');
+                // G: 出勤時刻
+                $sheet->setCellValue('G'.$row, $summary->work_start?->format('H:i') ?? '');
 
-                // G: 退勤時刻
-                $sheet->setCellValue('G'.$row, $summary->work_end?->format('H:i') ?? '');
+                // H: 退勤時刻
+                $sheet->setCellValue('H'.$row, $summary->work_end?->format('H:i') ?? '');
 
-                // H: 休憩時間
-                $sheet->setCellValue('H'.$row, $this->formatMinutesToHM($summary->break_minutes ?? 0));
+                // I〜L: 休憩の入り・出（2枠）
+                $breaks = $this->breakPeriodsFor($summary);
+                $sheet->setCellValue('I'.$row, $breaks[0]['start'] ?? '');
+                $sheet->setCellValue('J'.$row, $breaks[0]['end'] ?? '');
+                $sheet->setCellValue('K'.$row, $breaks[1]['start'] ?? '');
+                $sheet->setCellValue('L'.$row, $breaks[1]['end'] ?? '');
 
-                // I: 実働時間
-                $sheet->setCellValue('I'.$row, $this->formatMinutesToHM($summary->net_work_minutes ?? 0));
+                // M: 労働時間
+                $sheet->setCellValue('M'.$row, $this->formatMinutesToHM($summary->net_work_minutes ?? 0));
 
-                // J: 所定時間（シフトが設定されていれば1日所定時間を表示）
-                if ($summary->scheduled_start_time && $summary->scheduled_end_time) {
-                    $sheet->setCellValue('J'.$row, $this->formatMinutesToHM($dailyWorkingMinutes));
-                }
+                // N: 時間外
+                $sheet->setCellValue('N'.$row, $this->formatMinutesToHM($summary->overtime_minutes ?? 0));
 
-                // K: 所定外残業時間
-                $sheet->setCellValue('K'.$row, $this->formatMinutesToHM($summary->overtime_minutes ?? 0));
+                // O: 休日
+                $sheet->setCellValue('O'.$row, $this->formatMinutesToHM($summary->holiday_minutes ?? 0));
 
-                // L: 休日残業時間
-                $sheet->setCellValue('L'.$row, $this->formatMinutesToHM($summary->holiday_minutes ?? 0));
+                // P: 深夜
+                $sheet->setCellValue('P'.$row, $this->formatMinutesToHM($summary->night_minutes ?? 0));
 
-                // M: 深夜時間
-                $sheet->setCellValue('M'.$row, $this->formatMinutesToHM($summary->night_minutes ?? 0));
-
-                // N: 遅刻早退時間
+                // Q: 遅刻早退
                 $lateEarlyMinutes = ($summary->late_minutes ?? 0) + ($summary->early_leave_minutes ?? 0);
-                $sheet->setCellValue('N'.$row, $this->formatMinutesToHM($lateEarlyMinutes));
+                $sheet->setCellValue('Q'.$row, $this->formatMinutesToHM($lateEarlyMinutes));
 
-                // O・P: 備考/申請（申請種別ラベルと申請数値）
+                // R・S: 備考/申請（ラベルと数値を別の列に分ける）
+                //
+                // 集計欄の数式は R 列でラベルの位置を特定し、S 列の同じ位置にある
+                // 数値を取り出す作りになっている。
+                //   例: H4 = SUMPRODUCT(... FIND("有給休暇", $R$7:$R$37) ... $S$7:$S$37 ...)
+                // 1セルにまとめると数式が値を拾えなくなるため、必ず2列に分けて書く。
                 $dayRequests = $requestMap->get($dateKey, collect());
                 [$noteLabel, $noteValue] = $this->buildNoteColumns($summary, $dayRequests, $dailyWorkingMinutes);
-                $sheet->setCellValue('O'.$row, $noteLabel);
-                $sheet->setCellValue('P'.$row, $noteValue);
+                $sheet->setCellValue('R'.$row, $noteLabel);
+                $sheet->setCellValueExplicit('S'.$row, $noteValue, DataType::STRING);
             }
 
             $currentDate = $currentDate->addDay();
@@ -261,6 +256,37 @@ class AttendanceExcelExportService
      *
      * @param  mixed  $summary
      */
+    /**
+     * 休憩の入り・出を最大2枠まで取り出す
+     *
+     * テンプレートは休憩を2枠（休憩入①/出①、休憩入②/出②）持つ。
+     * 打刻から得られる休憩を順に割り当て、無い枠は空欄にする。
+     *
+     * @param  mixed  $summary
+     * @return array<int, array{start: string, end: string}>
+     */
+    private function breakPeriodsFor($summary): array
+    {
+        $periods = $summary->break_periods ?? null;
+
+        if (is_string($periods)) {
+            $periods = json_decode($periods, true);
+        }
+
+        if (! is_array($periods)) {
+            return [];
+        }
+
+        return collect($periods)
+            ->take(2)
+            ->map(fn ($period) => [
+                'start' => $this->formatTimeToHM($period['start'] ?? null),
+                'end' => $this->formatTimeToHM($period['end'] ?? null),
+            ])
+            ->values()
+            ->all();
+    }
+
     private function getWorkType($summary, CarbonImmutable $date): string
     {
         // 土日判定
@@ -367,37 +393,6 @@ class AttendanceExcelExportService
         return '1.0';
     }
 
-    private const TOTAL_ROW = 38;
-
-    /**
-     * 合計行（38行目）にI〜N列の合計を設定
-     *
-     * @param  \PhpOffice\PhpSpreadsheet\Worksheet\Worksheet  $sheet
-     * @param  array<string, int|float>  $monthlySummary
-     * @param  int  $dailyWorkingMinutes  1日所定勤務時間（分）
-     */
-    private function setTotalRow($sheet, array $monthlySummary, int $dailyWorkingMinutes): void
-    {
-        // I38: 実働時間合計
-        $sheet->setCellValue('I'.self::TOTAL_ROW, $this->formatMinutesToHM($monthlySummary['total_net_work_minutes']));
-
-        // J38: 所定時間合計
-        $scheduledMinutes = $monthlySummary['work_days'] * $dailyWorkingMinutes;
-        $sheet->setCellValue('J'.self::TOTAL_ROW, $this->formatMinutesToHM($scheduledMinutes));
-
-        // K38: 所定外残業時間合計
-        $sheet->setCellValue('K'.self::TOTAL_ROW, $this->formatMinutesToHM($monthlySummary['total_overtime_minutes']));
-
-        // L38: 休日残業時間合計
-        $sheet->setCellValue('L'.self::TOTAL_ROW, $this->formatMinutesToHM($monthlySummary['total_holiday_minutes']));
-
-        // M38: 深夜時間合計
-        $sheet->setCellValue('M'.self::TOTAL_ROW, $this->formatMinutesToHM($monthlySummary['total_night_minutes']));
-
-        // N38: 遅刻早退時間合計
-        $sheet->setCellValue('N'.self::TOTAL_ROW, $this->formatMinutesToHM($monthlySummary['total_late_minutes'] + $monthlySummary['total_early_leave_minutes']));
-    }
-
     /**
      * 一時ファイルとして保存
      *
@@ -420,6 +415,13 @@ class AttendanceExcelExportService
         }
 
         $writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
+
+        // 数式は評価せず、式のまま書き出す。
+        // シート側の集計は SUMPRODUCT や配列数式を多用しており、
+        // PhpSpreadsheet の計算エンジンでは評価できない。
+        // 式のまま保存すれば Excel を開いた時点で再計算される。
+        $writer->setPreCalculateFormulas(false);
+
         $writer->save($tempPath);
 
         return $tempPath;

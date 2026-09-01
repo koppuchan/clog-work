@@ -31,6 +31,8 @@ export interface WorkSummary {
   overtime_minutes: number;
   late_minutes: number;
   early_leave_minutes: number;
+  /** 承認済みの休暇の種別。入っている日は遅刻早退として扱わない */
+  leave_type: number | null;
   is_cross_day: boolean;
   record_source: { value: number; label: string };
   note: string | null;

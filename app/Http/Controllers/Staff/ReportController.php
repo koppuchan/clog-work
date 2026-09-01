@@ -116,6 +116,8 @@ class ReportController extends Controller
                 'overtime_minutes' => $summary->overtime_minutes,
                 'late_minutes' => $summary->late_minutes,
                 'early_leave_minutes' => $summary->early_leave_minutes,
+                // 承認済みの休暇がある日は遅刻早退として扱わないため画面へ渡す
+                'leave_type' => $summary->leave_type?->value,
                 'is_cross_day' => $summary->is_cross_day,
                 'record_source' => [
                     'value' => $summary->record_source->value,

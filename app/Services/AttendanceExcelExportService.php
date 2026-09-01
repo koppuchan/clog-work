@@ -34,6 +34,7 @@ class AttendanceExcelExportService
         private readonly RawStampTimeService $rawStampTimeService,
         private readonly DailyWorkSummaryRepositoryInterface $dailyWorkSummaryRepository,
         private readonly RequestRepositoryInterface $requestRepository,
+        private readonly LateEarlyLeaveDisplay $lateEarlyLeaveDisplay,
     ) {}
 
     /**
@@ -241,8 +242,9 @@ class AttendanceExcelExportService
                 // P: 深夜
                 $sheet->setCellValue('P'.$row, $this->formatMinutesToHM($summary->night_minutes ?? 0));
 
-                // Q: 遅刻早退
-                $lateEarlyMinutes = ($summary->late_minutes ?? 0) + ($summary->early_leave_minutes ?? 0);
+                // Q: 遅刻早退（承認済みの休暇がある日は遅刻早退として扱わない）
+                $lateEarlyMinutes = $this->lateEarlyLeaveDisplay->lateMinutes($summary)
+                    + $this->lateEarlyLeaveDisplay->earlyLeaveMinutes($summary);
                 $sheet->setCellValue('Q'.$row, $this->formatMinutesToHM($lateEarlyMinutes));
 
                 // R・S: 備考/申請（ラベルと数値を別の列に分ける）

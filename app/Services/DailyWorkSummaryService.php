@@ -41,7 +41,8 @@ class DailyWorkSummaryService
         private readonly CompanyRepositoryInterface $companyRepository,
         private readonly UserRepositoryInterface $userRepository,
         private readonly DailyWorkSummaryBatchService $dailyWorkSummaryBatchService,
-        private readonly TimeRoundingService $timeRoundingService
+        private readonly TimeRoundingService $timeRoundingService,
+        private readonly RawStampTimeService $rawStampTimeService
     ) {}
 
     /**
@@ -695,6 +696,13 @@ class DailyWorkSummaryService
         $lines[] = ['氏名', '日付', '曜日', '出勤時刻', '退勤時刻', '勤務時間', '休憩', '実働時間', '時間外', '休日', '深夜', '遅刻', '早退', '備考'];
 
         foreach ($users as $user) {
+            $rawTimes = $this->rawStampTimeService->mapByDate(
+                $companyId,
+                $user->id,
+                $startDate->format('Y-m-d'),
+                $endDate->format('Y-m-d'),
+            );
+
             $summaries = $this->getByUserIdAndDateRange(
                 $companyId,
                 $user->id,
@@ -709,12 +717,15 @@ class DailyWorkSummaryService
                 $summary = $summaryMap->get($dateKey);
                 $dayOfWeek = $weekdays[$currentDate->dayOfWeek];
 
+                // 表示は実打刻を使う。集計テーブルには丸め後の時刻が入っている。
+                $raw = $rawTimes[$dateKey] ?? null;
+
                 $lines[] = [
                     $user->name,
                     $currentDate->format('Y/m/d'),
                     $dayOfWeek,
-                    $summary?->work_start?->format('H:i') ?? '',
-                    $summary?->work_end?->format('H:i') ?? '',
+                    $raw['work_start'] ?? $summary?->work_start?->format('H:i') ?? '',
+                    $raw['work_end'] ?? $summary?->work_end?->format('H:i') ?? '',
                     $this->formatMinutesToHM($summary?->work_minutes ?? 0),
                     $this->formatMinutesToHM($summary?->break_minutes ?? 0),
                     $this->formatMinutesToHM($summary?->net_work_minutes ?? 0),

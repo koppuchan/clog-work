@@ -8,9 +8,9 @@ use App\Http\Controllers\Controller;
 use App\Mail\PasswordResetMail;
 use App\Repositories\Contracts\CompanyRepositoryInterface;
 use App\Repositories\Contracts\UserRepositoryInterface;
+use App\Services\MailDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
@@ -27,7 +27,8 @@ class AdminPasswordResetController extends Controller
 {
     public function __construct(
         private readonly CompanyRepositoryInterface $companyRepository,
-        private readonly UserRepositoryInterface $userRepository
+        private readonly UserRepositoryInterface $userRepository,
+        private readonly MailDispatcher $mailDispatcher
     ) {}
 
     /**
@@ -104,11 +105,11 @@ class AdminPasswordResetController extends Controller
         $resetUrl = route('password.reset', ['token' => $token, 'email' => $user->email]);
 
         // メール送信
-        Mail::to($user->email)->send(new PasswordResetMail(
+        $this->mailDispatcher->send($user->email, new PasswordResetMail(
             user: $user,
             resetUrl: $resetUrl,
             companyCode: $company->company_code
-        ));
+        ), ['user_id' => $user->id]);
 
         RateLimiter::clear($throttleKey);
 

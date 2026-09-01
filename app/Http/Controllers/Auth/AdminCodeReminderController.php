@@ -7,9 +7,9 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Mail\CodeReminderMail;
 use App\Models\User;
+use App\Services\MailDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -23,6 +23,10 @@ use Inertia\Response;
  */
 class AdminCodeReminderController extends Controller
 {
+    public function __construct(
+        private readonly MailDispatcher $mailDispatcher
+    ) {}
+
     /**
      * コード通知申請画面を表示
      */
@@ -68,10 +72,10 @@ class AdminCodeReminderController extends Controller
             $company = $user->primaryCompany()->first();
 
             if ($company) {
-                Mail::to($user->email)->send(new CodeReminderMail(
+                $this->mailDispatcher->send($user->email, new CodeReminderMail(
                     user: $user,
                     companyCode: $company->company_code
-                ));
+                ), ['user_id' => $user->id]);
             }
         }
 

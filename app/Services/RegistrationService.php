@@ -15,7 +15,6 @@ use App\Repositories\Contracts\UserRepositoryInterface;
 use App\Traits\HasLogService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 /**
@@ -40,7 +39,8 @@ class RegistrationService
     public function __construct(
         private readonly UserRepositoryInterface $userRepository,
         private readonly CompanyRepositoryInterface $companyRepository,
-        private readonly RegistrationTokenRepositoryInterface $registrationTokenRepository
+        private readonly RegistrationTokenRepositoryInterface $registrationTokenRepository,
+        private readonly MailDispatcher $mailDispatcher
     ) {}
 
     /**
@@ -71,12 +71,17 @@ class RegistrationService
 
         // 確認メールを送信
         $verificationUrl = route('register.verify', ['token' => $token->token]);
-        Mail::to($email)->send(new RegistrationVerificationMail($verificationUrl));
 
-        $this->logInfo('Verification email sent', [
-            'email' => $email,
-            'token_id' => $token->id,
-        ]);
+        $sent = $this->mailDispatcher->send(
+            $email,
+            new RegistrationVerificationMail($verificationUrl),
+            ['token_id' => $token->id],
+        );
+
+        // 送信できないまま登録が進むと、利用者は届かないメールを待ち続けることになる
+        if (! $sent) {
+            throw new BusinessException('確認メールを送信できませんでした。時間をおいて再度お試しください。');
+        }
 
         return $token;
     }

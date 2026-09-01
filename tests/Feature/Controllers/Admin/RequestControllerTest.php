@@ -67,7 +67,7 @@ class RequestControllerTest extends TestCase
     public function index_displays_applications_page(): void
     {
         // Act
-        $response = $this->actingAs($this->admin)->get('/admin/applications');
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications');
 
         // Assert
         $response->assertStatus(200);
@@ -84,7 +84,7 @@ class RequestControllerTest extends TestCase
         $this->createCorrectionRequest(['status' => RequestStatusEnum::PENDING]);
 
         // Act（デフォルトで申請中フィルタがかかるが、両方PENDINGなので2件返る）
-        $response = $this->actingAs($this->admin)->get('/admin/applications');
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications');
 
         // Assert
         $response->assertStatus(200);
@@ -107,7 +107,7 @@ class RequestControllerTest extends TestCase
         $this->createNormalRequest(['status' => RequestStatusEnum::REJECTED]);
 
         // Act - status パラメータなしでアクセス
-        $response = $this->actingAs($this->admin)->get('/admin/applications');
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications');
 
         // Assert - 申請中(PENDING=1)のみが返り、currentStatus も PENDING になる
         $response->assertStatus(200);
@@ -131,7 +131,7 @@ class RequestControllerTest extends TestCase
         $this->createNormalRequest(['status' => RequestStatusEnum::REJECTED]);
 
         // Act
-        $response = $this->actingAs($this->admin)->get('/admin/applications?status=all');
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications?status=all');
 
         // Assert - 3件すべて返り、currentStatus は null
         $response->assertStatus(200);
@@ -153,7 +153,7 @@ class RequestControllerTest extends TestCase
         $this->createCorrectionRequest(['status' => RequestStatusEnum::PENDING]);
 
         // Act
-        $response = $this->actingAs($this->admin)->get('/admin/applications?status=1');
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications?status=1');
 
         // Assert
         $response->assertStatus(200);
@@ -183,7 +183,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $response = $this->actingAs($this->admin)->get('/admin/applications?requested_by='.$this->employee->id);
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications?requested_by='.$this->employee->id);
 
         // Assert
         $response->assertStatus(200);
@@ -207,7 +207,7 @@ class RequestControllerTest extends TestCase
         }
 
         // Act
-        $response = $this->actingAs($this->admin)->get('/admin/applications?page=1');
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications?page=1');
 
         // Assert
         $response->assertStatus(200);
@@ -232,7 +232,7 @@ class RequestControllerTest extends TestCase
         $this->createCorrectionRequest(['status' => RequestStatusEnum::REJECTED]);
 
         // Act（全ステータスを統計対象に含めたいので明示的に「すべて」を選択）
-        $response = $this->actingAs($this->admin)->get('/admin/applications?status=all');
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications?status=all');
 
         // Assert
         $response->assertStatus(200);
@@ -266,7 +266,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $response = $this->actingAs($this->admin)->get('/admin/applications');
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications');
 
         // Assert
         $response->assertStatus(200);
@@ -282,7 +282,7 @@ class RequestControllerTest extends TestCase
     public function index_returns_status_options(): void
     {
         // Act
-        $response = $this->actingAs($this->admin)->get('/admin/applications');
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications');
 
         // Assert
         $response->assertStatus(200);
@@ -311,7 +311,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $response = $this->actingAs($this->admin)->get('/admin/applications');
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications');
 
         // Assert
         $response->assertStatus(200);
@@ -334,7 +334,7 @@ class RequestControllerTest extends TestCase
         $request = $this->createNormalRequest(['status' => RequestStatusEnum::PENDING]);
 
         // Act
-        $response = $this->actingAs($this->admin)->get('/admin/applications/'.$request->id);
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications/'.$request->id);
 
         // Assert
         $response->assertStatus(200);
@@ -354,7 +354,7 @@ class RequestControllerTest extends TestCase
         $correctionRequest = $this->createCorrectionRequest(['status' => RequestStatusEnum::PENDING]);
 
         // Act
-        $response = $this->actingAs($this->admin)->get('/admin/applications/'.$correctionRequest->id.'?type=correction');
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications/'.$correctionRequest->id.'?type=correction');
 
         // Assert
         $response->assertStatus(200);
@@ -375,7 +375,7 @@ class RequestControllerTest extends TestCase
         $correctionRequest = $this->createCorrectionRequestWithDetails();
 
         // Act
-        $response = $this->actingAs($this->admin)->get('/admin/applications/'.$correctionRequest->id.'?type=correction');
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications/'.$correctionRequest->id.'?type=correction');
 
         // Assert
         $response->assertStatus(200);
@@ -391,7 +391,7 @@ class RequestControllerTest extends TestCase
     public function show_returns_404_for_nonexistent_request(): void
     {
         // Act
-        $response = $this->actingAs($this->admin)->get('/admin/applications/99999');
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications/99999');
 
         // Assert
         $response->assertStatus(404);
@@ -415,7 +415,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $response = $this->actingAs($this->admin)->get('/admin/applications/'.$request->id);
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications/'.$request->id);
 
         // Assert
         $response->assertStatus(404);
@@ -434,7 +434,7 @@ class RequestControllerTest extends TestCase
         $request = $this->createNormalRequest(['status' => RequestStatusEnum::PENDING]);
 
         // Act
-        $response = $this->actingAs($this->admin)->post('/admin/applications/'.$request->id.'/approve', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$request->id.'/approve', [
             'request_type' => 'normal',
         ]);
 
@@ -456,7 +456,7 @@ class RequestControllerTest extends TestCase
         $request = $this->createNormalRequest(['status' => RequestStatusEnum::PENDING]);
 
         // Act
-        $response = $this->actingAs($this->admin)->post('/admin/applications/'.$request->id.'/approve', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$request->id.'/approve', [
             'request_type' => 'normal',
             'decision_note' => '承認します',
         ]);
@@ -482,7 +482,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $response = $this->actingAs($this->admin)->post('/admin/applications/'.$request->id.'/approve', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$request->id.'/approve', [
             'request_type' => 'normal',
         ]);
 
@@ -504,7 +504,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $response = $this->actingAs($this->admin)->post('/admin/applications/'.$request->id.'/approve', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$request->id.'/approve', [
             'request_type' => 'normal',
         ]);
 
@@ -524,7 +524,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $response = $this->actingAs($this->admin)->post('/admin/applications/'.$request->id.'/approve', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$request->id.'/approve', [
             'request_type' => 'normal',
         ]);
 
@@ -551,7 +551,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $response = $this->actingAs($this->admin)->post('/admin/applications/'.$request->id.'/approve', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$request->id.'/approve', [
             'request_type' => 'normal',
         ]);
 
@@ -572,7 +572,7 @@ class RequestControllerTest extends TestCase
         $correctionRequest = $this->createCorrectionRequestWithDetails();
 
         // Act
-        $response = $this->actingAs($this->admin)->post('/admin/applications/'.$correctionRequest->id.'/approve', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$correctionRequest->id.'/approve', [
             'request_type' => 'correction',
         ]);
 
@@ -621,7 +621,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $response = $this->actingAs($this->admin)->post('/admin/applications/'.$correctionRequest->id.'/approve', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$correctionRequest->id.'/approve', [
             'request_type' => 'correction',
         ]);
 
@@ -658,7 +658,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $response = $this->actingAs($this->admin)->post('/admin/applications/'.$correctionRequest->id.'/approve', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$correctionRequest->id.'/approve', [
             'request_type' => 'correction',
         ]);
 
@@ -712,7 +712,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $this->actingAs($this->admin)->post('/admin/applications/'.$correctionRequest->id.'/approve', [
+        $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$correctionRequest->id.'/approve', [
             'request_type' => 'correction',
         ]);
 
@@ -774,7 +774,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $this->actingAs($this->admin)->post('/admin/applications/'.$correctionRequest->id.'/approve', [
+        $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$correctionRequest->id.'/approve', [
             'request_type' => 'correction',
         ]);
 
@@ -802,7 +802,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $response = $this->actingAs($this->admin)->post('/admin/applications/'.$correctionRequest->id.'/approve', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$correctionRequest->id.'/approve', [
             'request_type' => 'correction',
         ]);
 
@@ -828,7 +828,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $response = $this->actingAs($this->admin)->post('/admin/applications/'.$correctionRequest->id.'/approve', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$correctionRequest->id.'/approve', [
             'request_type' => 'correction',
         ]);
 
@@ -849,7 +849,7 @@ class RequestControllerTest extends TestCase
         $request = $this->createNormalRequest(['status' => RequestStatusEnum::PENDING]);
 
         // Act
-        $response = $this->actingAs($this->admin)->post('/admin/applications/'.$request->id.'/reject', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$request->id.'/reject', [
             'request_type' => 'normal',
             'decision_note' => '却下理由',
         ]);
@@ -877,7 +877,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $response = $this->actingAs($this->admin)->post('/admin/applications/'.$request->id.'/reject', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$request->id.'/reject', [
             'request_type' => 'normal',
         ]);
 
@@ -899,7 +899,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $response = $this->actingAs($this->admin)->post('/admin/applications/'.$request->id.'/reject', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$request->id.'/reject', [
             'request_type' => 'normal',
         ]);
 
@@ -921,7 +921,7 @@ class RequestControllerTest extends TestCase
         $correctionRequest = $this->createCorrectionRequest(['status' => RequestStatusEnum::PENDING]);
 
         // Act
-        $response = $this->actingAs($this->admin)->post('/admin/applications/'.$correctionRequest->id.'/reject', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$correctionRequest->id.'/reject', [
             'request_type' => 'correction',
             'decision_note' => '却下理由',
         ]);
@@ -972,7 +972,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $this->actingAs($this->admin)->post('/admin/applications/'.$correctionRequest->id.'/reject', [
+        $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$correctionRequest->id.'/reject', [
             'request_type' => 'correction',
             'decision_note' => '却下',
         ]);
@@ -996,7 +996,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $response = $this->actingAs($this->admin)->post('/admin/applications/'.$correctionRequest->id.'/reject', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$correctionRequest->id.'/reject', [
             'request_type' => 'correction',
         ]);
 
@@ -1020,7 +1020,7 @@ class RequestControllerTest extends TestCase
         $this->createNormalRequest(['status' => RequestStatusEnum::APPROVED]);
 
         // Act
-        $response = $this->actingAs($this->admin)->get('/admin/applications/pending');
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications/pending');
 
         // Assert
         $response->assertStatus(200);
@@ -1043,7 +1043,7 @@ class RequestControllerTest extends TestCase
         $this->createCorrectionRequest(['status' => RequestStatusEnum::APPROVED]);
 
         // Act
-        $response = $this->actingAs($this->admin)->get('/admin/applications/pending');
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications/pending');
 
         // Assert
         $response->assertStatus(200);
@@ -1094,7 +1094,7 @@ class RequestControllerTest extends TestCase
     public function index_handles_empty_requests(): void
     {
         // Act
-        $response = $this->actingAs($this->admin)->get('/admin/applications');
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications');
 
         // Assert
         $response->assertStatus(200);
@@ -1115,7 +1115,7 @@ class RequestControllerTest extends TestCase
         $this->createNormalRequest(['status' => RequestStatusEnum::PENDING]);
 
         // Act - ページ100を要求（データは1件のみ）
-        $response = $this->actingAs($this->admin)->get('/admin/applications?page=100');
+        $response = $this->actingAs($this->admin, 'admin')->get('/admin/applications?page=100');
 
         // Assert - ページは最後のページに補正される
         $response->assertStatus(200);
@@ -1131,7 +1131,7 @@ class RequestControllerTest extends TestCase
     public function approve_handles_exception_gracefully(): void
     {
         // Arrange - 存在しないIDで承認を試みる
-        $response = $this->actingAs($this->admin)->post('/admin/applications/99999/approve', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/99999/approve', [
             'request_type' => 'normal',
         ]);
 
@@ -1185,7 +1185,7 @@ class RequestControllerTest extends TestCase
         ]);
 
         // Act
-        $response = $this->actingAs($this->admin)->post('/admin/applications/'.$correctionRequest->id.'/approve', [
+        $response = $this->actingAs($this->admin, 'admin')->post('/admin/applications/'.$correctionRequest->id.'/approve', [
             'request_type' => 'correction',
         ]);
 

@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useMemo } from 'react';
 import { format } from 'date-fns';
-import { ShiftCalendarProps } from '@/types/shift';
+import { ShiftCalendarProps, ShiftLeave } from '@/types/shift';
 import { User } from '@/types';
 import { getHolidayName } from '@/lib/holidays';
 
@@ -42,7 +42,24 @@ export default function ShiftCalendar({
   getMonthlyStats,
   getAllStaffTotals,
   getShiftCountsByDate,
+  leaves = [],
 }: ShiftCalendarProps) {
+  // 承認済みの休暇をユーザー×日付で引けるようにする
+  const leaveByUserDate = useMemo(() => {
+    const map = new Map<string, ShiftLeave>();
+    leaves.forEach((leave) => map.set(`${leave.user_id}-${leave.date}`, leave));
+    return map;
+  }, [leaves]);
+
+  // 日ごとに出勤予定人数から差し引く人数
+  const leaveDeductionByDate = useMemo(() => {
+    const map = new Map<string, number>();
+    leaves.forEach((leave) => {
+      map.set(leave.date, (map.get(leave.date) ?? 0) + leave.deduction);
+    });
+    return map;
+  }, [leaves]);
+
   const calendarContainerRef = useRef<HTMLDivElement>(null);
   const headerContainerRef = useRef<HTMLDivElement>(null);
   const [bulkModalPos, setBulkModalPos] = useState<{ top: number; left: number } | null>(null);
@@ -372,16 +389,27 @@ export default function ShiftCalendar({
 
                           const isScheduledOff = !isWorkDay && dayShifts.length > 0 && dayShifts[0].shiftType === 'rest';
 
+                          const leave = leaveByUserDate.get(`${user.id}-${dateStr}`);
+                          // 全日の休暇はセル全体、半日・時間有給はシフト名の下にバッジを出す
+                          const isFullDayLeave = leave?.is_full_day === true;
+
                           return (
                             <div
                               key={dayIndex}
-                              className={`w-14 h-10 shrink-0 border rounded-lg cursor-pointer transition-all ${
-                                dayShifts.length > 0
+                              className={`w-14 h-10 shrink-0 border rounded-lg cursor-pointer transition-all overflow-hidden ${
+                                isFullDayLeave
+                                  ? ''
+                                  : dayShifts.length > 0
                                   ? isScheduledOff
                                     ? 'bg-gray-200 hover:bg-gray-300'
                                     : `${getShiftTypeInfo(dayShifts[0].shiftType).color} ${getShiftTypeInfo(dayShifts[0].shiftType).textColor}`
                                   : 'bg-gray-200 hover:bg-gray-300'
                               } ${selectedCell?.userId === user.id && selectedCell?.date === dateStr ? 'ring-2 ring-blue-500' : ''}`}
+                              style={
+                                isFullDayLeave
+                                  ? { backgroundColor: leave!.background_color, color: leave!.text_color }
+                                  : undefined
+                              }
                               onClick={(e) => {
                                 const rect = e.currentTarget.getBoundingClientRect();
                                 setCellModalPos({
@@ -391,7 +419,25 @@ export default function ShiftCalendar({
                                 onCellClick(user.id, dateStr, dayIndex);
                               }}
                             >
-                              {dayShifts.length > 0 ? (
+                              {isFullDayLeave ? (
+                                <div className="h-full flex items-center justify-center">
+                                  <div className="font-bold text-xs text-center">{leave!.label}</div>
+                                </div>
+                              ) : leave ? (
+                                <div className="h-full flex flex-col">
+                                  <div className="flex-1 flex items-center justify-center font-medium text-[10px] leading-none">
+                                    {dayShifts.length > 0
+                                      ? getShiftTypeInfo(dayShifts[0].shiftType).name
+                                      : '休み'}
+                                  </div>
+                                  <div
+                                    className="flex-1 flex items-center justify-center font-bold text-[10px] leading-none"
+                                    style={{ backgroundColor: leave.background_color, color: leave.text_color }}
+                                  >
+                                    {leave.label}
+                                  </div>
+                                </div>
+                              ) : dayShifts.length > 0 ? (
                                 <div className="h-full flex items-center justify-center">
                                   <div className={`font-medium text-xs text-center ${isScheduledOff ? 'text-gray-600' : ''}`}>
                                     {getShiftTypeInfo(dayShifts[0].shiftType).name}
@@ -439,14 +485,23 @@ export default function ShiftCalendar({
               <div className="flex gap-1 mb-2">
                 {monthDays.map((day, dayIndex) => {
                   const shiftCounts = getShiftCountsByDate(day);
-                  const totalCount = Object.values(shiftCounts).reduce((sum, count) => sum + count, 0);
+                  const scheduledCount = Object.values(shiftCounts).reduce((sum, count) => sum + count, 0);
+
+                  // 承認済みの休暇の分を差し引く（全日-1、半日-0.5、時間有給は按分）
+                  const deduction = leaveDeductionByDate.get(format(day, 'yyyy-MM-dd')) ?? 0;
+                  const totalCount = Math.max(0, Math.round((scheduledCount - deduction) * 100) / 100);
 
                   return (
                     <div
                       key={dayIndex}
-                      className="w-14 h-10 shrink-0 bg-green-50 border rounded-lg flex items-center justify-center"
+                      className="w-14 h-10 shrink-0 bg-green-50 border rounded-lg flex flex-col items-center justify-center"
                     >
-                      <div className="text-sm font-bold text-green-700">{totalCount}人</div>
+                      <div className="text-sm font-bold text-green-700 leading-none">{totalCount}人</div>
+                      {deduction > 0 && (
+                        <div className="text-[10px] text-orange-600 leading-none mt-0.5">
+                          -{Math.round(deduction * 100) / 100}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

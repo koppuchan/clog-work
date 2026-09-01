@@ -2,6 +2,7 @@ import { Fragment, useRef, useEffect, useMemo } from 'react';
 import { format, isToday } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import type { ShiftUser, ShiftData } from '@/types/staff/shifts';
+import type { ShiftLeave } from '@/types/shift';
 
 interface ShiftTableProps {
   users: ShiftUser[];
@@ -9,6 +10,7 @@ interface ShiftTableProps {
   getHoliday: (date: Date) => string | undefined;
   getShiftForDate: (date: Date, userId: number) => ShiftData | undefined;
   getTimeRange: (shift: ShiftData) => string;
+  leaves?: ShiftLeave[];
 }
 
 /** 部署名が未設定のスタッフをまとめる際の表示名 */
@@ -20,8 +22,19 @@ export function ShiftTable({
   getHoliday,
   getShiftForDate,
   getTimeRange,
+  leaves = [],
 }: ShiftTableProps) {
   const todayRef = useRef<HTMLTableCellElement>(null);
+
+  // 承認済みの休暇をユーザー×日付で引けるようにする
+  const leaveByUserDate = useMemo(() => {
+    const map = new Map<string, ShiftLeave>();
+    leaves.forEach((leave) => map.set(`${leave.user_id}-${leave.date}`, leave));
+    return map;
+  }, [leaves]);
+
+  const leaveFor = (date: Date, userId: number): ShiftLeave | undefined =>
+    leaveByUserDate.get(`${userId}-${format(date, 'yyyy-MM-dd')}`);
 
   useEffect(() => {
     todayRef.current?.scrollIntoView({ inline: 'center', behavior: 'instant' });
@@ -44,9 +57,21 @@ export function ShiftTable({
 
   const columnCount = daysInMonth.length + 1;
 
-  /** その日に出勤予定のスタッフ数 */
-  const countForDate = (date: Date, members: ShiftUser[]): number =>
-    members.filter((user) => getShiftForDate(date, user.id)).length;
+  /**
+   * その日に出勤予定のスタッフ数
+   *
+   * 承認済みの休暇の分を差し引く。全日は1人、半日有給は0.5人、
+   * 時間有給は所定労働時間に対する按分。
+   */
+  const countForDate = (date: Date, members: ShiftUser[]): number => {
+    const scheduled = members.filter((user) => getShiftForDate(date, user.id)).length;
+    const deduction = members.reduce(
+      (sum, user) => sum + (leaveFor(date, user.id)?.deduction ?? 0),
+      0
+    );
+
+    return Math.max(0, Math.round((scheduled - deduction) * 100) / 100);
+  };
 
   return (
     <div className="bg-white shadow rounded-lg overflow-hidden">
@@ -122,6 +147,7 @@ export function ShiftTable({
                     {daysInMonth.map((date) => {
                       const shift = getShiftForDate(date, user.id);
                       const isCurrentDay = isToday(date);
+                      const leave = leaveFor(date, user.id);
 
                       return (
                         <td
@@ -130,19 +156,44 @@ export function ShiftTable({
                             user.is_self ? 'bg-green-50' : ''
                           }`}
                         >
-                          {shift ? (
+                          {leave?.is_full_day ? (
+                            <span
+                              className="inline-block px-2 py-1 rounded font-bold"
+                              style={{
+                                backgroundColor: leave.background_color,
+                                color: leave.text_color,
+                              }}
+                            >
+                              {leave.label}
+                            </span>
+                          ) : (
                             <div className="flex flex-col items-center gap-1">
-                              <span
-                                className={`px-2 py-1 rounded font-medium ${shift.color || 'bg-gray-100'}`}
-                              >
-                                {shift.shift_pattern_name ?? '—'}
-                              </span>
-                              {shift.start_time && (
-                                <span className="text-gray-500">{getTimeRange(shift)}</span>
+                              {shift ? (
+                                <>
+                                  <span
+                                    className={`px-2 py-1 rounded font-medium ${shift.color || 'bg-gray-100'}`}
+                                  >
+                                    {shift.shift_pattern_name ?? '—'}
+                                  </span>
+                                  {shift.start_time && (
+                                    <span className="text-gray-500">{getTimeRange(shift)}</span>
+                                  )}
+                                </>
+                              ) : (
+                                !leave && <span className="text-gray-300">—</span>
+                              )}
+                              {leave && (
+                                <span
+                                  className="px-2 py-0.5 rounded font-bold"
+                                  style={{
+                                    backgroundColor: leave.background_color,
+                                    color: leave.text_color,
+                                  }}
+                                >
+                                  {leave.label}
+                                </span>
                               )}
                             </div>
-                          ) : (
-                            <span className="text-gray-300">—</span>
                           )}
                         </td>
                       );

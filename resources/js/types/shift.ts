@@ -9,6 +9,7 @@ export interface ShiftsPageProps {
   users: BackendUser[];
   departments: BackendDepartment[];
   shiftPatterns: ShiftPattern[];
+  leaves?: ShiftLeave[];
   filters: {
     start_date: string;
     end_date: string;
@@ -74,6 +75,23 @@ export interface BulkPatternDialogProps {
 }
 
 // ShiftCalendar component props
+/**
+ * シフト表に反映する承認済みの休暇
+ *
+ * deduction は出勤予定人数から差し引く人数。
+ * 全日は1、半日有給は0.5、時間有給は所定労働時間に対する按分。
+ */
+export interface ShiftLeave {
+  user_id: number;
+  date: string;
+  leave_type: number;
+  label: string;
+  is_full_day: boolean;
+  deduction: number;
+  background_color: string;
+  text_color: string;
+}
+
 export interface ShiftCalendarProps {
   monthDays: Date[];
   activeUsers: User[];
@@ -92,6 +110,7 @@ export interface ShiftCalendarProps {
   getMonthlyStats: (userId: string) => { totalHours: number; restDays: number; workDays: number };
   getAllStaffTotals: () => { totalHours: number; totalRestDays: number; totalWorkDays: number };
   getShiftCountsByDate: (date: Date) => { [key: string]: number };
+  leaves?: ShiftLeave[];
 }
 
 // ShiftLegend component props

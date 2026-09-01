@@ -9,6 +9,7 @@ use App\Http\Requests\UpsertShiftRequest;
 use App\Services\CompanySettingService;
 use App\Services\DepartmentService;
 use App\Services\PermissionService;
+use App\Services\ShiftLeaveService;
 use App\Services\ShiftPatternService;
 use App\Services\ShiftService;
 use App\Services\UserService;
@@ -29,7 +30,8 @@ class ShiftController extends Controller
         private readonly DepartmentService $departmentService,
         private readonly ShiftPatternService $shiftPatternService,
         private readonly CompanySettingService $companySettingService,
-        private readonly PermissionService $permissionService
+        private readonly PermissionService $permissionService,
+        private readonly ShiftLeaveService $shiftLeaveService
     ) {}
 
     /**
@@ -118,8 +120,17 @@ class ShiftController extends Controller
             ];
         });
 
+        // 承認済みの休暇をシフト表に反映する（セル表示と出勤人数の減算）
+        $leaves = $this->shiftLeaveService->getLeavesForShift(
+            $companyId,
+            $users->pluck('id')->all(),
+            $startDate,
+            $endDate,
+        );
+
         return Inertia::render('Admin/Shifts', [
             'shifts' => $shiftsFormatted,
+            'leaves' => $leaves,
             'users' => $users->map(fn ($user) => [
                 'id' => $user->id,
                 'name' => $user->name,

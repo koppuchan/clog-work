@@ -1,3 +1,5 @@
+import type { ShiftLeave } from '@/types/shift';
+
 export interface ShiftUser {
   id: number;
   name: string;
@@ -29,6 +31,7 @@ export interface StaffShiftsPageProps {
   users: ShiftUser[];
   shifts: Record<string, Record<number, ShiftData>>;
   shiftPatterns: ShiftPattern[];
+  leaves?: ShiftLeave[];
   currentUserId: number;
   scope: 'self' | 'department' | 'company';
   filters: {

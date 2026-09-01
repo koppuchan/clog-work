@@ -10,18 +10,19 @@ use App\Http\Requests\RegisterCompanyRequest;
 use App\Http\Requests\RegisterEmailRequest;
 use App\Http\Requests\RegisterUserRequest;
 use App\Mail\RegistrationCompleteMail;
+use App\Services\MailDispatcher;
 use App\Services\RegistrationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class RegistrationController extends Controller
 {
     public function __construct(
-        private readonly RegistrationService $registrationService
+        private readonly RegistrationService $registrationService,
+        private readonly MailDispatcher $mailDispatcher
     ) {}
 
     /**
@@ -130,15 +131,11 @@ class RegistrationController extends Controller
         }
 
         // 登録完了メールを送信（失敗しても登録自体はロールバックしない）
-        try {
-            Mail::to($result['user']->email)->send(new RegistrationCompleteMail(
-                user: $result['user'],
-                companyCode: $result['company']->company_code,
-                loginUrl: url('/admin/login')
-            ));
-        } catch (\Throwable $e) {
-            report($e);
-        }
+        $this->mailDispatcher->send($result['user']->email, new RegistrationCompleteMail(
+            user: $result['user'],
+            companyCode: $result['company']->company_code,
+            loginUrl: url('/admin/login')
+        ), ['user_id' => $result['user']->id]);
 
         // セッションをクリア
         session()->forget(['registration.token', 'registration.user']);

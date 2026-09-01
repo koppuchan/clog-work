@@ -18,7 +18,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 
 /**
@@ -42,7 +41,8 @@ class UserService
 
     public function __construct(
         private readonly UserRepositoryInterface $userRepository,
-        private readonly UserPermissionRepositoryInterface $userPermissionRepository
+        private readonly UserPermissionRepositoryInterface $userPermissionRepository,
+        private readonly MailDispatcher $mailDispatcher
     ) {}
 
     /**
@@ -246,7 +246,8 @@ class UserService
                             ? config('attendance.admin_login_url')
                             : '';
 
-                        Mail::to($user->email)->send(
+                        $this->mailDispatcher->send(
+                            $user->email,
                             new WelcomeUserMail(
                                 $user,
                                 $plainPassword,
@@ -254,7 +255,8 @@ class UserService
                                 $company->company_code,
                                 $stampPassword,
                                 $adminLoginUrl
-                            )
+                            ),
+                            ['user_id' => $user->id],
                         );
 
                         $this->logInfo('Welcome email sent', [
@@ -940,11 +942,11 @@ class UserService
                 $companyCode = $company?->company_code ?? '';
                 $loginUrl = config('attendance.staff_login_url');
 
-                Mail::to($user->email)->send(
-                    new NewPasswordMail($user, $newPassword, $companyCode, $loginUrl)
+                $emailSent = $this->mailDispatcher->send(
+                    $user->email,
+                    new NewPasswordMail($user, $newPassword, $companyCode, $loginUrl),
+                    ['user_id' => $userId],
                 );
-
-                $emailSent = true;
 
                 $this->logInfo('Password reset email sent', [
                     'user_id' => $userId,

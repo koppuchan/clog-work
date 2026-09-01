@@ -31,6 +31,7 @@ class AttendanceExcelExportService
     private const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
     public function __construct(
+        private readonly RawStampTimeService $rawStampTimeService,
         private readonly DailyWorkSummaryRepositoryInterface $dailyWorkSummaryRepository,
         private readonly RequestRepositoryInterface $requestRepository,
     ) {}
@@ -82,8 +83,16 @@ class AttendanceExcelExportService
         // ヘッダー部分を設定
         $this->setHeaderData($sheet, $user, $endDate);
 
+        // 表示は実打刻を使う。集計テーブルには丸め後の時刻が入っているため引き直す。
+        $rawTimes = $this->rawStampTimeService->mapByDate(
+            $companyId,
+            $user->id,
+            $startDate->format('Y-m-d'),
+            $endDate->format('Y-m-d'),
+        );
+
         // 明細部分を設定
-        $this->setDetailData($sheet, $summaries, $startDate, $endDate, $requestMap, $dailyWorkingMinutes);
+        $this->setDetailData($sheet, $summaries, $startDate, $endDate, $requestMap, $dailyWorkingMinutes, $rawTimes);
 
         // 合計行を設定（38行目）
 
@@ -174,7 +183,7 @@ class AttendanceExcelExportService
      * @param  Collection  $requestMap  日付をキーにした承認済み申請マップ
      * @param  int  $dailyWorkingMinutes  1日所定勤務時間（分）
      */
-    private function setDetailData($sheet, Collection $summaries, CarbonImmutable $startDate, CarbonImmutable $endDate, Collection $requestMap, int $dailyWorkingMinutes): void
+    private function setDetailData($sheet, Collection $summaries, CarbonImmutable $startDate, CarbonImmutable $endDate, Collection $requestMap, int $dailyWorkingMinutes, array $rawTimes = []): void
     {
         // 日付をキーにしたマップを作成
         $summaryMap = $summaries->keyBy(fn ($s) => $s->work_date->format('Y-m-d'));
@@ -205,14 +214,16 @@ class AttendanceExcelExportService
                 $sheet->setCellValue('E'.$row, $this->formatTimeToHM($summary->scheduled_break_start ?? null));
                 $sheet->setCellValue('F'.$row, $this->formatTimeToHM($summary->scheduled_break_end ?? null));
 
-                // G: 出勤時刻
-                $sheet->setCellValue('G'.$row, $summary->work_start?->format('H:i') ?? '');
+                // G・H: 出退勤（実打刻。丸め時刻は計算にのみ使う）
+                $raw = $rawTimes[$dateKey] ?? null;
+                $sheet->setCellValue('G'.$row, $raw['work_start'] ?? $summary->work_start?->format('H:i') ?? '');
+                $sheet->setCellValue('H'.$row, $raw['work_end'] ?? $summary->work_end?->format('H:i') ?? '');
 
-                // H: 退勤時刻
-                $sheet->setCellValue('H'.$row, $summary->work_end?->format('H:i') ?? '');
-
-                // I〜L: 休憩の入り・出（2枠）
-                $breaks = $this->breakPeriodsFor($summary);
+                // I〜L: 休憩の入り・出（2枠。こちらも実打刻）
+                $breaks = $raw['breaks'] ?? [];
+                if ($breaks === []) {
+                    $breaks = $this->breakPeriodsFor($summary);
+                }
                 $sheet->setCellValue('I'.$row, $breaks[0]['start'] ?? '');
                 $sheet->setCellValue('J'.$row, $breaks[0]['end'] ?? '');
                 $sheet->setCellValue('K'.$row, $breaks[1]['start'] ?? '');

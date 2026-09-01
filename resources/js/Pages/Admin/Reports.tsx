@@ -17,7 +17,7 @@ import { useReports } from '@/hooks/reports/useReports';
 import { getRequestBadgeStyle } from '@/utils/requestStyles';
 
 function ReportsPage() {
-  const { users, workSummaries, timeRecords, approvedRequests, timeRecordCorrections, monthlySummary, canExport, shifts, filters, attendanceIssues } = usePage<{
+  const { users, workSummaries, timeRecords, approvedRequests, timeRecordCorrections, monthlySummary, canExport, exportBatchSize, shifts, filters, attendanceIssues } = usePage<{
     props: ReportsPageProps;
   }>().props as unknown as ReportsPageProps;
 
@@ -28,12 +28,14 @@ function ReportsPage() {
     showExportModal,
     exportFormats,
     exportScope,
+    exportBatch,
     selectedUserId,
     selectedUserName,
     getApprovedRequestsForDate,
     handleUserChange,
     handleFormatChange,
     handleScopeChange,
+    handleBatchChange,
     openExportModal,
     closeExportModal,
     handleExport,
@@ -426,9 +428,13 @@ function ReportsPage() {
         isOpen={showExportModal}
         exportFormats={exportFormats}
         exportScope={exportScope}
+        exportBatch={exportBatch}
         selectedUserName={selectedUserName}
+        userCount={users.length}
+        batchSize={exportBatchSize ?? 10}
         onFormatChange={handleFormatChange}
         onScopeChange={handleScopeChange}
+        onBatchChange={handleBatchChange}
         onExport={handleExport}
         onClose={closeExportModal}
       />

@@ -260,6 +260,7 @@ class WorkSummaryController extends Controller
             'timeRecordCorrections' => $correctionsData,
             'monthlySummary' => $monthlySummary,
             'canExport' => $authUser->isAdmin(),
+            'exportBatchSize' => $this->exportBatchSize(),
             'shifts' => $shiftsMap,
             'filters' => [
                 'start_date' => $startDate->format('Y-m-d'),
@@ -294,14 +295,23 @@ class WorkSummaryController extends Controller
 
         if ($scope === 'all') {
             // 全従業員: 1つのCSVにまとめて出力
+            $batch = $this->resolveExportBatch($request, $users->count());
+            $targetUsers = $batch === null
+                ? $users
+                : $users->slice($batch['offset'], $batch['size'])->values();
+
             $csvContent = $this->dailyWorkSummaryService->generateCsvAll(
                 $companyId,
                 $startDate->format('Y-m-d'),
                 $endDate->format('Y-m-d'),
-                $users
+                $targetUsers
             );
 
-            $filename = sprintf('勤務実績_全従業員_%s.csv', $periodLabel);
+            $filename = sprintf(
+                '勤務実績_%s_%s.csv',
+                $batch === null ? '全従業員' : $batch['label'],
+                $periodLabel
+            );
 
             return response()->streamDownload(function () use ($csvContent) {
                 echo "\xEF\xBB\xBF".$csvContent;
@@ -364,6 +374,11 @@ class WorkSummaryController extends Controller
 
         if ($scope === 'all') {
             // 全従業員: 1人1ファイルのExcelをZIPにまとめる
+            $batch = $this->resolveExportBatch($request, $users->count());
+            $targetUsers = $batch === null
+                ? $users
+                : $users->slice($batch['offset'], $batch['size'])->values();
+
             $zipPath = tempnam(sys_get_temp_dir(), 'excel_export_');
             $tempFiles = [];
 
@@ -371,22 +386,28 @@ class WorkSummaryController extends Controller
                 $zip = new \ZipArchive;
                 $zip->open($zipPath, \ZipArchive::OVERWRITE);
 
-                foreach ($users as $user) {
-                    $filePath = $this->attendanceExcelExportService->generate(
-                        $companyId,
-                        $user,
-                        $startDate->format('Y-m-d'),
-                        $endDate->format('Y-m-d')
-                    );
+                // 人数分のブックを一度に抱えるとメモリが尽きるため、
+                // バッチサイズごとに区切って解放しながら生成する
+                foreach ($targetUsers->chunk($this->exportBatchSize()) as $chunk) {
+                    foreach ($chunk as $user) {
+                        $filePath = $this->attendanceExcelExportService->generate(
+                            $companyId,
+                            $user,
+                            $startDate->format('Y-m-d'),
+                            $endDate->format('Y-m-d')
+                        );
 
-                    $excelFilename = sprintf(
-                        '勤務実績_%s_%s.xlsx',
-                        $user->name,
-                        $periodLabel
-                    );
+                        $excelFilename = sprintf(
+                            '勤務実績_%s_%s.xlsx',
+                            $user->name,
+                            $periodLabel
+                        );
 
-                    $zip->addFile($filePath, $excelFilename);
-                    $tempFiles[] = $filePath;
+                        $zip->addFile($filePath, $excelFilename);
+                        $tempFiles[] = $filePath;
+                    }
+
+                    gc_collect_cycles();
                 }
 
                 $zip->close();
@@ -400,7 +421,8 @@ class WorkSummaryController extends Controller
             }
 
             $zipFilename = sprintf(
-                '勤務実績_全従業員_%s.zip',
+                '勤務実績_%s_%s.zip',
+                $batch === null ? '全従業員' : $batch['label'],
                 $periodLabel
             );
 
@@ -564,6 +586,45 @@ class WorkSummaryController extends Controller
         return [
             'start' => $startDate->format('Y-m-d'),
             'end' => $endDate->format('Y-m-d'),
+        ];
+    }
+
+    /**
+     * 全従業員出力のバッチサイズ（人数）
+     */
+    private function exportBatchSize(): int
+    {
+        return max(1, (int) config('attendance.export_batch_size', 10));
+    }
+
+    /**
+     * 出力対象のバッチを決定
+     *
+     * batch は 1 始まりで、1 なら 1〜10名、2 なら 11〜20名を指す。
+     * 指定がなければ全員を1つにまとめるため null を返す。
+     *
+     * @return array{offset: int, size: int, label: string}|null
+     */
+    private function resolveExportBatch(Request $request, int $userCount): ?array
+    {
+        $batch = $request->query('batch');
+
+        if ($batch === null || $batch === '') {
+            return null;
+        }
+
+        $size = $this->exportBatchSize();
+        $batchNumber = max(1, (int) $batch);
+        $offset = ($batchNumber - 1) * $size;
+
+        if ($offset >= $userCount) {
+            abort(404, '該当する従業員がいません。');
+        }
+
+        return [
+            'offset' => $offset,
+            'size' => $size,
+            'label' => sprintf('%d〜%d名', $offset + 1, min($offset + $size, $userCount)),
         ];
     }
 

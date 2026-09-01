@@ -139,6 +139,7 @@ export interface ReportsPageProps {
   timeRecordCorrections: Record<string, TimeRecordCorrectionItem[]>;
   monthlySummary: MonthlySummary | null;
   canExport: boolean;
+  exportBatchSize?: number;
   shifts: Record<string, ShiftInfo>;
   filters: ReportFilters;
 }

@@ -36,6 +36,8 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     excel: false,
   });
   const [exportScope, setExportScope] = useState<ExportScope>('single');
+  // 全員一括のときは null。バッチ番号を選ぶと1始まりでその区切りだけを出力する
+  const [exportBatch, setExportBatch] = useState<number | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingSummary, setEditingSummary] = useState<WorkSummary | null>(null);
   const [editingDate, setEditingDate] = useState<string | null>(null);
@@ -202,29 +204,39 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     setShowExportModal(false);
     setExportFormats({ csv: false, excel: false });
     setExportScope('single');
+    setExportBatch(null);
   }, []);
 
   const handleScopeChange = useCallback((scope: ExportScope) => {
     setExportScope(scope);
+    setExportBatch(null);
+  }, []);
+
+  const handleBatchChange = useCallback((batch: number | null) => {
+    setExportBatch(batch);
   }, []);
 
   const exportToCSV = useCallback(() => {
     const params = new URLSearchParams({
       start_date: filters.start_date,
       end_date: filters.end_date,
-      ...(exportScope === 'all' ? { scope: 'all' } : { user_id: String(selectedUserId || '') }),
+      ...(exportScope === 'all'
+        ? { scope: 'all', ...(exportBatch !== null ? { batch: String(exportBatch) } : {}) }
+        : { user_id: String(selectedUserId || '') }),
     });
     window.location.href = `/admin/reports/export/csv?${params.toString()}`;
-  }, [filters.start_date, filters.end_date, selectedUserId, exportScope]);
+  }, [filters.start_date, filters.end_date, selectedUserId, exportScope, exportBatch]);
 
   const exportToExcel = useCallback(() => {
     const params = new URLSearchParams({
       start_date: filters.start_date,
       end_date: filters.end_date,
-      ...(exportScope === 'all' ? { scope: 'all' } : { user_id: String(selectedUserId || '') }),
+      ...(exportScope === 'all'
+        ? { scope: 'all', ...(exportBatch !== null ? { batch: String(exportBatch) } : {}) }
+        : { user_id: String(selectedUserId || '') }),
     });
     window.location.href = `/admin/reports/export/excel?${params.toString()}`;
-  }, [filters.start_date, filters.end_date, selectedUserId, exportScope]);
+  }, [filters.start_date, filters.end_date, selectedUserId, exportScope, exportBatch]);
 
   const handleExport = useCallback(() => {
     if (!exportFormats.csv && !exportFormats.excel) {
@@ -441,6 +453,7 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     showExportModal,
     exportFormats,
     exportScope,
+    exportBatch,
     selectedUserId,
     daysInMonth,
     selectedUserName,
@@ -455,6 +468,7 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     handleUserChange,
     handleFormatChange,
     handleScopeChange,
+    handleBatchChange,
     openExportModal,
     closeExportModal,
     handleExport,

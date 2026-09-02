@@ -1,0 +1,42 @@
+{
+  "company": {
+    "payroll_closing_day": 20,
+    "is_closed_on_holidays": true,
+    "paid_leave_half_day": true,
+    "paid_leave_hourly": true,
+    "daily_working_hours": 8.0
+  },
+  "shift_display_period_id": 2,
+  "clock_rounding_unit_id": 4,
+  "departments": ["本社", "パート"],
+  "shift_patterns": [
+    {
+      "name": "基本シフト",
+      "start_time": "09:00",
+      "end_time": "18:00",
+      "work_minutes": 480,
+      "break_mode": 2,
+      "break_minutes": 60,
+      "break_start": "12:00",
+      "break_end": "13:00",
+      "auto_fill_break": true,
+      "is_default": true
+    },
+    {
+      "name": "パート",
+      "start_time": "10:00",
+      "end_time": "15:00",
+      "work_minutes": 300,
+      "break_mode": 2,
+      "break_minutes": null,
+      "break_start": null,
+      "break_end": null,
+      "auto_fill_break": false,
+      "is_default": false
+    }
+  ],
+  "labor_alert": {
+    "overtime_notification": 45,
+    "overtime_limit": 80
+  }
+}

@@ -21,19 +21,33 @@ use Carbon\CarbonImmutable;
  */
 class WorkSummaryCsvImportService
 {
-    /** 氏名と日付以外は欠けていても取り込める */
-    private const REQUIRED_HEADERS = ['氏名', '日付'];
+    /** 日付は必須。人物は個人コードか氏名のどちらかで特定する */
+    private const REQUIRED_HEADERS = ['日付'];
 
-    /** ヘッダー名と保存先の対応 */
+    /**
+     * ヘッダー名と保存先の対応
+     *
+     * 旧環境の出力は列構成が異なるため、どちらの名前でも受け取れるようにする。
+     * 「労働時間」は実働時間にあたる。
+     */
     private const MINUTE_COLUMNS = [
         '勤務時間' => 'work_minutes',
         '休憩' => 'break_minutes',
         '実働時間' => 'net_work_minutes',
+        '労働時間' => 'net_work_minutes',
         '時間外' => 'overtime_minutes',
         '休日' => 'holiday_minutes',
         '深夜' => 'night_minutes',
         '遅刻' => 'late_minutes',
         '早退' => 'early_leave_minutes',
+        '遅刻早退' => 'late_minutes',
+    ];
+
+    /** 勤務区分と休暇種別の対応 */
+    private const LEAVE_TYPES = [
+        '有給休暇' => 1,
+        '特別休暇' => 2,
+        '欠勤' => 3,
     ];
 
     public function __construct(
@@ -72,6 +86,7 @@ class WorkSummaryCsvImportService
         }
 
         $usersByName = $this->usersByName($companyId);
+        $usersByCode = $this->usersByEmployeeCode($companyId);
 
         foreach ($rows as $index => $row) {
             // 見出しの次の行を1行目として数える
@@ -83,29 +98,44 @@ class WorkSummaryCsvImportService
 
             $values = $this->combine($headers, $row);
             $name = trim($values['氏名'] ?? '');
+            $code = trim($values['個人コード'] ?? '');
             $date = $this->parseDate($values['日付'] ?? '');
 
-            if ($name === '' || $date === null) {
+            if ($date === null || ($name === '' && $code === '')) {
                 $result['skipped']++;
 
                 continue;
             }
 
-            $candidates = $usersByName[$name] ?? [];
+            // 個人コードがあれば確実に特定できる。無ければ氏名で照合する
+            if ($code !== '') {
+                $userId = $usersByCode[$code] ?? null;
 
-            if ($candidates === []) {
-                $result['errors'][] = "{$lineNumber}行目: 「{$name}」に一致するスタッフがいません。";
-                $result['skipped']++;
+                if ($userId === null) {
+                    $result['errors'][] = "{$lineNumber}行目: 個人コード「{$code}」のスタッフがいません。";
+                    $result['skipped']++;
 
-                continue;
-            }
+                    continue;
+                }
 
-            // 同姓同名は取り違えると別人の実績になるため取り込まない
-            if (count($candidates) > 1) {
-                $result['errors'][] = "{$lineNumber}行目: 「{$name}」が複数登録されているため特定できません。";
-                $result['skipped']++;
+                $candidates = [$userId];
+            } else {
+                $candidates = $usersByName[$name] ?? [];
 
-                continue;
+                if ($candidates === []) {
+                    $result['errors'][] = "{$lineNumber}行目: 「{$name}」に一致するスタッフがいません。";
+                    $result['skipped']++;
+
+                    continue;
+                }
+
+                // 同姓同名は取り違えると別人の実績になるため取り込まない
+                if (count($candidates) > 1) {
+                    $result['errors'][] = "{$lineNumber}行目: 「{$name}」が複数登録されているため特定できません。";
+                    $result['skipped']++;
+
+                    continue;
+                }
             }
 
             $data = $this->buildSummaryData($values, $date);
@@ -152,6 +182,27 @@ class WorkSummaryCsvImportService
     }
 
     /**
+     * 会社のスタッフを個人コードで引けるようにする
+     *
+     * 個人コードは会社内で一意のため、氏名より確実に特定できる。
+     *
+     * @return array<string, int>
+     */
+    private function usersByEmployeeCode(int $companyId): array
+    {
+        $map = [];
+
+        foreach ($this->userRepository->findByCompanyId($companyId) as $user) {
+            /** @var User $user */
+            if ($user->employee_code !== null) {
+                $map[trim((string) $user->employee_code)] = $user->id;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
      * @param  array<int, string>  $headers
      * @param  array<int, string>  $row
      * @return array<string, string>
@@ -180,8 +231,21 @@ class WorkSummaryCsvImportService
             'record_source' => RecordSourceEnum::MANUAL->value,
         ];
 
+        // 勤務区分から休暇種別を引き継ぐ。休出・出勤・休日は休暇ではない
+        $workType = trim($values['勤務区分'] ?? '');
+        $data['leave_type'] = self::LEAVE_TYPES[$workType] ?? null;
+
+        // シフトの予定時刻も引き継ぐ（欠勤の判定などに使う）
+        $data['scheduled_start_time'] = $this->parseTime($values['シフト開始'] ?? '');
+        $data['scheduled_end_time'] = $this->parseTime($values['シフト終了'] ?? '');
+
+        // 列名は旧新で異なるため、CSVに存在する列だけを反映する
         foreach (self::MINUTE_COLUMNS as $header => $column) {
-            $data[$column] = $this->parseMinutes($values[$header] ?? '');
+            if (! array_key_exists($header, $values)) {
+                continue;
+            }
+
+            $data[$column] = $this->parseMinutes($values[$header]);
         }
 
         // 退勤が出勤より前なら日を跨いだ勤務として扱う
@@ -202,13 +266,28 @@ class WorkSummaryCsvImportService
             return false;
         }
 
-        foreach (self::MINUTE_COLUMNS as $column) {
+        // 打刻がなくても休暇の記録は取り込む
+        if (($data['leave_type'] ?? null) !== null) {
+            return false;
+        }
+
+        foreach (array_unique(array_values(self::MINUTE_COLUMNS)) as $column) {
             if (($data[$column] ?? 0) > 0) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    /**
+     * 「H:MM」形式の時刻をそのまま取り出す
+     */
+    private function parseTime(string $value): ?string
+    {
+        $value = trim($value);
+
+        return $value !== '' && str_contains($value, ':') ? $value : null;
     }
 
     /**

@@ -76,7 +76,8 @@ class LaborAlertService
     public function getAlertsForUser(int $companyId, int $userId, int $year, int $month): Collection
     {
         return $this->getAlerts($companyId, $year, $month)
-            ->filter(fn (array $alert) => ($alert['user_id'] ?? null) === $userId)
+            // 返す配列のキーは userId のため、snake_case で引くと常に空になる
+            ->filter(fn (array $alert) => ($alert['userId'] ?? null) === $userId)
             ->values();
     }
 

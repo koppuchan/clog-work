@@ -345,12 +345,24 @@ class WorkSummaryCsvImportService
             return;
         }
 
+        // 消す範囲は当日分のみとする。翌日まで広げると、日跨ぎ勤務でない日に
+        // 翌日の打刻まで巻き込んでしまう。
+        //
+        // 夜勤で翌日にかかる場合だけ、これから作る退勤の時刻までを対象に含める。
+        $deleteUntil = $date->endOfDay();
+
+        foreach ($punches as [$type, $at]) {
+            if ($at->greaterThan($deleteUntil)) {
+                $deleteUntil = $at;
+            }
+        }
+
         TimeRecord::query()
             ->where('company_id', $companyId)
             ->where('user_id', $userId)
             ->whereBetween('record_time', [
                 $date->startOfDay()->format('Y-m-d H:i:s'),
-                $date->addDay()->endOfDay()->format('Y-m-d H:i:s'),
+                $deleteUntil->format('Y-m-d H:i:s'),
             ])
             ->delete();
 

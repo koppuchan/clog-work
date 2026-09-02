@@ -124,6 +124,38 @@ class LaborAlertPeriodTest extends TestCase
     /**
      * @test
      */
+    public function スタッフ本人にもアラートが渡る(): void
+    {
+        // 管理者だけでなく本人の勤務実績画面にも表示する必要がある
+        $this->setThreshold(43);
+        $this->createSummary('2026-08-25', 44 * 60);
+
+        $alerts = app(LaborAlertService::class)
+            ->getAlertsForUser($this->company->id, $this->user->id, 2026, 9);
+
+        $this->assertCount(1, $alerts);
+        $this->assertSame($this->user->id, $alerts->first()['userId']);
+    }
+
+    /**
+     * @test
+     */
+    public function 他のスタッフのアラートは渡さない(): void
+    {
+        $other = User::factory()->forCompany($this->company->id)->create(['is_retired' => false]);
+
+        $this->setThreshold(43);
+        $this->createSummary('2026-08-25', 44 * 60);
+
+        $alerts = app(LaborAlertService::class)
+            ->getAlertsForUser($this->company->id, $other->id, 2026, 9);
+
+        $this->assertCount(0, $alerts);
+    }
+
+    /**
+     * @test
+     */
     public function 締日が月末なら暦月と同じになる(): void
     {
         $company = Company::factory()->create(['payroll_closing_day' => 31]);

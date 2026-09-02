@@ -49,9 +49,9 @@ class LaborAlertForUserTest extends TestCase
     {
         // Arrange
         $service = $this->serviceReturning([
-            ['user_id' => 1, 'message' => '本人の警告'],
-            ['user_id' => 2, 'message' => '別のスタッフの警告'],
-            ['user_id' => 1, 'message' => '本人の注意喚起'],
+            ['userId' => 1, 'message' => '本人の警告'],
+            ['userId' => 2, 'message' => '別のスタッフの警告'],
+            ['userId' => 1, 'message' => '本人の注意喚起'],
         ]);
 
         // Act
@@ -69,7 +69,7 @@ class LaborAlertForUserTest extends TestCase
     {
         // Arrange
         $service = $this->serviceReturning([
-            ['user_id' => 2, 'message' => '別のスタッフの警告'],
+            ['userId' => 2, 'message' => '別のスタッフの警告'],
         ]);
 
         // Act
@@ -86,8 +86,8 @@ class LaborAlertForUserTest extends TestCase
     {
         // Arrange: 先頭が他人のアラートでも、結果は 0 始まりの配列になる
         $service = $this->serviceReturning([
-            ['user_id' => 2, 'message' => '別のスタッフ'],
-            ['user_id' => 1, 'message' => '本人'],
+            ['userId' => 2, 'message' => '別のスタッフ'],
+            ['userId' => 1, 'message' => '本人'],
         ]);
 
         // Act

@@ -91,11 +91,27 @@ class ShiftLeaveServiceTest extends TestCase
     /**
      * @test
      */
-    public function 欠勤は欠と表示する(): void
+    public function 欠勤はシフト表に出さない(): void
     {
+        // シフト表は勤務の予定を見るもので、欠勤で予定が消えると
+        // 誰がどの枠に入っていたか分からなくなるため対象外とする
         $this->createLeave(LeaveTypeEnum::ABSENCE, null);
 
-        $this->assertSame('欠', $this->fetch()[0]['label']);
+        $this->assertSame([], $this->fetch());
+    }
+
+    /**
+     * @test
+     */
+    public function 欠勤は出勤人数から差し引かない(): void
+    {
+        $this->createLeave(LeaveTypeEnum::ABSENCE, null, '2026-06-22');
+        $this->createLeave(LeaveTypeEnum::PAID_LEAVE, null, '2026-06-23');
+
+        $leaves = $this->fetch();
+
+        $this->assertCount(1, $leaves);
+        $this->assertSame('有', $leaves[0]['label']);
     }
 
     /**
@@ -160,12 +176,11 @@ class ShiftLeaveServiceTest extends TestCase
     {
         $this->createLeave(LeaveTypeEnum::PAID_LEAVE, null, '2026-06-22');
         $this->createLeave(LeaveTypeEnum::SPECIAL_LEAVE, null, '2026-06-23');
-        $this->createLeave(LeaveTypeEnum::ABSENCE, null, '2026-06-24');
 
         $colors = collect($this->fetch())->pluck('background_color')->all();
 
         // シフトパターンの色と重ならない薄い色を割り当てる
-        $this->assertSame(3, count(array_unique($colors)));
+        $this->assertSame(2, count(array_unique($colors)));
     }
 
     /**

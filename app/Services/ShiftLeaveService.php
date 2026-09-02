@@ -69,6 +69,8 @@ class ShiftLeaveService
 
         return $summaries
             ->filter(fn (DailyWorkSummary $summary) => $summary->leave_type !== null)
+            // 欠勤はシフト表に出さない。予定していた勤務をそのまま見せ、人数も減らさない
+            ->filter(fn (DailyWorkSummary $summary) => $summary->leave_type !== LeaveTypeEnum::ABSENCE)
             ->map(fn (DailyWorkSummary $summary) => $this->formatLeave($summary, $dailyWorkingMinutes))
             ->values()
             ->all();

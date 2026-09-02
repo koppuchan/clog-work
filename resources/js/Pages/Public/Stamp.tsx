@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, useMemo, FormEvent } from 'react';
 import { Head } from '@inertiajs/react';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -42,6 +42,30 @@ interface Props {
 export default function PublicStampPage({ company, users }: Props) {
   const currentTime = useCurrentTime();
   const [selectedUser, setSelectedUser] = useState<UserItem | null>(null);
+  // 一覧は初期表示では畳んでおく。検索すると自動で開く
+  const [nameQuery, setNameQuery] = useState('');
+  const [isListOpen, setIsListOpen] = useState(false);
+
+  // 名前・フリガナ・個人コードで絞り込む
+  const filteredUsers = useMemo(() => {
+    const query = nameQuery.trim().toLowerCase();
+
+    if (query === '') {
+      return users;
+    }
+
+    return users.filter((user) =>
+      [user.name, user.employee_code]
+        .some((value) => (value ?? '').toLowerCase().includes(query))
+    );
+  }, [users, nameQuery]);
+
+  // 検索を始めたら一覧を開き、消したら畳む
+  useEffect(() => {
+    if (nameQuery.trim() !== '') {
+      setIsListOpen(true);
+    }
+  }, [nameQuery]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [verifiedPassword, setVerifiedPassword] = useState('');
@@ -193,13 +217,45 @@ export default function PublicStampPage({ company, users }: Props) {
                 名前を選択してください
               </h2>
 
+              {/* 人数が多いと一覧が長くなるため、初期は畳んでおき検索で開く */}
+              <div className="mb-4 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                <input
+                  type="text"
+                  value={nameQuery}
+                  onChange={(e) => setNameQuery(e.target.value)}
+                  placeholder="名前・個人コードで検索"
+                  className="flex-1 border border-gray-300 rounded-lg px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setIsListOpen((open) => !open)}
+                  className="px-4 py-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 whitespace-nowrap"
+                >
+                  {isListOpen ? '一覧を閉じる' : '一覧を開く'}
+                </button>
+              </div>
+
+              {nameQuery.trim() !== '' && (
+                <p className="text-sm text-gray-600 mb-3 text-center">
+                  該当 {filteredUsers.length} 名
+                </p>
+              )}
+
               {users.length === 0 ? (
                 <div className="text-center text-gray-500 py-8">
                   登録されているスタッフがいません。
                 </div>
+              ) : ! isListOpen ? (
+                <div className="text-center text-gray-500 py-8 text-sm">
+                  名前を検索するか、「一覧を開く」を押してください。
+                </div>
+              ) : filteredUsers.length === 0 ? (
+                <div className="text-center text-gray-500 py-8 text-sm">
+                  該当するスタッフがいません。
+                </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                  {users.map((user) => (
+                  {filteredUsers.map((user) => (
                     <button
                       key={user.id}
                       onClick={() => setSelectedUser(user)}

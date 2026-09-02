@@ -56,10 +56,12 @@ class CompanyController extends Controller
         return redirect()
             ->route('super-admin.companies')
             ->with('success', sprintf(
-                '事業所「%s」を作成しました。会社コード: %s / 管理者の個人コード: %s',
+                '事業所「%s」を作成しました。会社コード: %s / 管理者の個人コード: %s / 打刻URL: %s',
                 $result['company']->name,
                 $result['company']->company_code,
                 $result['owner']->employee_code,
+                rtrim((string) config('attendance.public_stamp_base_url'), '/')
+                    .'/stamp/'.$result['company']->uuid,
             ));
     }
 

@@ -8,6 +8,8 @@ import { useConfirmDialog } from '@/hooks/useConfirmDialog';
 interface CompanySummary {
   id: number;
   company_code: string;
+  uuid: string;
+  public_stamp_url: string;
   name: string;
   user_count: number;
   owner_name: string | null;
@@ -25,6 +27,18 @@ interface Props {
 export default function SuperAdminCompanies({ companies }: Props) {
   const { dialogProps, openDialog } = useConfirmDialog();
   const [processing, setProcessing] = useState(false);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+
+  // 打刻URLは端末設定と従業員への共有の両方で使う
+  const handleCopy = async (company: CompanySummary) => {
+    try {
+      await navigator.clipboard.writeText(company.public_stamp_url);
+      setCopiedId(company.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      // クリップボードが使えない環境では何もしない
+    }
+  };
 
   /**
    * 事業所の削除確認ダイアログを開く
@@ -80,6 +94,7 @@ export default function SuperAdminCompanies({ companies }: Props) {
                 <th className="px-5 py-3 font-medium">管理者</th>
                 <th className="px-5 py-3 font-medium">メールアドレス</th>
                 <th className="px-5 py-3 font-medium text-right">人数</th>
+                <th className="px-5 py-3 font-medium">打刻用UUID</th>
                 <th className="px-5 py-3 font-medium">作成日</th>
                 <th className="px-5 py-3 font-medium text-right">操作</th>
               </tr>
@@ -92,6 +107,17 @@ export default function SuperAdminCompanies({ companies }: Props) {
                   <td className="px-5 py-3 text-gray-700">{company.owner_name ?? '—'}</td>
                   <td className="px-5 py-3 text-gray-700">{company.owner_email ?? '—'}</td>
                   <td className="px-5 py-3 text-right text-gray-700">{company.user_count}</td>
+                  {/* FeliCa端末の設定と打刻URLに使うため、控えられるようにする */}
+                  <td className="px-5 py-3">
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(company)}
+                      className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline text-left"
+                      title="クリックで打刻URLをコピーします"
+                    >
+                      {copiedId === company.id ? 'コピーしました' : company.uuid}
+                    </button>
+                  </td>
                   <td className="px-5 py-3 text-gray-500">{company.created_at ?? '—'}</td>
                   <td className="px-5 py-3 text-right">
                     <button

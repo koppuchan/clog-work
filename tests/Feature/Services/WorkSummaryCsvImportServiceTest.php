@@ -298,6 +298,54 @@ class WorkSummaryCsvImportServiceTest extends TestCase
     /**
      * @test
      */
+    public function 翌日の打刻を消さない(): void
+    {
+        // 取り込みで消すのは当日分のみ。翌日の記録を巻き込むと
+        // 運用中の打刻が失われる
+        $this->user->update(['employee_code' => '000005']);
+
+        $nextDay = \App\Models\TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => \App\Enums\TimeRecordTypeEnum::WORK_START,
+            'record_time' => '2026-08-27 09:00:00',
+            'rounded_time' => '2026-08-27 09:00:00',
+            'record_source' => \App\Enums\RecordSourceEnum::AUTO,
+        ]);
+
+        $csv = "個人コード,日付,勤務区分,出勤時刻,退勤時刻,労働時間\n"
+            ."000005,2026/08/26,出勤,09:00,18:00,9:00\n";
+
+        $this->import($csv);
+
+        $this->assertDatabaseHas('time_records', ['id' => $nextDay->id]);
+    }
+
+    /**
+     * @test
+     */
+    public function 夜勤は翌日の退勤まで作り直す(): void
+    {
+        $this->user->update(['employee_code' => '000005']);
+
+        $csv = "個人コード,日付,勤務区分,出勤時刻,退勤時刻,労働時間\n"
+            ."000005,2026/08/26,出勤,22:00,07:00,8:00\n";
+
+        $this->import($csv);
+
+        $records = \App\Models\TimeRecord::query()
+            ->where('user_id', $this->user->id)
+            ->orderBy('record_time')
+            ->get();
+
+        $this->assertCount(2, $records);
+        $this->assertSame('2026-08-26 22:00', $records[0]->record_time->format('Y-m-d H:i'));
+        $this->assertSame('2026-08-27 07:00', $records[1]->record_time->format('Y-m-d H:i'));
+    }
+
+    /**
+     * @test
+     */
     public function 備考を引き継ぐ(): void
     {
         $csv = $this->oldFormat(

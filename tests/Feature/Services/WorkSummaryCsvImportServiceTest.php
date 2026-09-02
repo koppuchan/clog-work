@@ -182,12 +182,45 @@ class WorkSummaryCsvImportServiceTest extends TestCase
     /**
      * @test
      */
-    public function 必要な列がなければ取り込まない(): void
+    public function 日付の列がなければ取り込まない(): void
     {
-        $result = $this->import("日付,出勤時刻\n2026/06/24,9:00\n");
+        $result = $this->import("氏名,出勤時刻\n前田 依子,9:00\n");
 
         $this->assertSame(0, $result['imported']);
-        $this->assertStringContainsString('氏名', $result['errors'][0]);
+        $this->assertStringContainsString('日付', $result['errors'][0]);
+    }
+
+    /**
+     * @test
+     */
+    public function 個人コードでスタッフを特定できる(): void
+    {
+        // 旧環境の出力には個人コードが含まれるため、氏名より確実に照合できる
+        $this->user->update(['employee_code' => '000002']);
+
+        $csv = "個人コード,日付,勤務区分,出勤時刻,退勤時刻,労働時間,時間外,休日,深夜,遅刻早退\n"
+            ."000002,2026/06/24,出勤,09:00,18:00,8:00,1:00,0:00,0:00,0:00\n";
+
+        $result = $this->import($csv);
+
+        $this->assertSame(1, $result['imported']);
+        $this->assertSame(480, $this->summaryFor('2026-06-24')?->net_work_minutes);
+    }
+
+    /**
+     * @test
+     */
+    public function 勤務区分から休暇種別を引き継ぐ(): void
+    {
+        $this->user->update(['employee_code' => '000002']);
+
+        $csv = "個人コード,日付,勤務区分,出勤時刻,退勤時刻,労働時間\n"
+            ."000002,2026/06/24,有給休暇,,,0:00\n";
+
+        $result = $this->import($csv);
+
+        $this->assertSame(1, $result['imported']);
+        $this->assertSame(1, $this->summaryFor('2026-06-24')?->leave_type?->value);
     }
 
     /**

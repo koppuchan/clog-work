@@ -93,6 +93,8 @@ export default function PublicStampPage({ company, users }: Props) {
   const [todayRecords, setTodayRecords] = useState<StampRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  // 名前選択の画面に戻っても直近の打刻結果が分かるようにする
+  const [lastStamp, setLastStamp] = useState<{ name: string; time: string; label: string } | null>(null);
 
   // メッセージを3秒後に消す
   useEffect(() => {
@@ -101,6 +103,14 @@ export default function PublicStampPage({ company, users }: Props) {
       return () => clearTimeout(timer);
     }
   }, [message]);
+
+  // 直近の打刻は確認できる程度に残し、しばらくして消す
+  useEffect(() => {
+    if (lastStamp) {
+      const timer = setTimeout(() => setLastStamp(null), 30000);
+      return () => clearTimeout(timer);
+    }
+  }, [lastStamp]);
 
   const handleVerifyPassword = async (e: FormEvent) => {
     e.preventDefault();
@@ -161,7 +171,24 @@ export default function PublicStampPage({ company, users }: Props) {
         setCurrentStatus(response.data.currentStatus);
         if (response.data.record) {
           setTodayRecords((prev) => [...prev, response.data.record]);
+          setLastStamp({
+            name: selectedUser.name,
+            time: response.data.record.time,
+            label: response.data.record.typeLabel,
+          });
         }
+
+        // 次の人がすぐ打刻できるよう、記録できたら名前選択へ戻す
+        setTimeout(() => {
+          setSelectedUser(null);
+          setIsAuthenticated(false);
+          setPassword('');
+          setVerifiedPassword('');
+          setCurrentStatus(null);
+          setTodayRecords([]);
+          setNameQuery('');
+          setIsListOpen(false);
+        }, 1500);
       }
     } catch (error: unknown) {
       if (axios.isAxiosError(error) && error.response?.data?.message) {
@@ -268,6 +295,15 @@ export default function PublicStampPage({ company, users }: Props) {
                   </p>
                 )}
               </div>
+
+              {/* 打刻したことが画面に残るようにする */}
+              {lastStamp && (
+                <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-center">
+                  <p className="text-green-800 font-medium">
+                    {lastStamp.name} さん　{lastStamp.time}　{lastStamp.label}を記録しました
+                  </p>
+                </div>
+              )}
 
               <h2 className="text-lg font-semibold text-gray-900 mb-4 text-center">
                 名前を選択してください

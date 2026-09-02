@@ -174,7 +174,8 @@ export default function PublicStampPage({ company, users }: Props) {
           setLastStamp({
             name: selectedUser.name,
             time: response.data.record.time,
-            label: response.data.record.typeLabel,
+            // 「出勤を記録しました。」のような打刻結果の文言をそのまま使う
+            label: response.data.message,
           });
         }
 
@@ -300,7 +301,7 @@ export default function PublicStampPage({ company, users }: Props) {
               {lastStamp && (
                 <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-center">
                   <p className="text-green-800 font-medium">
-                    {lastStamp.name} さん　{lastStamp.time}　{lastStamp.label}を記録しました
+                    {lastStamp.name} さん　{lastStamp.time}　{lastStamp.label}
                   </p>
                 </div>
               )}

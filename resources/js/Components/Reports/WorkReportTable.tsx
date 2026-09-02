@@ -8,8 +8,10 @@ import type { WorkSummary, MonthlySummary, TimeRecord, ShiftInfo, TimeRecordCorr
 type CorrectionMap = Record<string, TimeRecordCorrectionItem[]>;
 
 /** 打刻種別。勤務開始 / 勤務終了 / 日付越え終了 / 休憩開始 / 休憩終了 */
-const WORK_TIME_TYPES = [1, 2, 3];
-const BREAK_TIME_TYPES = [4, 5];
+const WORK_START_TYPES = [1];
+const WORK_END_TYPES = [2, 3];
+const BREAK_START_TYPES = [4];
+const BREAK_END_TYPES = [5];
 
 /**
  * 指定日の指定種別に打刻修正があるか
@@ -303,58 +305,81 @@ export default function WorkReportTable({
                         const displayStart = rawStart ?? summary?.work_start;
                         const displayEnd = rawEnd ?? summary?.work_end;
                         const dateStr = format(date, 'yyyy-MM-dd');
-                        const corrected = hasCorrection(corrections, dateStr, WORK_TIME_TYPES);
+                        // 修正のあった側だけを示すため、開始と終了を別々に判定する
+                        const startCorrected = hasCorrection(corrections, dateStr, WORK_START_TYPES);
+                        const endCorrected = hasCorrection(corrections, dateStr, WORK_END_TYPES);
 
-                        let text: string;
-                        if (displayStart && displayEnd) {
-                          text = `${displayStart} ~ ${displayEnd}${summary?.is_cross_day ? ' (翌)' : ''}`;
-                        } else if (displayStart) {
-                          text = `${displayStart} ~ -`;
-                        } else if (isCurrentDay && todayWorkStart) {
-                          text = `${todayWorkStart} ~ -`;
-                        } else {
+                        const startText = displayStart ?? (isCurrentDay ? todayWorkStart : null);
+
+                        if (! startText && ! displayEnd) {
                           return '-';
                         }
 
-                        if (!corrected) {
-                          return text;
-                        }
+                        // 修正された時刻だけオレンジで示し、押すと履歴を開く
+                        const part = (value: string | null | undefined, corrected: boolean) => {
+                          if (! value) {
+                            return <span>-</span>;
+                          }
 
-                        // 修正された時刻はオレンジで示し、押すと履歴を開く
+                          if (! corrected) {
+                            return <span>{value}</span>;
+                          }
+
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => onCorrectionClick?.(dateStr)}
+                              title="打刻修正あり。クリックで履歴を表示します"
+                              className="font-medium text-orange-600 underline decoration-dotted underline-offset-2 hover:text-orange-700"
+                            >
+                              {value}
+                            </button>
+                          );
+                        };
+
                         return (
-                          <button
-                            type="button"
-                            onClick={() => onCorrectionClick?.(dateStr)}
-                            title="打刻修正あり。クリックで履歴を表示します"
-                            className="font-medium text-orange-600 underline decoration-dotted underline-offset-2 hover:text-orange-700"
-                          >
-                            {text}
-                          </button>
+                          <span>
+                            {part(startText, startCorrected)}
+                            <span className="mx-1">~</span>
+                            {part(displayEnd, endCorrected)}
+                            {summary?.is_cross_day ? ' (翌)' : ''}
+                          </span>
                         );
                       })()}
                     </td>
-                    <td className={`px-3 py-3 text-sm ${
-                      hasCorrection(corrections, format(date, 'yyyy-MM-dd'), BREAK_TIME_TYPES)
-                        ? 'text-orange-600 font-medium cursor-pointer'
-                        : 'text-gray-900'
-                    }`}
-                      onClick={
-                        hasCorrection(corrections, format(date, 'yyyy-MM-dd'), BREAK_TIME_TYPES)
-                          ? () => onCorrectionClick?.(format(date, 'yyyy-MM-dd'))
-                          : undefined
-                      }
-                      title={
-                        hasCorrection(corrections, format(date, 'yyyy-MM-dd'), BREAK_TIME_TYPES)
-                          ? '休憩の打刻修正あり。クリックで履歴を表示します'
-                          : undefined
-                      }
-                    >
+                    <td className="px-3 py-3 text-sm text-gray-900">
                       {(() => {
+                        const breakDateStr = format(date, 'yyyy-MM-dd');
+                        const breakStartCorrected = hasCorrection(corrections, breakDateStr, BREAK_START_TYPES);
+                        const breakEndCorrected = hasCorrection(corrections, breakDateStr, BREAK_END_TYPES);
+
+                        // 修正のあった側だけを示す
+                        const breakPart = (value: string, corrected: boolean) => {
+                          if (! corrected) {
+                            return <span>{value}</span>;
+                          }
+
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => onCorrectionClick?.(breakDateStr)}
+                              title="休憩の打刻修正あり。クリックで履歴を表示します"
+                              className="font-medium text-orange-600 underline decoration-dotted underline-offset-2 hover:text-orange-700"
+                            >
+                              {value}
+                            </button>
+                          );
+                        };
+
                         // 1. 打刻があればそれを優先表示
                         const breakPeriods = getBreakPeriodsForDate(date);
                         if (breakPeriods.length > 0) {
                           return breakPeriods.map((p, i) => (
-                            <div key={i}>{p.start}~{p.end}</div>
+                            <div key={i}>
+                              {breakPart(p.start, breakStartCorrected)}
+                              <span className="mx-0.5">~</span>
+                              {breakPart(p.end, breakEndCorrected)}
+                            </div>
                           ));
                         }
 

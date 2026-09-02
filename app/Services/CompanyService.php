@@ -28,6 +28,12 @@ class CompanyService
         7 => 'sunday',
     ];
 
+    /** 最初の会社に割り当てる会社コード */
+    private const INITIAL_COMPANY_CODE = '000001';
+
+    /** 会社コードの桁数 */
+    private const COMPANY_CODE_DIGITS = 6;
+
     private const MIN_PAYROLL_CLOSING_DAY = 1;
 
     private const MAX_PAYROLL_CLOSING_DAY = 31;
@@ -93,6 +99,11 @@ class CompanyService
         // バリデーション: 給与締め日
         if (isset($data['payroll_closing_day'])) {
             $this->validatePayrollClosingDay($data['payroll_closing_day']);
+
+            // 保存先は数値のため、末締めは31日として扱う（画面の表記と揃える）
+            if ($data['payroll_closing_day'] === 'end') {
+                $data['payroll_closing_day'] = self::MAX_PAYROLL_CLOSING_DAY;
+            }
         }
 
         // バリデーション: 所定労働時間
@@ -116,9 +127,40 @@ class CompanyService
      */
     public function create(array $data): Company
     {
+        // 会社コードは必須かつ会社ごとに一意のため、指定がなければ採番する
+        if (empty($data['name'])) {
+            throw new BusinessException('会社名は必須です。');
+        }
+
         return DB::transaction(function () use ($data) {
+            if (empty($data['company_code'])) {
+                $data['company_code'] = $this->generateCompanyCode();
+            }
+
             return $this->companyRepository->create($data);
         });
+    }
+
+    /**
+     * 会社コードを採番する
+     *
+     * 既存の最大値に1を足した6桁の数字を割り当てる。
+     */
+    private function generateCompanyCode(): string
+    {
+        $maxCode = $this->companyRepository->getMaxCompanyCode();
+
+        if ($maxCode === null) {
+            return self::INITIAL_COMPANY_CODE;
+        }
+
+        $nextNumber = (int) $maxCode + 1;
+
+        if ($nextNumber > 999999) {
+            throw new BusinessException('利用可能な会社コードがありません。');
+        }
+
+        return str_pad((string) $nextNumber, self::COMPANY_CODE_DIGITS, '0', STR_PAD_LEFT);
     }
 
     /**

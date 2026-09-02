@@ -16,7 +16,7 @@ class PasswordUpdateTest extends TestCase
         $user = User::factory()->create();
 
         $response = $this
-            ->actingAs($user)
+            ->actingAs($user, 'admin')
             ->from('/profile')
             ->put('/password', [
                 'current_password' => 'password',
@@ -36,7 +36,7 @@ class PasswordUpdateTest extends TestCase
         $user = User::factory()->create();
 
         $response = $this
-            ->actingAs($user)
+            ->actingAs($user, 'admin')
             ->from('/profile')
             ->put('/password', [
                 'current_password' => 'wrong-password',

@@ -102,7 +102,6 @@ class RolePermissionRepositoryTest extends TestCase
     public function test_find_by_role_id_and_resource_idで権限を取得_role_idが異なる場合はnullを返す(): void
     {
         // Arrange
-        $otherRole = Role::query()->create(['name' => '別のロール']);
         RolePermission::query()->create([
             'role_id' => $this->role->id,
             'resource_id' => $this->resource->id,
@@ -110,8 +109,9 @@ class RolePermissionRepositoryTest extends TestCase
             'is_fixed' => false,
         ]);
 
-        // Act
-        $result = $this->repository->findByRoleIdAndResourceId($otherRole->id, $this->resource->id);
+        // Act: 権限が紐付いていない別のロールIDで引く
+        $otherRoleId = $this->role->id + 100000;
+        $result = $this->repository->findByRoleIdAndResourceId($otherRoleId, $this->resource->id);
 
         // Assert
         $this->assertNull($result);

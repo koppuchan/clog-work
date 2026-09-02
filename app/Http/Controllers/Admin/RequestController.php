@@ -15,6 +15,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request as HttpRequest;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
  * 管理者向け申請管理コントローラー
@@ -399,6 +400,9 @@ class RequestController extends Controller
             }
 
             return $this->approveNormalRequest($companyId, $approverId, $id, $httpRequest->input('decision_note'));
+        } catch (HttpException $e) {
+            // abort() による 404 / 403 はそのまま返す
+            throw $e;
         } catch (\Exception $e) {
             $this->logError(ErrorCodeEnum::REQUEST_APPROVE_FAILED, [], $e);
 
@@ -494,6 +498,9 @@ class RequestController extends Controller
             }
 
             return $this->rejectNormalRequest($companyId, $approverId, $id, $decisionNote);
+        } catch (HttpException $e) {
+            // abort() による 404 / 403 はそのまま返す
+            throw $e;
         } catch (\Exception $e) {
             return redirect()
                 ->back()
@@ -585,6 +592,9 @@ class RequestController extends Controller
             }
 
             return $this->revertNormalRequest($companyId, $id);
+        } catch (HttpException $e) {
+            // abort() による 404 / 403 はそのまま返す
+            throw $e;
         } catch (\Exception $e) {
             $this->logError(ErrorCodeEnum::REQUEST_APPROVE_FAILED, [], $e);
 
@@ -676,6 +686,9 @@ class RequestController extends Controller
             }
 
             return $this->cancelNormalRequest($companyId, $id);
+        } catch (HttpException $e) {
+            // abort() による 404 / 403 はそのまま返す
+            throw $e;
         } catch (\Exception $e) {
             $this->logError(ErrorCodeEnum::REQUEST_APPROVE_FAILED, [], $e);
 

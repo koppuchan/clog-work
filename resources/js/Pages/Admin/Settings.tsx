@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import AdminLayout from '@/Layouts/AdminLayout';
-import { router } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import { Save, Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import { SettingsPageProps } from '@/types/settings';
 import { useCompanySettings } from '@/hooks/settings/useCompanySettings';
@@ -16,6 +16,7 @@ import {
   ClockRoundingCard,
   PaidLeaveCard,
   LaborAlertSettingsCard,
+  AccountInfoCard,
   PlanCard,
   DepartmentFormModal,
   ShiftPatternFormModal,
@@ -35,6 +36,9 @@ function SettingsPage({
   laborAlertSettings: initialLaborAlertSettings,
   canEdit,
 }: SettingsPageProps) {
+  // ログイン中の管理者は共有プロパティから取得する
+  const authUser = usePage().props.auth?.user as { name: string; email: string | null } | undefined;
+
   // カスタムhooks
   const companySettingsHook = useCompanySettings(company, companyRegularHolidays, initialCompanySettings);
   const departmentSettings = useDepartments(initialDepartments ?? []);
@@ -145,6 +149,14 @@ function SettingsPage({
           </p>
         </div>
       )}
+
+      {/* ログイン情報は閲覧のみのため、編集制限の外に置く */}
+      <AccountInfoCard
+        userName={authUser?.name ?? ''}
+        email={authUser?.email ?? null}
+        companyCode={company.company_code}
+        companyName={company.name}
+      />
 
       {/* 設定カード（責任者は閲覧のみ） */}
       <div className={`space-y-6 ${!canEdit ? 'pointer-events-none opacity-75' : ''}`}>

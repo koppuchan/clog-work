@@ -244,6 +244,12 @@ export default function ShiftCalendar({
                     <div className="font-medium text-gray-900 text-xs truncate">{user.name}</div>
                   </div>
                 ))}
+                {/* 部署ごとの人数を数えられるよう小計を置く */}
+                <div className="h-10 bg-green-50 rounded-lg mt-2 flex items-center justify-center">
+                  <div className="font-semibold text-green-700 text-[10px] truncate">
+                    {group.department?.name ?? '未所属'} 合計
+                  </div>
+                </div>
               </div>
             </div>
           ))}
@@ -475,6 +481,30 @@ export default function ShiftCalendar({
                       </div>
                     );
                   })}
+
+                  {/* 部署ごとの出勤予定人数 */}
+                  <div className="flex gap-1 mt-2">
+                    {monthDays.map((day, dayIndex) => {
+                      const dateStr = format(day, 'yyyy-MM-dd');
+                      const scheduled = group.users.filter(
+                        (u) => getShiftsForDate(day, u.id).length > 0
+                      ).length;
+                      const deducted = group.users.reduce(
+                        (sum, u) => sum + (leaveByUserDate.get(`${u.id}-${dateStr}`)?.deduction ?? 0),
+                        0
+                      );
+                      const count = Math.max(0, Math.round((scheduled - deducted) * 100) / 100);
+
+                      return (
+                        <div
+                          key={dayIndex}
+                          className="w-14 h-10 shrink-0 bg-green-50 border rounded-lg flex items-center justify-center"
+                        >
+                          <div className="text-sm font-semibold text-green-700">{count}人</div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             ))}
@@ -494,14 +524,9 @@ export default function ShiftCalendar({
                   return (
                     <div
                       key={dayIndex}
-                      className="w-14 h-10 shrink-0 bg-green-50 border rounded-lg flex flex-col items-center justify-center"
+                      className="w-14 h-10 shrink-0 bg-green-50 border rounded-lg flex items-center justify-center"
                     >
-                      <div className="text-sm font-bold text-green-700 leading-none">{totalCount}人</div>
-                      {deduction > 0 && (
-                        <div className="text-[10px] text-orange-600 leading-none mt-0.5">
-                          -{Math.round(deduction * 100) / 100}
-                        </div>
-                      )}
+                      <div className="text-sm font-bold text-green-700">{totalCount}人</div>
                     </div>
                   );
                 })}

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Enums\RecordSourceEnum;
+use App\Enums\TimeRecordTypeEnum;
+use App\Models\TimeRecord;
 use App\Models\User;
 use App\Repositories\Contracts\DailyWorkSummaryRepositoryInterface;
 use App\Repositories\Contracts\UserRepositoryInterface;
@@ -41,6 +43,18 @@ class WorkSummaryCsvImportService
         '遅刻' => 'late_minutes',
         '早退' => 'early_leave_minutes',
         '遅刻早退' => 'late_minutes',
+    ];
+
+    /**
+     * 休憩の時刻列（旧環境の出力に含まれる）
+     *
+     * @var array<int, array{0: string, 1: string}>
+     */
+    private const BREAK_COLUMNS = [
+        ['休憩入①', '休憩出①'],
+        ['休憩入②', '休憩出②'],
+        ['休憩入1', '休憩出1'],
+        ['休憩入2', '休憩出2'],
     ];
 
     /** 勤務区分と休暇種別の対応 */
@@ -154,6 +168,10 @@ class WorkSummaryCsvImportService
                     $date->format('Y-m-d'),
                     $data,
                 );
+
+                // 画面の休憩表示や打刻修正の履歴は打刻レコードを見るため、
+                // 出力に含まれる時刻から復元する
+                $this->restoreTimeRecords($companyId, $candidates[0], $date, $values);
             }
 
             $result['imported']++;
@@ -254,6 +272,16 @@ class WorkSummaryCsvImportService
             $data['work_end'] = CarbonImmutable::parse($data['work_end'])->addDay()->format('Y-m-d H:i:s');
         }
 
+        // 休憩は時刻の組で出力されるため、そこから分数を求める
+        $breaks = $this->breakPeriods($values, $date);
+
+        if ($breaks !== []) {
+            $data['break_minutes'] = array_sum(array_map(
+                fn (array $b) => (int) $b['start']->diffInMinutes($b['end']),
+                $breaks,
+            ));
+        }
+
         return $data;
     }
 
@@ -278,6 +306,97 @@ class WorkSummaryCsvImportService
         }
 
         return true;
+    }
+
+    /**
+     * 出力に含まれる時刻から打刻レコードを復元する
+     *
+     * 同じ日を再取り込みしても重ならないよう、いったん消してから作り直す。
+     * 打刻としての事実は出力の時刻がすべてなので、丸め時刻も同じ値を入れる。
+     *
+     * @param  array<string, string>  $values
+     */
+    private function restoreTimeRecords(int $companyId, int $userId, CarbonImmutable $date, array $values): void
+    {
+        $punches = [];
+
+        $workStart = $this->parseDateTime($date, $values['出勤時刻'] ?? '');
+        if ($workStart !== null) {
+            $punches[] = [TimeRecordTypeEnum::WORK_START, CarbonImmutable::parse($workStart)];
+        }
+
+        $workEnd = $this->parseDateTime($date, $values['退勤時刻'] ?? '');
+        if ($workEnd !== null) {
+            $endAt = CarbonImmutable::parse($workEnd);
+            $isNextDay = $workStart !== null && $endAt->lessThan(CarbonImmutable::parse($workStart));
+
+            $punches[] = [
+                $isNextDay ? TimeRecordTypeEnum::WORK_END_NEXT_DAY : TimeRecordTypeEnum::WORK_END,
+                $isNextDay ? $endAt->addDay() : $endAt,
+            ];
+        }
+
+        foreach ($this->breakPeriods($values, $date) as $period) {
+            $punches[] = [TimeRecordTypeEnum::BREAK_START, $period['start']];
+            $punches[] = [TimeRecordTypeEnum::BREAK_END, $period['end']];
+        }
+
+        if ($punches === []) {
+            return;
+        }
+
+        TimeRecord::query()
+            ->where('company_id', $companyId)
+            ->where('user_id', $userId)
+            ->whereBetween('record_time', [
+                $date->startOfDay()->format('Y-m-d H:i:s'),
+                $date->addDay()->endOfDay()->format('Y-m-d H:i:s'),
+            ])
+            ->delete();
+
+        foreach ($punches as [$type, $at]) {
+            TimeRecord::query()->create([
+                'company_id' => $companyId,
+                'user_id' => $userId,
+                'record_type' => $type,
+                'record_time' => $at->format('Y-m-d H:i:s'),
+                'rounded_time' => $at->format('Y-m-d H:i:s'),
+                'record_source' => RecordSourceEnum::MANUAL,
+            ]);
+        }
+    }
+
+    /**
+     * 休憩の時刻の組を取り出す
+     *
+     * 退勤と同じく、終了が開始より前なら日を跨いだものとして扱う。
+     *
+     * @param  array<string, string>  $values
+     * @return array<int, array{start: CarbonImmutable, end: CarbonImmutable}>
+     */
+    private function breakPeriods(array $values, CarbonImmutable $date): array
+    {
+        $periods = [];
+
+        foreach (self::BREAK_COLUMNS as [$startHeader, $endHeader]) {
+            $start = $this->parseDateTime($date, $values[$startHeader] ?? '');
+            $end = $this->parseDateTime($date, $values[$endHeader] ?? '');
+
+            if ($start === null || $end === null) {
+                continue;
+            }
+
+            $startAt = CarbonImmutable::parse($start);
+            $endAt = CarbonImmutable::parse($end);
+
+            if ($endAt->lessThan($startAt)) {
+                $endAt = $endAt->addDay();
+            }
+
+            $periods[] = ['start' => $startAt, 'end' => $endAt];
+        }
+
+        return $periods;
     }
 
     /**

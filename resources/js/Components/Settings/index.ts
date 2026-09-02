@@ -7,6 +7,7 @@ export { default as ShiftPatternSettingsCard } from './ShiftPatternSettingsCard'
 export { default as ClockRoundingCard } from './ClockRoundingCard';
 export { default as PaidLeaveCard } from './PaidLeaveCard';
 export { default as LaborAlertSettingsCard } from './LaborAlertSettingsCard';
+export { default as AccountInfoCard } from './AccountInfoCard';
 export { default as PlanCard } from './PlanCard';
 export { default as DepartmentFormModal } from './DepartmentFormModal';
 export { default as ShiftPatternFormModal } from './ShiftPatternFormModal';

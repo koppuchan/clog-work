@@ -226,6 +226,78 @@ class WorkSummaryCsvImportServiceTest extends TestCase
     /**
      * @test
      */
+    public function 休憩の時刻から休憩時間を求める(): void
+    {
+        // 旧環境の出力は休憩を分数ではなく時刻の組で持つ
+        $this->user->update(['employee_code' => '000005']);
+
+        $csv = "個人コード,日付,勤務区分,出勤時刻,退勤時刻,休憩入①,休憩出①,休憩入②,休憩出②,労働時間\n"
+            ."000005,2026/08/26,出勤,09:00,18:00,13:45,14:39,,,8:15\n";
+
+        $this->import($csv);
+
+        $this->assertSame(54, $this->summaryFor('2026-08-26')?->break_minutes);
+    }
+
+    /**
+     * @test
+     */
+    public function 休憩が2枠あれば合算する(): void
+    {
+        $this->user->update(['employee_code' => '000005']);
+
+        $csv = "個人コード,日付,勤務区分,出勤時刻,退勤時刻,休憩入①,休憩出①,休憩入②,休憩出②,労働時間\n"
+            ."000005,2026/08/26,出勤,09:00,18:00,12:00,13:00,15:00,15:15,7:45\n";
+
+        $this->import($csv);
+
+        $this->assertSame(75, $this->summaryFor('2026-08-26')?->break_minutes);
+    }
+
+    /**
+     * @test
+     */
+    public function 打刻レコードを復元する(): void
+    {
+        // 画面の休憩表示や打刻修正の履歴は打刻レコードを見るため
+        $this->user->update(['employee_code' => '000005']);
+
+        $csv = "個人コード,日付,勤務区分,出勤時刻,退勤時刻,休憩入①,休憩出①,労働時間\n"
+            ."000005,2026/08/26,出勤,09:00,18:00,12:00,13:00,8:00\n";
+
+        $this->import($csv);
+
+        $records = \App\Models\TimeRecord::query()
+            ->where('user_id', $this->user->id)
+            ->orderBy('record_time')
+            ->get();
+
+        $this->assertCount(4, $records);
+        $this->assertSame('09:00', $records[0]->record_time->format('H:i'));
+        $this->assertSame('12:00', $records[1]->record_time->format('H:i'));
+        $this->assertSame('13:00', $records[2]->record_time->format('H:i'));
+        $this->assertSame('18:00', $records[3]->record_time->format('H:i'));
+    }
+
+    /**
+     * @test
+     */
+    public function 再取り込みしても打刻が重複しない(): void
+    {
+        $this->user->update(['employee_code' => '000005']);
+
+        $csv = "個人コード,日付,勤務区分,出勤時刻,退勤時刻,労働時間\n"
+            ."000005,2026/08/26,出勤,09:00,18:00,9:00\n";
+
+        $this->import($csv);
+        $this->import($csv);
+
+        $this->assertSame(2, \App\Models\TimeRecord::query()->where('user_id', $this->user->id)->count());
+    }
+
+    /**
+     * @test
+     */
     public function 備考を引き継ぐ(): void
     {
         $csv = $this->oldFormat(

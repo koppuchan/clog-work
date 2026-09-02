@@ -10,6 +10,7 @@ use App\Models\CompanyLaborAlertSetting;
 use App\Models\DailyWorkSummary;
 use App\Models\LaborAlertHistory;
 use App\Repositories\Contracts\LaborAlertRepositoryInterface;
+use App\Services\PayrollPeriodService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -84,17 +85,20 @@ class LaborAlertRepository implements LaborAlertRepositoryInterface
      */
     public function findUsersExceedingOvertimeThreshold(int $companyId, int $year, int $month, int $thresholdMinutes): Collection
     {
-        $startDate = sprintf('%04d-%02d-01', $year, $month);
-        $endDate = CarbonImmutable::parse($startDate)->endOfMonth()->format('Y-m-d');
+        // 集計は締め期間で行う。暦月で数えると、締日をまたいだ残業が
+        // 閾値を超えていてもアラートが出ない
+        [$start, $end] = app(PayrollPeriodService::class)->resolve($companyId, $year, $month);
+        $startDate = $start->format('Y-m-d');
+        $endDate = $end->format('Y-m-d');
 
         return $this->dailyWorkSummary->query()
-            ->selectRaw('user_id, company_id, SUM(overtime_minutes) as overtime_minutes')
+            ->selectRaw('user_id, company_id, SUM(overtime_minutes) + SUM(holiday_minutes) as overtime_minutes')
             ->with(['user'])
             ->where('company_id', $companyId)
             ->whereBetween('work_date', [$startDate, $endDate])
             ->groupBy('user_id', 'company_id')
-            ->havingRaw('SUM(overtime_minutes) >= ?', [$thresholdMinutes])
-            ->orderByRaw('SUM(overtime_minutes) DESC')
+            ->havingRaw('SUM(overtime_minutes) + SUM(holiday_minutes) >= ?', [$thresholdMinutes])
+            ->orderByRaw('SUM(overtime_minutes) + SUM(holiday_minutes) DESC')
             ->get();
     }
 

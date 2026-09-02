@@ -71,7 +71,10 @@ export function useShiftStats(selectedDate: Date, shifts: Shift[], activeUsers: 
   const getShiftCountsByDate = useMemo(() => {
     return (date: Date) => {
       const dateStr = format(date, 'yyyy-MM-dd');
-      const dayShifts = shifts.filter(shift => shift.date === dateStr);
+      // 「休み」は出勤ではないため人数に数えない
+      const dayShifts = shifts.filter(
+        shift => shift.date === dateStr && shift.shiftType !== 'rest'
+      );
 
       const counts: { [key: string]: number } = {};
       dayShifts.forEach(shift => {

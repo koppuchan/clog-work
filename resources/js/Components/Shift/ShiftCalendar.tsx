@@ -486,8 +486,9 @@ export default function ShiftCalendar({
                   <div className="flex gap-1 mt-2">
                     {monthDays.map((day, dayIndex) => {
                       const dateStr = format(day, 'yyyy-MM-dd');
-                      const scheduled = group.users.filter(
-                        (u) => getShiftsForDate(day, u.id).length > 0
+                      // 「休み」は出勤ではないため人数に数えない
+                      const scheduled = group.users.filter((u) =>
+                        getShiftsForDate(day, u.id).some((s) => s.shiftType !== 'rest')
                       ).length;
                       const deducted = group.users.reduce(
                         (sum, u) => sum + (leaveByUserDate.get(`${u.id}-${dateStr}`)?.deduction ?? 0),

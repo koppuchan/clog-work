@@ -1,1 +1,0 @@
-import{c}from"./circle-check-big-CF65IIi2.js";const a=[["path",{d:"M4.929 4.929 19.07 19.071",key:"196cmz"}],["circle",{cx:"12",cy:"12",r:"10",key:"1mglay"}]],t=c("ban",a);const e=[["path",{d:"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8",key:"1357e3"}],["path",{d:"M3 3v5h5",key:"1xhq8a"}]],n=c("rotate-ccw",e);export{t as B,n as R};

@@ -43,7 +43,6 @@ enum RouteNameEnum: string
 
     // === Admin - 申請管理 ===
     case ADMIN_APPLICATIONS = 'admin.applications';
-    case ADMIN_APPLICATIONS_SHOW = 'admin.applications.show';
     case ADMIN_APPLICATIONS_APPROVE = 'admin.applications.approve';
     case ADMIN_APPLICATIONS_REJECT = 'admin.applications.reject';
 
@@ -123,7 +122,6 @@ enum RouteNameEnum: string
 
             // Admin - 申請
             self::ADMIN_APPLICATIONS => '申請一覧取得',
-            self::ADMIN_APPLICATIONS_SHOW => '申請詳細取得',
             self::ADMIN_APPLICATIONS_APPROVE => '申請承認',
             self::ADMIN_APPLICATIONS_REJECT => '申請却下',
 

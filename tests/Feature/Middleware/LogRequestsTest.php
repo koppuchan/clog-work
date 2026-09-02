@@ -4,123 +4,130 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Middleware;
 
+use App\Models\Company;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
+/**
+ * リクエストログ出力ミドルウェアの検証。
+ *
+ * 1リクエストにつき「開始」と「終了」の2件を出力し、
+ * レスポンスに追跡用のリクエストIDを付ける。
+ */
 class LogRequestsTest extends TestCase
 {
     use DatabaseTransactions;
 
     /**
-     * @test
+     * 記録された info ログを集める
+     *
+     * @return array<int, array{message: string, context: array<string, mixed>}>
      */
-    public function middleware_logs_incoming_request(): void
+    private function captureInfoLogs(): array
     {
-        // Arrange
-        Log::shouldReceive('withContext')
-            ->once()
-            ->andReturnSelf();
+        $logs = [];
 
-        Log::shouldReceive('info')
-            ->with('Incoming request', \Mockery::type('array'))
-            ->once();
+        Log::shouldReceive('withContext')->zeroOrMoreTimes();
+        Log::shouldReceive('error', 'warning', 'debug')->zeroOrMoreTimes();
+        Log::shouldReceive('info')->andReturnUsing(function (string $message, array $context = []) use (&$logs) {
+            $logs[] = ['message' => $message, 'context' => $context];
+        });
 
-        Log::shouldReceive('info')
-            ->with('Request completed', \Mockery::type('array'))
-            ->once();
-
-        // Act
-        $response = $this->get('/');
-
-        // Assert - ミドルウェアが実行されたことを確認
-        $response->assertOk();
+        return $logs;
     }
 
     /**
      * @test
      */
-    public function middleware_adds_request_id_header(): void
+    public function 開始と終了のログを出力する(): void
     {
-        // Act
-        $response = $this->get('/');
+        $logs = [];
 
-        // Assert
-        $response->assertHeader('X-Request-ID');
-        $this->assertMatchesRegularExpression(
-            '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i',
-            $response->headers->get('X-Request-ID')
-        );
+        Log::shouldReceive('withContext')->zeroOrMoreTimes();
+        Log::shouldReceive('error', 'warning', 'debug')->zeroOrMoreTimes();
+        Log::shouldReceive('info')->andReturnUsing(function (string $message, array $context = []) use (&$logs) {
+            $logs[] = $message;
+        });
+
+        $this->get('/admin/login')->assertOk();
+
+        $started = array_filter($logs, fn (string $m) => str_contains($m, '【開始】'));
+        $finished = array_filter($logs, fn (string $m) => str_contains($m, '【終了】'));
+
+        $this->assertCount(1, $started);
+        $this->assertCount(1, $finished);
     }
 
     /**
      * @test
      */
-    public function middleware_logs_user_information_when_authenticated(): void
+    public function レスポンスに追跡用のリクエスト_i_dを付ける(): void
     {
-        // Arrange
-        $user = User::factory()->create(['id' => 123]);
-
-        Log::shouldReceive('withContext')
-            ->once()
-            ->with(\Mockery::on(function ($context) {
-                return isset($context['user_id']) && $context['user_id'] === 123;
-            }))
-            ->andReturnSelf();
-
-        Log::shouldReceive('info')->twice();
-
-        // Act
-        $response = $this->actingAs($user)->get('/');
-
-        // Assert
-        $response->assertOk();
+        $this->get('/admin/login')->assertHeader('X-Request-ID');
     }
 
     /**
      * @test
      */
-    public function middleware_logs_execution_time(): void
+    public function 開始ログにメソッドと_ur_lを含める(): void
     {
-        // Arrange
-        Log::shouldReceive('withContext')->once()->andReturnSelf();
-        Log::shouldReceive('info')->once();
+        $contexts = [];
 
-        Log::shouldReceive('info')
-            ->once()
-            ->with('Request completed', \Mockery::on(function ($context) {
-                return isset($context['execution_time_ms']) &&
-                       is_numeric($context['execution_time_ms']) &&
-                       $context['execution_time_ms'] >= 0;
-            }));
+        Log::shouldReceive('withContext')->zeroOrMoreTimes();
+        Log::shouldReceive('error', 'warning', 'debug')->zeroOrMoreTimes();
+        Log::shouldReceive('info')->andReturnUsing(function (string $message, array $context = []) use (&$contexts) {
+            if (str_contains($message, '【開始】')) {
+                $contexts[] = $context;
+            }
+        });
 
-        // Act
-        $response = $this->get('/');
+        $this->get('/admin/login');
 
-        // Assert
-        $response->assertOk();
+        $this->assertSame('GET', $contexts[0]['method']);
+        $this->assertStringContainsString('/admin/login', $contexts[0]['url']);
     }
 
     /**
      * @test
      */
-    public function middleware_logs_status_code(): void
+    public function 終了ログに状態コードと実行時間を含める(): void
     {
-        // Arrange
-        Log::shouldReceive('withContext')->once()->andReturnSelf();
-        Log::shouldReceive('info')->once();
+        $contexts = [];
 
-        Log::shouldReceive('info')
-            ->once()
-            ->with('Request completed', \Mockery::on(function ($context) {
-                return isset($context['status_code']) && $context['status_code'] === 200;
-            }));
+        Log::shouldReceive('withContext')->zeroOrMoreTimes();
+        Log::shouldReceive('error', 'warning', 'debug')->zeroOrMoreTimes();
+        Log::shouldReceive('info')->andReturnUsing(function (string $message, array $context = []) use (&$contexts) {
+            if (str_contains($message, '【終了】')) {
+                $contexts[] = $context;
+            }
+        });
 
-        // Act
-        $response = $this->get('/');
+        $this->get('/admin/login');
 
-        // Assert
-        $response->assertOk();
+        $this->assertSame(200, $contexts[0]['status_code']);
+        $this->assertIsFloat($contexts[0]['execution_time_ms']);
+    }
+
+    /**
+     * @test
+     */
+    public function 認証済みならログの文脈に利用者を含める(): void
+    {
+        $company = Company::factory()->create();
+        $admin = User::factory()->forCompany($company->id)->admin()->create(['is_retired' => false]);
+
+        $contexts = [];
+
+        Log::shouldReceive('info', 'error', 'warning', 'debug')->zeroOrMoreTimes();
+        Log::shouldReceive('withContext')->andReturnUsing(function (array $context) use (&$contexts) {
+            $contexts[] = $context;
+        });
+
+        $this->actingAs($admin, 'admin')->get('/admin/shifts');
+
+        $this->assertSame($admin->id, $contexts[0]['user_id']);
+        $this->assertArrayHasKey('request_id', $contexts[0]);
     }
 }

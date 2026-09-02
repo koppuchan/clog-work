@@ -130,14 +130,13 @@ class UserServiceTest extends TestCase
     /**
      * @test
      */
-    public function create_throws_exception_when_email_is_empty(): void
+    public function create_allows_user_without_email(): void
     {
-        // Assert
-        $this->expectException(BusinessException::class);
-        $this->expectExceptionMessage('メールアドレスは必須です。');
+        // メールアドレスは任意項目。招待メールを送らないスタッフも登録できる
+        $user = $this->service->create(['name' => 'Test User']);
 
-        // Act
-        $this->service->create(['name' => 'Test User']);
+        $this->assertSame('Test User', $user->name);
+        $this->assertNull($user->email);
     }
 
     /**

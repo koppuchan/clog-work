@@ -132,6 +132,16 @@ class UserService
      */
     public function create(array $data): User
     {
+        // 画面からはFormRequestで防いでいるが、CSV取り込みなど別経路から
+        // 呼ばれた場合にDBエラーがそのまま出ないよう、ここでも確認する
+        if (empty($data['name'])) {
+            throw new BusinessException('氏名は必須です。');
+        }
+
+        if (! empty($data['email']) && $this->userRepository->findByEmail($data['email'])) {
+            throw new BusinessException('このメールアドレスは既に使用されています。');
+        }
+
         try {
             // パスワードの処理
             // パスワードが提供されていない場合はランダムなパスワードを生成
@@ -289,6 +299,15 @@ class UserService
      */
     public function update(int $id, array $data): User
     {
+        // 別のスタッフが使っているメールアドレスには変更させない
+        if (! empty($data['email'])) {
+            $existing = $this->userRepository->findByEmail($data['email']);
+
+            if ($existing && $existing->id !== $id) {
+                throw new BusinessException('このメールアドレスは既に使用されています。');
+            }
+        }
+
         try {
             // ユーザーが存在するか確認（存在しない場合はNotFoundException）
             $this->findById($id);
@@ -449,7 +468,8 @@ class UserService
         }
 
         // 管理者が1人のみの場合は削除不可
-        if ($this->isLastAdminInCompany($id, $user->company_id)) {
+        // 会社に所属していないスタッフはこの判定の対象外
+        if ($user->company_id !== null && $this->isLastAdminInCompany($id, $user->company_id)) {
             throw new BusinessException('会社に管理者が1人しかいないため、削除できません。');
         }
 

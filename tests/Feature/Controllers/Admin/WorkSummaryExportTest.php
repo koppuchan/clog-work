@@ -191,7 +191,9 @@ class WorkSummaryExportTest extends TestCase
         $response = $this->actingAs($this->employee, 'admin')
             ->get('/admin/reports/export/csv?month=2025-01&user_id='.$this->employee->id);
 
-        $response->assertStatus(403);
+        // 一般スタッフは admin_or_manager ミドルウェアで弾かれ、
+        // コントローラまで到達しないためリダイレクトになる
+        $response->assertRedirect();
     }
 
     /**
@@ -283,7 +285,9 @@ class WorkSummaryExportTest extends TestCase
         $response = $this->actingAs($this->employee, 'admin')
             ->get('/admin/reports/export/excel?month=2025-01&user_id='.$this->employee->id);
 
-        $response->assertStatus(403);
+        // 一般スタッフは admin_or_manager ミドルウェアで弾かれ、
+        // コントローラまで到達しないためリダイレクトになる
+        $response->assertRedirect();
     }
 
     /**

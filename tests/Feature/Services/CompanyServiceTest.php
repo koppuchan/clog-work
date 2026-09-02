@@ -167,10 +167,10 @@ class CompanyServiceTest extends TestCase
         // Act
         $result = $this->service->updateSettings($company->id, $data);
 
-        // Assert
+        // Assert: 保存先は数値のため、末締めは31日として記録される
         $this->assertDatabaseHas('companies', [
             'id' => $company->id,
-            'payroll_closing_day' => 'end',
+            'payroll_closing_day' => 31,
         ]);
     }
 

@@ -54,6 +54,10 @@ class SuperAdminService
                     'user_count' => $company->users()->count(),
                     'owner_name' => $owner?->name,
                     'owner_email' => $owner?->email,
+                    // FeliCa打刻端末の設定に必要なため、事業所へ伝えられるようにする
+                    'uuid' => $company->uuid,
+                    'public_stamp_url' => rtrim((string) config('attendance.public_stamp_base_url'), '/')
+                        .'/stamp/'.$company->uuid,
                     'created_at' => $company->created_at?->format('Y-m-d'),
                 ];
             })

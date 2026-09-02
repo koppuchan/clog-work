@@ -200,4 +200,24 @@ class SuperAdminTest extends TestCase
         $response->assertForbidden();
         $this->assertNotNull(Company::find($target->id));
     }
+
+    /**
+     * @test
+     */
+    public function 事業所一覧に打刻用_uui_dと打刻_ur_lを表示する(): void
+    {
+        // FeliCa端末の設定に必要なため、事業所へ伝えられる必要がある
+        $target = Company::factory()->create(['company_code' => '930010', 'name' => 'UUID確認株式会社']);
+
+        $response = $this->actingAs($this->superAdmin, 'admin')->get('/super-admin/companies');
+
+        $response->assertStatus(200);
+
+        $companies = collect($response->viewData('page')['props']['companies']);
+        $row = $companies->firstWhere('company_code', '930010');
+
+        $this->assertNotNull($row);
+        $this->assertSame($target->uuid, $row['uuid']);
+        $this->assertStringContainsString('/stamp/'.$target->uuid, $row['public_stamp_url']);
+    }
 }

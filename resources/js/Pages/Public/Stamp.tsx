@@ -45,6 +45,8 @@ export default function PublicStampPage({ company, users }: Props) {
   // 一覧は初期表示では畳んでおく。検索すると自動で開く
   const [nameQuery, setNameQuery] = useState('');
   const [isListOpen, setIsListOpen] = useState(false);
+  // 休憩開始モード。onにすると、この後の打刻が休憩開始になる
+  const [isBreakMode, setIsBreakMode] = useState(false);
 
   // 名前・フリガナ・個人コードで絞り込む
   const filteredUsers = useMemo(() => {
@@ -59,6 +61,23 @@ export default function PublicStampPage({ company, users }: Props) {
         .some((value) => (value ?? '').toLowerCase().includes(query))
     );
   }, [users, nameQuery]);
+
+  // 休憩開始モードは Esc でも解除できるようにする
+  useEffect(() => {
+    if (! isBreakMode) {
+      return;
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsBreakMode(false);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isBreakMode]);
 
   // 検索を始めたら一覧を開き、消したら畳む
   useEffect(() => {
@@ -97,9 +116,16 @@ export default function PublicStampPage({ company, users }: Props) {
       if (response.data.success) {
         setIsAuthenticated(true);
         setVerifiedPassword(password);
-        setPassword('');
         setCurrentStatus(response.data.currentStatus);
         setTodayRecords(response.data.todayRecords);
+
+        // 休憩開始モードなら打刻種別を選ばせずそのまま記録する
+        if (isBreakMode) {
+          await stampWith('break-start', password);
+          setIsBreakMode(false);
+        }
+
+        setPassword('');
       }
     } catch (error: unknown) {
       if (axios.isAxiosError(error) && error.response?.data?.message) {
@@ -112,14 +138,23 @@ export default function PublicStampPage({ company, users }: Props) {
     }
   };
 
-  const handleStamp = async (action: 'clock-in' | 'clock-out' | 'break-start' | 'break-end') => {
+  /**
+   * 打刻を記録する
+   *
+   * 認証直後にそのまま打刻する場合、verifiedPassword の反映を待てないため
+   * パスワードを引数で受け取れるようにしている。
+   */
+  const stampWith = async (
+    action: 'clock-in' | 'clock-out' | 'break-start' | 'break-end',
+    passwordToUse?: string
+  ) => {
     if (!selectedUser) return;
 
     setIsLoading(true);
     try {
       const response = await axios.post(`/stamp/${company.uuid}/${action}`, {
         user_id: selectedUser.id,
-        password: verifiedPassword,
+        password: passwordToUse ?? verifiedPassword,
       });
       if (response.data.success) {
         setMessage({ type: 'success', text: response.data.message });
@@ -138,6 +173,9 @@ export default function PublicStampPage({ company, users }: Props) {
       setIsLoading(false);
     }
   };
+
+  const handleStamp = (action: 'clock-in' | 'clock-out' | 'break-start' | 'break-end') =>
+    stampWith(action);
 
   const handleBack = () => {
     setSelectedUser(null);
@@ -176,7 +214,7 @@ export default function PublicStampPage({ company, users }: Props) {
   return (
     <>
       <Head title={`打刻 - ${company.name}`} />
-      <div className="min-h-screen bg-gray-100">
+      <div className={`min-h-screen transition-colors ${isBreakMode ? 'bg-yellow-100' : 'bg-gray-100'}`}>
         {/* ヘッダー */}
         <header className="bg-white shadow">
           <div className="max-w-4xl mx-auto px-4 py-4">
@@ -211,6 +249,24 @@ export default function PublicStampPage({ company, users }: Props) {
                 <div className="text-xl text-gray-600">
                   {format(currentTime, 'yyyy年MM月dd日 (E)', { locale: ja })}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsBreakMode((on) => !on)}
+                  className={`mt-4 px-6 py-3 rounded-lg font-semibold transition-colors ${
+                    isBreakMode
+                      ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                      : 'bg-orange-500 hover:bg-orange-600 text-white'
+                  }`}
+                >
+                  {isBreakMode ? '休憩開始モード（解除する）' : '休憩開始'}
+                </button>
+
+                {isBreakMode && (
+                  <p className="mt-2 text-sm text-yellow-800">
+                    このまま名前とパスワードを入力すると休憩開始として記録されます。Escキーで解除できます。
+                  </p>
+                )}
               </div>
 
               <h2 className="text-lg font-semibold text-gray-900 mb-4 text-center">

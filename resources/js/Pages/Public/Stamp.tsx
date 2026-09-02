@@ -242,7 +242,10 @@ export default function PublicStampPage({ company, users }: Props) {
   return (
     <>
       <Head title={`打刻 - ${company.name}`} />
-      <div className={`min-h-screen transition-colors ${isBreakMode ? 'bg-yellow-100' : 'bg-gray-100'}`}>
+      <div
+        className="min-h-screen"
+        style={{ backgroundColor: isBreakMode ? '#fef9c3' : '#f3f4f6' }}
+      >
         {/* ヘッダー */}
         <header className="bg-white shadow">
           <div className="max-w-4xl mx-auto px-4 py-4">
@@ -271,24 +274,26 @@ export default function PublicStampPage({ company, users }: Props) {
             // スタッフ選択画面
             <div className="bg-white shadow rounded-lg p-6">
               <div className="text-center mb-6">
-                <div className="text-6xl font-bold text-gray-900 font-mono mb-2">
-                  {format(currentTime, 'HH:mm:ss')}
-                </div>
-                <div className="text-xl text-gray-600">
-                  {format(currentTime, 'yyyy年MM月dd日 (E)', { locale: ja })}
-                </div>
+                {/* 時計の右側に休憩開始モードの切り替えを置く */}
+                <div className="flex items-center justify-center gap-6 flex-wrap">
+                  <div>
+                    <div className="text-6xl font-bold text-gray-900 font-mono mb-2">
+                      {format(currentTime, 'HH:mm:ss')}
+                    </div>
+                    <div className="text-xl text-gray-600">
+                      {format(currentTime, 'yyyy年MM月dd日 (E)', { locale: ja })}
+                    </div>
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={() => setIsBreakMode((on) => !on)}
-                  className={`mt-4 px-6 py-3 rounded-lg font-semibold transition-colors ${
-                    isBreakMode
-                      ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
-                      : 'bg-orange-500 hover:bg-orange-600 text-white'
-                  }`}
-                >
-                  {isBreakMode ? '休憩開始モード（解除する）' : '休憩開始'}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsBreakMode((on) => !on)}
+                    className="px-6 py-4 rounded-lg font-semibold text-white"
+                    style={{ backgroundColor: isBreakMode ? '#eab308' : '#f97316' }}
+                  >
+                    {isBreakMode ? '休憩開始モード（解除する）' : '休憩開始'}
+                  </button>
+                </div>
 
                 {isBreakMode && (
                   <p className="mt-2 text-sm text-yellow-800">

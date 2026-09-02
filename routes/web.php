@@ -19,11 +19,6 @@ use App\Http\Middleware\EnsurePasswordIsChanged;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-// テストページ（認証不要）
-Route::get('/test', function () {
-    return Inertia::render('Test');
-});
-
 // 公開打刻ページ（認証不要）
 Route::prefix('stamp')->name('public.stamp.')->group(function () {
     Route::get('/{uuid}', [PublicStampController::class, 'index'])->name('index');
@@ -81,7 +76,6 @@ Route::middleware(['auth:admin', 'verified', 'admin_or_manager'])->prefix('admin
 
     // 申請管理
     Route::get('/applications', [RequestController::class, 'index'])->name('applications');
-    Route::get('/applications/{id}', [RequestController::class, 'show'])->name('applications.show');
     Route::post('/applications/{id}/approve', [RequestController::class, 'approve'])->name('applications.approve');
     Route::post('/applications/{id}/reject', [RequestController::class, 'reject'])->name('applications.reject');
     Route::post('/applications/{id}/revert', [RequestController::class, 'revert'])->name('applications.revert');

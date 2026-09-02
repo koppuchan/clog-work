@@ -42,6 +42,7 @@ class UserService
     public function __construct(
         private readonly UserRepositoryInterface $userRepository,
         private readonly UserPermissionRepositoryInterface $userPermissionRepository,
+        private readonly PermissionService $permissionService,
         private readonly MailDispatcher $mailDispatcher
     ) {}
 
@@ -604,12 +605,20 @@ class UserService
      */
     public function getPermissionsForFrontend(int $userId): array
     {
-        // デフォルト値
+        $user = $this->userRepository->findById($userId);
+
+        if (! $user) {
+            throw new NotFoundException(ErrorCodeEnum::USER_NOT_FOUND, ['user_id' => $userId]);
+        }
+
+        // 個別設定がない場合はロールの既定値にフォールバックする。
+        // ここを固定値にすると、編集画面を開いて保存しただけで
+        // ロールの既定（例: 管理者は全社）が「本人のみ」に書き換わってしまう。
         $permissions = [
-            'shift_view_permission' => 'self',
-            'attendance_view_permission' => 'self',
-            'approval_permission' => 'department',
-            'shift_edit_permission' => 'department',
+            'shift_view_permission' => $this->permissionService->getShiftViewScope($user),
+            'attendance_view_permission' => $this->permissionService->getAttendanceViewScope($user),
+            'approval_permission' => $this->permissionService->getApprovalScope($user),
+            'shift_edit_permission' => $this->permissionService->getShiftEditScope($user),
         ];
 
         // ユーザー個別権限を取得

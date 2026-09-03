@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, FormEvent } from 'react';
 import { Head } from '@inertiajs/react';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { AlertCircle, CheckCircle, User, ChevronLeft, Lock } from 'lucide-react';
+import { AlertCircle, CheckCircle, User, ChevronLeft, Lock, Coffee } from 'lucide-react';
 import axios from 'axios';
 import { useCurrentTime } from '@/hooks/useCurrentTime';
 
@@ -236,7 +236,7 @@ export default function PublicStampPage({ company, users }: Props) {
     if (!currentStatus) return 'text-gray-500';
     if (!currentStatus.isWorking) return 'text-gray-500';
     if (currentStatus.isOnBreak) return 'text-yellow-600';
-    return 'text-green-600';
+    return 'text-blue-600';
   };
 
   return (
@@ -258,7 +258,7 @@ export default function PublicStampPage({ company, users }: Props) {
           {message && (
             <div
               className={`mb-6 p-4 rounded-lg flex items-center gap-2 ${
-                message.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+                message.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-yellow-50 text-yellow-800'
               }`}
             >
               {message.type === 'success' ? (
@@ -288,10 +288,12 @@ export default function PublicStampPage({ company, users }: Props) {
                   <button
                     type="button"
                     onClick={() => setIsBreakMode((on) => !on)}
-                    className="px-6 py-4 rounded-lg font-semibold text-white"
-                    style={{ backgroundColor: isBreakMode ? '#eab308' : '#f97316' }}
+                    className="inline-flex flex-col items-center justify-center gap-1 px-6 py-4 rounded-lg font-semibold text-white"
+                    style={{ backgroundColor: isBreakMode ? '#eab308' : '#f59e0b' }}
                   >
-                    {isBreakMode ? '休憩開始モード（解除する）' : '休憩開始'}
+                    <Coffee className="w-6 h-6" />
+                    <span>休憩開始</span>
+                    {isBreakMode && <span className="text-xs font-normal opacity-90">タップで解除</span>}
                   </button>
                 </div>
 

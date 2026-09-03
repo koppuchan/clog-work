@@ -404,6 +404,7 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
       // 既存レコードの更新
       router.put(`/admin/reports/${editingSummary.id}`, payload, {
         preserveState: false,
+        preserveScroll: true,
         onSuccess,
         onError,
         onFinish,
@@ -416,6 +417,7 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
         work_date: editingDate,
       }, {
         preserveState: false,
+        preserveScroll: true,
         onSuccess,
         onError,
         onFinish,
@@ -433,6 +435,7 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
 
     router.delete(`/admin/reports/${editingSummary.id}`, {
       preserveState: false,
+      preserveScroll: true,
       onSuccess: () => {
         setShowEditModal(false);
         setEditingSummary(null);

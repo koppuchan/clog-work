@@ -228,7 +228,7 @@ export default function WorkReportTable({
 
       {/* テーブル */}
       <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="overflow-auto max-h-[70vh]">
+        <div className="overflow-auto max-h-[70vh]" scroll-region="">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50 sticky top-0 z-10 shadow-[0_1px_0_0_rgb(229,231,235)]">
               <tr>

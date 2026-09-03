@@ -453,7 +453,7 @@ export default function PublicStampPage({ company, users }: Props) {
                   onClick={() => setIsListOpen((open) => !open)}
                   className="px-4 py-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 whitespace-nowrap"
                 >
-                  {isListOpen ? '一覧を閉じる' : '一覧を開く'}
+                  {isListOpen ? '一覧を閉じる' : '従業員一覧'}
                 </button>
               </div>
 
@@ -469,7 +469,7 @@ export default function PublicStampPage({ company, users }: Props) {
                 </div>
               ) : ! isListOpen ? (
                 <div className="text-center text-gray-500 py-8 text-sm">
-                  名前を検索するか、「一覧を開く」を押してください。
+                  名前を検索するか、「従業員一覧」を押してください。
                 </div>
               ) : filteredUsers.length === 0 ? (
                 <div className="text-center text-gray-500 py-8 text-sm">

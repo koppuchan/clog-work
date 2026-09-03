@@ -85,6 +85,34 @@ class WorkSummaryCsvImportServiceTest extends TestCase
 
     /**
      * @test
+     *
+     * 実際の旧環境の出力には「勤務時間」列が無く、「労働時間」（実働時間）
+     * しか無いため、勤務時間（出退勤の実時間差）は出退勤時刻から算出する必要がある。
+     * この列が無いことに気づかず「勤務時間」列の値をそのまま使う実装のままだと、
+     * 出退勤時刻はあるのに勤務時間だけ0になってしまう。
+     */
+    public function 勤務時間列が無い実際の旧環境形式でも出退勤時刻から勤務時間を算出する(): void
+    {
+        $header = '氏名,個人コード,日付,曜日,勤務区分,シフト開始,シフト終了,シフト休憩入,シフト休憩出,'
+            .'出勤時刻,退勤時刻,休憩入①,休憩出①,休憩入②,休憩出②,労働時間,時間外,休日,深夜,遅刻早退,備考,申請数値';
+        $row = '前田 依子,,2026/06/24,水,出勤,09:00,18:00,12:00,13:00,'
+            .'09:00,18:00,,,,,8:00,0:00,0:00,0:00,0:00,,';
+        $csv = $header."\n".$row."\n";
+
+        $result = $this->import($csv);
+
+        $this->assertSame(1, $result['imported']);
+        $this->assertSame([], $result['errors']);
+
+        $summary = $this->summaryFor('2026-06-24');
+        $this->assertNotNull($summary);
+        // 出退勤時刻の差（09:00〜18:00 = 9時間）から算出されること
+        $this->assertSame(540, $summary->work_minutes);
+        $this->assertSame(480, $summary->net_work_minutes);
+    }
+
+    /**
+     * @test
      */
     public function 勤務区分の列がある新しい形式も取り込める(): void
     {

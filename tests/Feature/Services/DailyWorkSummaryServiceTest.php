@@ -535,6 +535,76 @@ class DailyWorkSummaryServiceTest extends TestCase
 
     /**
      * @test
+     *
+     * 日跨ぎ勤務の休憩が翌日の日付で保存されている場合、
+     * 削除時にその休憩レコードも孤立させずに削除すること
+     */
+    public function delete_work_times_removes_next_day_break_records_on_cross_day_shift(): void
+    {
+        // Arrange: 日跨ぎ勤務（前日23:00出勤、休憩は翌日01:00-02:00、翌日06:00退勤）
+        $workDate = '2025-02-15';
+        $summary = DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => $workDate,
+            'work_start' => '23:00:00',
+            'work_end' => '06:00:00',
+            'work_minutes' => 420,
+            'break_minutes' => 60,
+            'net_work_minutes' => 360,
+            'is_cross_day' => true,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $startRecord = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => CarbonImmutable::parse('2025-02-15 23:00:00'),
+            'rounded_time' => CarbonImmutable::parse('2025-02-15 23:00:00'),
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        // 休憩は翌日の日付で保存される（夜勤の翌朝休憩）
+        $breakStartRecord = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::BREAK_START,
+            'record_time' => CarbonImmutable::parse('2025-02-16 01:00:00'),
+            'rounded_time' => CarbonImmutable::parse('2025-02-16 01:00:00'),
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+        $breakEndRecord = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::BREAK_END,
+            'record_time' => CarbonImmutable::parse('2025-02-16 02:00:00'),
+            'rounded_time' => CarbonImmutable::parse('2025-02-16 02:00:00'),
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $endRecord = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END_NEXT_DAY,
+            'record_time' => CarbonImmutable::parse('2025-02-16 06:00:00'),
+            'rounded_time' => CarbonImmutable::parse('2025-02-16 06:00:00'),
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        // Act
+        $this->service->deleteWorkTimes($summary->id);
+
+        // Assert: サマリーと出退勤・休憩の打刻がすべて削除され、孤立レコードが残らない
+        $this->assertDatabaseMissing('daily_work_summaries', ['id' => $summary->id]);
+        $this->assertDatabaseMissing('time_records', ['id' => $startRecord->id]);
+        $this->assertDatabaseMissing('time_records', ['id' => $breakStartRecord->id]);
+        $this->assertDatabaseMissing('time_records', ['id' => $breakEndRecord->id]);
+        $this->assertDatabaseMissing('time_records', ['id' => $endRecord->id]);
+    }
+
+    /**
+     * @test
      */
     public function delete_work_times_throws_when_summary_not_found(): void
     {

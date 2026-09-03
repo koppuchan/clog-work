@@ -76,7 +76,7 @@ class StampService
      * @param  CarbonImmutable|null  $recordTime  打刻時刻（指定がない場合は現在時刻）
      * @return TimeRecord 作成された打刻レコード
      *
-     * @throws BusinessException 出勤していない場合
+     * @throws BusinessException 出勤していない場合、または休憩中の場合
      */
     public function clockOut(int $companyId, int $userId, ?CarbonImmutable $recordTime = null): TimeRecord
     {
@@ -86,6 +86,11 @@ class StampService
             // ビジネスルールチェック: 出勤中か
             if (! $this->isWorking($companyId, $userId)) {
                 throw new BusinessException('出勤していません。先に出勤打刻を行ってください。');
+            }
+
+            // ビジネスルールチェック: 休憩中でないか
+            if ($this->isOnBreak($companyId, $userId)) {
+                throw new BusinessException('休憩中は退勤できません。先に休憩終了打刻を行ってください。');
             }
 
             // ビジネスルールチェック: 本日既に退勤打刻済みでないか

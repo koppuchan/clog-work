@@ -240,6 +240,42 @@ class StampServiceTest extends TestCase
     /**
      * @test
      */
+    public function clock_out_is_blocked_while_on_break(): void
+    {
+        // Arrange: 休憩開始打刻済みで休憩中
+        $now = CarbonImmutable::parse('2025-01-16 12:00:00');
+        CarbonImmutable::setTestNow($now);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => '2025-01-16 09:00:00',
+            'rounded_time' => '2025-01-16 09:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::BREAK_START,
+            'record_time' => '2025-01-16 12:00:00',
+            'rounded_time' => '2025-01-16 12:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        // Act & Assert: 休憩終了せずに退勤しようとしたら拒否される
+        $this->expectException(BusinessException::class);
+        $this->expectExceptionMessage('休憩中は退勤できません');
+
+        $this->service->clockOut($this->company->id, $this->user->id);
+
+        CarbonImmutable::setTestNow();
+    }
+
+    /**
+     * @test
+     */
     public function clock_in_is_blocked_when_already_working_from_yesterday(): void
     {
         // Arrange: 前日からの継続勤務中

@@ -171,7 +171,7 @@ class UserRepository implements UserRepositoryInterface
                     });
             })
             ->with(['roles', 'departments'])
-            ->orderBy('name')
+            ->orderBy('employee_code')
             ->get();
     }
 

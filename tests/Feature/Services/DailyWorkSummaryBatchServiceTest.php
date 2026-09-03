@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Services;
 
+use App\Enums\LeaveTypeEnum;
 use App\Enums\RecordSourceEnum;
 use App\Enums\TimeRecordTypeEnum;
 use App\Models\Company;
@@ -257,6 +258,123 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
         $this->assertNotNull($summary);
         $this->assertEquals(60, $summary->late_minutes); // 手動で設定された遅刻時間
         $this->assertEquals(RecordSourceEnum::MANUAL, $summary->record_source);
+    }
+
+    /**
+     * @test
+     *
+     * 出退勤時刻を持たない空の勤務実績（CSV移行のテンプレート行等）は、
+     * record_sourceがAUTO以外でも自動集計をブロックしないこと
+     */
+    public function aggregate_by_user_does_not_skip_when_existing_record_has_no_work_start(): void
+    {
+        // Arrange
+        $targetDate = CarbonImmutable::parse('2025-01-15');
+        $dateString = $targetDate->format('Y-m-d');
+
+        // 出退勤時刻を持たない空のレコード（CSV移行等で作られたテンプレート行を想定）
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => $dateString,
+            'work_start' => null,
+            'work_end' => null,
+            'work_minutes' => 0,
+            'break_minutes' => 0,
+            'net_work_minutes' => 0,
+            'night_minutes' => 0,
+            'holiday_minutes' => 0,
+            'overtime_minutes' => 0,
+            'late_minutes' => 0,
+            'early_leave_minutes' => 0,
+            'is_cross_day' => false,
+            'record_source' => RecordSourceEnum::MANUAL,
+        ]);
+
+        // 実際の打刻レコード
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => $dateString.' 09:00:00',
+            'rounded_time' => $dateString.' 09:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END,
+            'record_time' => $dateString.' 18:00:00',
+            'rounded_time' => $dateString.' 18:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        // Act
+        $result = $this->service->aggregateByUser($this->company, $this->user, $targetDate);
+
+        // Assert
+        $this->assertEquals('updated', $result);
+
+        $summary = DailyWorkSummary::query()
+            ->where('company_id', $this->company->id)
+            ->where('user_id', $this->user->id)
+            ->where('work_date', $dateString)
+            ->first();
+
+        $this->assertNotNull($summary);
+        $this->assertEquals(540, $summary->work_minutes);
+        $this->assertEquals(RecordSourceEnum::AUTO, $summary->record_source);
+    }
+
+    /**
+     * @test
+     *
+     * 休暇申請（REQUEST）による全休は出退勤時刻を持たないのが正常なため、
+     * 出退勤時刻が無いことを理由に自動集計へフォールバックしてはならない
+     */
+    public function aggregate_by_user_still_skips_full_day_leave_request_with_no_work_start(): void
+    {
+        // Arrange
+        $targetDate = CarbonImmutable::parse('2025-01-15');
+        $dateString = $targetDate->format('Y-m-d');
+
+        // 承認済みの全休申請が反映された勤務実績（出退勤時刻なし）
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => $dateString,
+            'work_start' => null,
+            'work_end' => null,
+            'work_minutes' => 0,
+            'break_minutes' => 0,
+            'net_work_minutes' => 0,
+            'night_minutes' => 0,
+            'holiday_minutes' => 0,
+            'overtime_minutes' => 0,
+            'late_minutes' => 0,
+            'early_leave_minutes' => 0,
+            'is_cross_day' => false,
+            'record_source' => RecordSourceEnum::REQUEST,
+            'leave_type' => LeaveTypeEnum::PAID_LEAVE,
+            'leave_minutes' => 480,
+        ]);
+
+        // Act（打刻レコードが無い状態で集計を実行）
+        $result = $this->service->aggregateByUser($this->company, $this->user, $targetDate);
+
+        // Assert
+        $this->assertEquals('skipped', $result);
+
+        $summary = DailyWorkSummary::query()
+            ->where('company_id', $this->company->id)
+            ->where('user_id', $this->user->id)
+            ->where('work_date', $dateString)
+            ->first();
+
+        $this->assertNotNull($summary);
+        $this->assertEquals(RecordSourceEnum::REQUEST, $summary->record_source);
+        $this->assertEquals(LeaveTypeEnum::PAID_LEAVE, $summary->leave_type);
     }
 
     /**

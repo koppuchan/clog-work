@@ -5,6 +5,7 @@ export type AttendanceIssueMap = Record<string, string[]>;
 export const ISSUE_LABELS: Record<string, string> = {
   missing_clock_out: '退勤忘れ',
   not_calculated: '未計算',
+  missing_break_end: '休憩打刻漏れ',
 };
 
 interface Props {

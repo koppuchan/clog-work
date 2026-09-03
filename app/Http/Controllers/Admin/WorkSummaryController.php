@@ -259,7 +259,7 @@ class WorkSummaryController extends Controller
         return Inertia::render('Admin/Reports', [
             'users' => $usersData,
             'workSummaries' => $workSummariesData,
-            'attendanceIssues' => $this->attendanceIssueService->detect(collect($workSummariesData)),
+            'attendanceIssues' => $this->attendanceIssueService->detectAll(collect($workSummariesData), $timeRecords),
             'timeRecords' => $timeRecordsData,
             'approvedRequests' => $approvedRequestsData,
             'timeRecordCorrections' => $correctionsData,

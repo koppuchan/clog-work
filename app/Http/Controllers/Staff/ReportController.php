@@ -242,7 +242,7 @@ class ReportController extends Controller
 
         return Inertia::render('Staff/Reports', [
             'workSummaries' => $workSummariesData,
-            'attendanceIssues' => $this->attendanceIssueService->detect(collect($workSummariesData)),
+            'attendanceIssues' => $this->attendanceIssueService->detectAll(collect($workSummariesData), $timeRecords),
             'monthlySummary' => $monthlySummary,
             'timeRecords' => $timeRecordsData,
             'timeRecordCorrections' => $correctionsData,

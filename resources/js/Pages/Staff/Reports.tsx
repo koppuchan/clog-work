@@ -6,7 +6,7 @@ import type { ShiftDisplayPeriodType } from '@/types/shift';
 import { ApplicationDialog } from '@/Components/Staff/Reports';
 import ApprovedRequestDetailModal from '@/Components/Reports/ApprovedRequestDetailModal';
 import CorrectionDetailModal from '@/Components/Reports/CorrectionDetailModal';
-import AttendanceIssueBanner, { type AttendanceIssueMap } from '@/Components/Reports/AttendanceIssueBanner';
+import AttendanceIssueBanner, { ISSUE_LABELS, type AttendanceIssueMap } from '@/Components/Reports/AttendanceIssueBanner';
 import LaborAlertPanel, { type LaborAlertItem } from '@/Components/Staff/LaborAlertPanel';
 import WorkReportTable from '@/Components/Reports/WorkReportTable';
 import MonthSelector from '@/Components/MonthSelector';
@@ -227,6 +227,14 @@ function StaffReportsPage() {
                 )}
               </React.Fragment>
             ))}
+            {(attendanceIssues?.[dateStr] ?? []).map((kind) => (
+              <span
+                key={kind}
+                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800"
+              >
+                {ISSUE_LABELS[kind] ?? kind}
+              </span>
+            ))}
             {corrections.length > 0 && (
               <button
                 type="button"
@@ -248,7 +256,7 @@ function StaffReportsPage() {
         </div>
       );
     },
-    [getRequestsForDate, openApplicationDialog, setSelectedRequest, timeRecordCorrections]
+    [getRequestsForDate, openApplicationDialog, setSelectedRequest, timeRecordCorrections, attendanceIssues]
   );
 
   return (

@@ -26,6 +26,11 @@ class AttendanceIssueService
     public const NOT_CALCULATED = 'not_calculated';
 
     /**
+     * 休憩終了打刻がない
+     */
+    public const MISSING_BREAK_END = 'missing_break_end';
+
+    /**
      * 日付ごとの要対応状態を返す
      *
      * 当日は勤務の途中である可能性が高いため対象外とする。
@@ -70,6 +75,59 @@ class AttendanceIssueService
 
             if ($found !== []) {
                 $issues[$date] = $found;
+            }
+        }
+
+        return $issues;
+    }
+
+    /**
+     * 勤務実績と打刻データから、日付ごとの要対応状態をまとめて検出する
+     *
+     * @param  Collection<int, array<string, mixed>>|Collection<int, object>  $summaries  勤務実績
+     * @param  Collection<int, \App\Models\TimeRecord>  $timeRecords  打刻データ
+     * @param  string|null  $today  当日（Y-m-d）。省略時は現在日
+     * @return array<string, array<int, string>> 日付をキーとした状態の一覧
+     */
+    public function detectAll(Collection $summaries, Collection $timeRecords, ?string $today = null): array
+    {
+        $issues = $this->detect($summaries, $today);
+
+        foreach ($this->detectMissingBreakEnd($timeRecords, $today) as $date => $codes) {
+            $issues[$date] = array_values(array_unique([...($issues[$date] ?? []), ...$codes]));
+        }
+
+        return $issues;
+    }
+
+    /**
+     * 日付ごとに休憩打刻漏れ（休憩開始のみで終了がない）を検出する
+     *
+     * 当日は休憩中である可能性が高いため対象外とする。
+     *
+     * @param  Collection<int, \App\Models\TimeRecord>  $timeRecords  打刻データ
+     * @param  string|null  $today  当日（Y-m-d）。省略時は現在日
+     * @return array<string, array<int, string>> 日付をキーとした状態の一覧
+     */
+    public function detectMissingBreakEnd(Collection $timeRecords, ?string $today = null): array
+    {
+        $today ??= CarbonImmutable::now()->format('Y-m-d');
+        $issues = [];
+
+        $byDate = $timeRecords
+            ->filter(fn ($record) => $record->record_type->isBreak())
+            ->groupBy(fn ($record) => $record->record_time->format('Y-m-d'));
+
+        foreach ($byDate as $date => $records) {
+            if ($date >= $today) {
+                continue;
+            }
+
+            $starts = $records->filter(fn ($record) => $record->record_type->isBreakStart())->count();
+            $ends = $records->filter(fn ($record) => $record->record_type->isBreakEnd())->count();
+
+            if ($starts > $ends) {
+                $issues[$date] = [self::MISSING_BREAK_END];
             }
         }
 

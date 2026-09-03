@@ -15,6 +15,7 @@ use App\Repositories\Contracts\CompanyShiftRoundingSettingRepositoryInterface;
 use App\Repositories\Contracts\CorrectionRequestDetailRepositoryInterface;
 use App\Repositories\Contracts\DailyWorkSummaryRepositoryInterface;
 use App\Repositories\Contracts\DepartmentRepositoryInterface;
+use App\Repositories\Contracts\FelicaStampAttemptRepositoryInterface;
 use App\Repositories\Contracts\LaborAlertRepositoryInterface;
 use App\Repositories\Contracts\PermissionResourceRepositoryInterface;
 use App\Repositories\Contracts\PermissionScopeRepositoryInterface;
@@ -32,6 +33,7 @@ use App\Repositories\Contracts\UserRepositoryInterface;
 use App\Repositories\CorrectionRequestDetailRepository;
 use App\Repositories\DailyWorkSummaryRepository;
 use App\Repositories\DepartmentRepository;
+use App\Repositories\FelicaStampAttemptRepository;
 use App\Repositories\LaborAlertRepository;
 use App\Repositories\PermissionResourceRepository;
 use App\Repositories\PermissionScopeRepository;
@@ -78,6 +80,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(ApplicationTypeRepositoryInterface::class, ApplicationTypeRepository::class);
         $this->app->bind(CompanyShiftRoundingSettingRepositoryInterface::class, CompanyShiftRoundingSettingRepository::class);
         $this->app->bind(CorrectionRequestDetailRepositoryInterface::class, CorrectionRequestDetailRepository::class);
+        $this->app->bind(FelicaStampAttemptRepositoryInterface::class, FelicaStampAttemptRepository::class);
     }
 
     /**

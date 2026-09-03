@@ -1,10 +1,29 @@
-import { useState, useEffect, useMemo, FormEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, FormEvent } from 'react';
 import { Head } from '@inertiajs/react';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { AlertCircle, CheckCircle, User, ChevronLeft, Lock, Coffee } from 'lucide-react';
+import { AlertCircle, CheckCircle, User, ChevronLeft, Lock, Coffee, X } from 'lucide-react';
 import axios from 'axios';
 import { useCurrentTime } from '@/hooks/useCurrentTime';
+
+/**
+ * FeliCaカードによる打刻の試行結果（サーバー側でログ化されたもの）
+ *
+ * 常駐アプリは /stamp/{uuid}/felica にサーバーへ直接POSTするため、この画面は
+ * ポーリングでしか結果を知れない。取得した結果はトーストとして表示する。
+ */
+interface FelicaEvent {
+  id: number;
+  status: 'success' | 'cooldown' | 'unregistered' | 'retired' | 'error';
+  message: string;
+  detail: string | null;
+  userName: string | null;
+  time: string;
+  maskedIdm: string;
+}
+
+const FELICA_EVENTS_POLL_INTERVAL_MS = 3000;
+const FELICA_TOAST_DURATION_MS = { success: 8000, warning: 12000 } as const;
 
 interface UserItem {
   id: number;
@@ -111,6 +130,60 @@ export default function PublicStampPage({ company, users }: Props) {
       return () => clearTimeout(timer);
     }
   }, [lastStamp]);
+
+  // FeliCaカードの打刻結果（常駐アプリからサーバーへ直接届く）をトースト表示する
+  const [felicaEvents, setFelicaEvents] = useState<FelicaEvent[]>([]);
+  const felicaSinceIdRef = useRef<number | null>(null);
+
+  // 数秒おきに新しいFeliCa打刻結果をポーリングする
+  useEffect(() => {
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const params = felicaSinceIdRef.current === null
+          ? {}
+          : { since_id: felicaSinceIdRef.current };
+        const response = await axios.get(`/stamp/${company.uuid}/felica-events`, { params });
+        if (cancelled) return;
+
+        felicaSinceIdRef.current = response.data.lastId;
+
+        const newEvents: FelicaEvent[] = response.data.events;
+        if (newEvents.length > 0) {
+          setFelicaEvents((prev) => [...prev, ...newEvents]);
+        }
+      } catch {
+        // ポーリング1回分の失敗は無視し、次の周期で再試行する
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, FELICA_EVENTS_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [company.uuid]);
+
+  // トーストは種類ごとの時間で自動的に消す
+  useEffect(() => {
+    if (felicaEvents.length === 0) return;
+
+    const timers = felicaEvents.map((event) =>
+      setTimeout(
+        () => setFelicaEvents((prev) => prev.filter((e) => e.id !== event.id)),
+        event.status === 'success' ? FELICA_TOAST_DURATION_MS.success : FELICA_TOAST_DURATION_MS.warning
+      )
+    );
+
+    return () => timers.forEach(clearTimeout);
+  }, [felicaEvents]);
+
+  const dismissFelicaEvent = (id: number) => {
+    setFelicaEvents((prev) => prev.filter((e) => e.id !== id));
+  };
 
   const handleVerifyPassword = async (e: FormEvent) => {
     e.preventDefault();
@@ -252,6 +325,53 @@ export default function PublicStampPage({ company, users }: Props) {
             <h1 className="text-xl font-bold text-gray-900">{company.name}</h1>
           </div>
         </header>
+
+        {/* FeliCaカード打刻の結果トースト（成功・重複防止など。常駐アプリからの打刻は
+            この画面上の操作を経由しないため、ここでポーリング結果を通知する） */}
+        {felicaEvents.length > 0 && (
+          <div className="space-y-1">
+            {felicaEvents.map((event) => (
+              <div
+                key={event.id}
+                className={`flex items-start justify-between gap-3 px-4 py-3 border-2 ${
+                  event.status === 'success'
+                    ? 'bg-green-50 border-green-500 text-green-800'
+                    : 'bg-yellow-100 border-yellow-600 text-yellow-900'
+                }`}
+              >
+                <div className="flex items-start gap-2">
+                  {event.status === 'success' ? (
+                    <CheckCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                  ) : (
+                    <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                  )}
+                  <div>
+                    <p className="font-semibold">
+                      {event.userName ? `${event.userName}さん　${event.time}` : event.message}
+                    </p>
+                    <p className={event.userName ? 'text-sm' : 'text-sm font-normal'}>
+                      {event.userName ? event.message : event.detail}
+                    </p>
+                    {event.userName && event.detail && (
+                      <p className="text-sm">{event.detail}</p>
+                    )}
+                    {event.status !== 'success' && (
+                      <p className="text-xs opacity-75 mt-1">（カード: {event.maskedIdm}）</p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => dismissFelicaEvent(event.id)}
+                  className="opacity-60 hover:opacity-100 flex-shrink-0"
+                  aria-label="閉じる"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         <main className="max-w-4xl mx-auto px-4 py-6">
           {/* メッセージ表示 */}

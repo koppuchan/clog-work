@@ -70,6 +70,7 @@
 | **勤怠関連** | time_records | 打刻レコード |
 | | daily_work_summaries | 日次勤務実績 |
 | | monthly_work_summaries | 月次勤務実績 |
+| | felica_stamp_attempts | FeliCa打刻の試行ログ（打刻専用画面へのトースト表示用。マイグレーション管理） |
 | **申請関連** | requests | 各種申請 |
 | | time_record_correction_requests | 打刻修正申請 |
 | | time_record_correction_request_details | 打刻修正申請明細 |
@@ -179,6 +180,28 @@ VALUES (123, 1, 10);
 INSERT INTO user_shift_patterns (user_id, weekday_id, shift_pattern_id)
 VALUES (123, 7, NULL);
 ```
+
+### felica_stamp_attempts（FeliCa打刻の試行ログ）
+
+**目的**: FeliCa打刻専用画面（`/stamp/{uuid}`）にカードタップの結果をリアルタイム表示するためのログ。
+
+常駐アプリ（FeliCa打刻）はサーバーへ直接POSTするため、打刻専用画面（ブラウザ）は打刻結果を知る手段を持たない。
+このテーブルに成功・失敗を問わず全ての試行を記録し、ブラウザ側は `GET /stamp/{uuid}/felica-events` を数秒おきにポーリングして新しい試行をトースト表示する。
+
+他のトランザクションテーブルと異なり、`table-design-optimized.sql`ではなく通常のLaravelマイグレーション（`2026_09_03_100000_create_felica_stamp_attempts_table.php`）で管理する。
+
+**カラム構成**:
+| カラム名 | データ型 | 説明 |
+|---------|---------|------|
+| id | BIGINT UNSIGNED | 主キー（高頻度データのためBIGINT） |
+| company_id | INT UNSIGNED | 会社ID |
+| user_id | INT UNSIGNED NULL | 打刻したユーザーID（未登録カードの場合はNULL） |
+| felica_idm | VARCHAR(16) | FeliCa IDm（16進数16桁） |
+| status | VARCHAR(20) | success / cooldown / unregistered / retired / error |
+| message | VARCHAR(255) | 打刻専用画面に表示する見出しメッセージ |
+| detail | VARCHAR(255) NULL | 打刻専用画面に表示する補足メッセージ |
+| time_record_id | BIGINT UNSIGNED NULL | 成功時に記録された打刻レコードID |
+| created_at | TIMESTAMP | 記録日時（updated_atは使用しない） |
 
 ## 権限管理テーブル
 

@@ -52,6 +52,42 @@ class PublicStampController extends Controller
     }
 
     /**
+     * FeliCa打刻の結果イベントを取得（ポーリング用）
+     *
+     * 常駐アプリから /felica にPOSTされた打刻結果は、常駐アプリ自身にしか
+     * 返せない。打刻専用画面（ブラウザ）はこのエンドポイントを数秒おきに
+     * ポーリングし、新しい試行があればトースト表示する。
+     */
+    public function felicaEvents(Request $request, string $uuid): JsonResponse
+    {
+        $company = $this->publicStampService->findCompanyByUuid($uuid);
+
+        if (! $company) {
+            return response()->json(['error' => '会社が見つかりません。'], 404);
+        }
+
+        if (! $request->has('since_id')) {
+            // since_id 省略時（初回アクセス）はトースト表示せず、
+            // 以降のポーリングの起点だけを返す。
+            // ここで 0 を起点にしてしまうと、画面を開く前からあった
+            // 過去の試行まで新着として表示されてしまうため区別している。
+            return response()->json([
+                'events' => [],
+                'lastId' => $this->publicStampService->getLatestFelicaAttemptId($company->id),
+            ]);
+        }
+
+        $sinceId = (int) $request->query('since_id', 0);
+        $events = $this->publicStampService->getFelicaEventsSince($company->id, $sinceId);
+        $lastId = $events === [] ? $sinceId : (int) end($events)['id'];
+
+        return response()->json([
+            'events' => $events,
+            'lastId' => $lastId,
+        ]);
+    }
+
+    /**
      * ユーザーの現在の勤務状態を取得
      */
     public function status(Request $request, string $uuid): JsonResponse
@@ -195,6 +231,14 @@ class PublicStampController extends Controller
             // IDmはカードに印字されていないため、登録画面から選べるよう覚えておく
             $this->felicaCardRegistrationService->remember($company->id, $idm);
 
+            $this->publicStampService->logFelicaAttempt(
+                $company->id,
+                null,
+                $idm,
+                'unregistered',
+                '登録されていないカードです。管理者にカードの登録を依頼してください。'
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => '登録されていないカードです。管理者にカードの登録を依頼してください。',
@@ -202,6 +246,14 @@ class PublicStampController extends Controller
         }
 
         if ($this->publicStampService->isUserRetired($user->id)) {
+            $this->publicStampService->logFelicaAttempt(
+                $company->id,
+                $user->id,
+                $idm,
+                'retired',
+                '退職済みのユーザーです。'
+            );
+
             return response()->json(['success' => false, 'message' => '退職済みのユーザーです。'], 400);
         }
 
@@ -209,6 +261,15 @@ class PublicStampController extends Controller
         $wait = $this->publicStampService->secondsUntilStampAllowed($company->id, $user->id);
 
         if ($wait !== null) {
+            $this->publicStampService->logFelicaAttempt(
+                $company->id,
+                $user->id,
+                $idm,
+                'cooldown',
+                '重複打刻防止のため受け付けませんでした',
+                sprintf('%d秒後にもう一度カードをかざしてください', $wait)
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => sprintf('打刻を受け付けました。あと %d 秒お待ちください。', $wait),
@@ -229,11 +290,29 @@ class PublicStampController extends Controller
         try {
             $record = $this->publicStampService->$method($company->id, $user->id);
         } catch (BusinessException $e) {
+            $this->publicStampService->logFelicaAttempt(
+                $company->id,
+                $user->id,
+                $idm,
+                'error',
+                $e->getMessage()
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
             ], 422);
         }
+
+        $this->publicStampService->logFelicaAttempt(
+            $company->id,
+            $user->id,
+            $idm,
+            'success',
+            $record->record_type->stampedMessage(),
+            null,
+            $record->id
+        );
 
         return response()->json([
             'success' => true,

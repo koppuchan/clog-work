@@ -23,6 +23,7 @@ use Inertia\Inertia;
 Route::prefix('stamp')->name('public.stamp.')->group(function () {
     Route::get('/{uuid}', [PublicStampController::class, 'index'])->name('index');
     Route::get('/{uuid}/status', [PublicStampController::class, 'status'])->name('status');
+    Route::get('/{uuid}/felica-events', [PublicStampController::class, 'felicaEvents'])->name('felica-events');
     Route::post('/{uuid}/verify-password', [PublicStampController::class, 'verifyPassword'])->name('verify-password');
     Route::post('/{uuid}/clock-in', [PublicStampController::class, 'clockIn'])->name('clock-in');
     Route::post('/{uuid}/clock-out', [PublicStampController::class, 'clockOut'])->name('clock-out');

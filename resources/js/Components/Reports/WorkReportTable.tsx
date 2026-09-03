@@ -125,9 +125,16 @@ export default function WorkReportTable({
       // 当日の dayRecords に混入して表示されるのを防ぐ。
       const hasWorkStart = records.some((r) => r.record_type.is_work_start);
       if (!hasWorkStart) {
+        // 当日の日付越え退勤（type=3）は前日の夜勤の終わりであり、
+        // 前日の行で（getRecordsForDateIncludingNextDayCarryOver により）表示済みのため、
+        // 当日の行には表示しない
+        const hasCrossDayEndToday = records.some((r) => String(r.record_type.value) === '3');
+        if (hasCrossDayEndToday) {
+          return [];
+        }
+
         // 当日に出勤がなくても、前日から夜勤継続中の場合は休憩を表示する
         // (getRecordsForDateIncludingNextDayCarryOver が翌日レコードをマージ済み)
-        const dateStr = format(date, 'yyyy-MM-dd');
         const prevDateStr = format(addDays(date, -1), 'yyyy-MM-dd');
         const prevDayRecords = timeRecords?.filter((r) => r.record_date === prevDateStr) ?? [];
         const prevDayHasWorkStart = prevDayRecords.some((r) => r.record_type.is_work_start);
@@ -161,6 +168,15 @@ export default function WorkReportTable({
   const getRawWorkTimesForDate = useCallback(
     (date: Date): { rawStart: string | null; rawEnd: string | null } => {
       const records = getRecordsForDateIncludingNextDayCarryOver(date);
+      const hasWorkStart = records.some((r) => r.record_type.is_work_start);
+
+      // 当日に出勤打刻がなく、日付越え退勤（type=3）だけがある場合は
+      // 前日の夜勤の終わりが当日の日付で記録されているだけであり、
+      // 前日の行で既に表示済みのため当日には何も表示しない
+      if (!hasWorkStart && records.some((r) => String(r.record_type.value) === '3')) {
+        return { rawStart: null, rawEnd: null };
+      }
+
       const workStartRecord = records.find((r) => r.record_type.is_work_start);
       const workEndRecord = [...records].reverse().find((r) => r.record_type.is_work_end);
       return {

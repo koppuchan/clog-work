@@ -693,9 +693,10 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
     /**
      * @test
      *
-     * break_mode=1（分数のみ設定）の夜勤シフトで按分フォールバックが動作すること
+     * break_mode=1（分数のみ設定）で休憩の時間帯が特定できない夜勤シフトは、
+     * 深夜帯と重なったか判断できないため深夜時間から減算しないこと
      */
-    public function aggregate_by_user_uses_proportional_fallback_for_break_mode_1_night_shift(): void
+    public function aggregate_by_user_does_not_deduct_night_minutes_when_break_period_is_unknown(): void
     {
         // Arrange
         $targetDate = CarbonImmutable::parse('2025-01-15');

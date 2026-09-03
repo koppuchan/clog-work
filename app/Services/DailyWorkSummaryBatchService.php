@@ -305,7 +305,6 @@ class DailyWorkSummaryBatchService
             $workStartTime,
             $workEndTime,
             $isCrossDay,
-            $breakMinutes,
             $timeRecords,
             $shift,
             $company
@@ -448,7 +447,6 @@ class DailyWorkSummaryBatchService
      * @param  \DateTimeInterface|null  $workStart  勤務開始時刻
      * @param  \DateTimeInterface|null  $workEnd  勤務終了時刻
      * @param  bool  $isCrossDay  日付越えフラグ
-     * @param  int  $breakMinutes  休憩時間（分）
      * @param  Collection<int, TimeRecord>  $timeRecords  打刻レコード
      * @param  Shift|null  $shift  シフト情報
      * @param  Company  $company  会社
@@ -458,7 +456,6 @@ class DailyWorkSummaryBatchService
         ?\DateTimeInterface $workStart,
         ?\DateTimeInterface $workEnd,
         bool $isCrossDay,
-        int $breakMinutes,
         Collection $timeRecords,
         ?Shift $shift,
         Company $company
@@ -478,7 +475,7 @@ class DailyWorkSummaryBatchService
 
         // 実際の休憩時間帯と深夜時間帯の重複分を計算して減算
         $nightBreakMinutes = $this->calculateNightBreakMinutes(
-            $timeRecords, $shift, $company, $startCarbon, $breakMinutes, $nightMinutes, $startCarbon, $endCarbon
+            $timeRecords, $shift, $company, $startCarbon, $startCarbon, $endCarbon
         );
         $nightMinutes = max(0, $nightMinutes - $nightBreakMinutes);
 
@@ -489,16 +486,14 @@ class DailyWorkSummaryBatchService
      * 深夜時間帯に含まれる休憩時間を計算
      *
      * 休憩時間帯が特定できる場合（休憩打刻あり、またはbreak_start/break_endが設定されている
-     * シフトパターン）は、実際の重複分を正確に計算する。
+     * シフトパターン）のみ、実際の重複分を減算する。
      * 休憩時間帯が特定できない場合（break_mode=1で分数のみ設定）は、
-     * 按分計算にフォールバックする。
+     * 深夜帯と重なったかどうか判断できないため減算しない。
      *
      * @param  Collection<int, TimeRecord>  $timeRecords  打刻レコード
      * @param  Shift|null  $shift  シフト情報
      * @param  Company  $company  会社
      * @param  CarbonImmutable  $workDate  勤務日のCarbon（日付基準用）
-     * @param  int  $breakMinutes  休憩時間（分）
-     * @param  int  $nightMinutes  深夜時間（分、休憩減算前）
      * @param  CarbonImmutable  $workStart  勤務開始時刻
      * @param  CarbonImmutable  $workEnd  勤務終了時刻
      * @return int 深夜時間帯に含まれる休憩時間（分）
@@ -508,21 +503,17 @@ class DailyWorkSummaryBatchService
         ?Shift $shift,
         Company $company,
         CarbonImmutable $workDate,
-        int $breakMinutes,
-        int $nightMinutes,
         CarbonImmutable $workStart,
         CarbonImmutable $workEnd
     ): int {
         // 休憩時間帯のペアを収集
         $breakPeriods = $this->collectBreakPeriods($timeRecords, $shift, $company, $workDate);
 
-        // 休憩時間帯が特定できない場合（break_mode=1等）は按分計算にフォールバック
+        // 休憩時間帯が特定できない場合（break_mode=1で分数のみ設定等）は、
+        // 深夜帯と重なったかどうかが分からないため減算しない。
+        // 按分計算はいつ休憩を取ったか分からないまま深夜時間を割り引いてしまい、
+        // 実際には深夜帯に休憩していなくても深夜時間が減ってしまうため使わない。
         if (empty($breakPeriods)) {
-            $totalWorkMinutes = (int) $workStart->diffInMinutes($workEnd);
-            if ($totalWorkMinutes > 0 && $breakMinutes > 0) {
-                return (int) ($breakMinutes * ($nightMinutes / $totalWorkMinutes));
-            }
-
             return 0;
         }
 

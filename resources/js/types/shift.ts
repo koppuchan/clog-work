@@ -68,7 +68,7 @@ export interface ShiftPatternDialogProps {
 // BulkPatternDialog component props
 export interface BulkPatternDialogProps {
   showDialog: boolean;
-  selectedDate: Date;
+  periodLabel: string;
   activeUsers: User[];
   onApply: () => void;
   onCancel: () => void;

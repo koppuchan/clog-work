@@ -1,4 +1,3 @@
-import { format } from 'date-fns';
 import { BulkPatternDialogProps } from '@/types/shift';
 
 /**
@@ -28,7 +27,7 @@ import { BulkPatternDialogProps } from '@/types/shift';
  */
 export default function BulkPatternDialog({
   showDialog,
-  selectedDate,
+  periodLabel,
   activeUsers,
   onApply,
   onCancel,
@@ -40,7 +39,7 @@ export default function BulkPatternDialog({
       <div className="bg-white rounded-lg shadow-2xl border border-gray-200 p-6 max-w-2xl w-full my-auto">
         <h3 className="text-lg font-bold text-gray-900 mb-4">全員のシフトパターンを一括適用</h3>
         <p className="text-sm text-gray-700 mb-4">
-          全員のシフトパターンを<strong>{format(selectedDate, 'yyyy年MM月')}</strong>に適用しますか？
+          全員のシフトパターンを<strong>{periodLabel}</strong>に適用しますか？
         </p>
 
         <div className="bg-gray-50 rounded-lg p-4 mb-4 max-h-64 overflow-y-auto">

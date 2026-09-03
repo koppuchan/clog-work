@@ -1,6 +1,7 @@
 import { useState, useRef, useMemo, useCallback } from 'react';
 import { format, startOfMonth, endOfMonth, addDays, parseISO } from 'date-fns';
 import { Shift, ShiftType, ShiftTypeInfo, User } from '@/types';
+import { upsertShift, removeShift } from '@/utils/shiftDataConverter';
 
 /**
  * シフトの意味的な比較用にキーを正規化する
@@ -53,25 +54,19 @@ export function useShiftOperations(
   // シフトタイプ選択処理
   const handleShiftTypeSelect = (shiftType: ShiftType) => {
     if (selectedCell) {
-      const existingShiftIndex = shifts.findIndex(shift =>
+      const existingShift = shifts.find(shift =>
         shift.userId === selectedCell.userId && shift.date === selectedCell.date
       );
 
       const newShift: Shift = {
-        id: existingShiftIndex >= 0 ? shifts[existingShiftIndex].id : `shift_${Date.now()}`,
+        id: existingShift ? existingShift.id : `shift_${Date.now()}`,
         userId: selectedCell.userId,
         date: selectedCell.date,
         shiftType,
         shiftPatternId: getShiftPatternId(shiftType),
       };
 
-      if (existingShiftIndex >= 0) {
-        const updatedShifts = [...shifts];
-        updatedShifts[existingShiftIndex] = newShift;
-        setShifts(updatedShifts);
-      } else {
-        setShifts([...shifts, newShift]);
-      }
+      setShifts(upsertShift(shifts, newShift));
     }
     setSelectedCell(null);
   };
@@ -79,26 +74,22 @@ export function useShiftOperations(
   // 一括シフトタイプ選択処理
   const handleBulkShiftTypeSelect = (shiftType: ShiftType) => {
     if (selectedDayForBulk) {
-      const newShifts = [...shifts];
+      let newShifts = shifts;
 
       activeUsers.forEach(user => {
-        const existingShiftIndex = newShifts.findIndex(shift =>
+        const existingShift = newShifts.find(shift =>
           shift.userId === user.id && shift.date === selectedDayForBulk.date
         );
 
         const newShift: Shift = {
-          id: existingShiftIndex >= 0 ? newShifts[existingShiftIndex].id : `shift_${Date.now()}_${user.id}`,
+          id: existingShift ? existingShift.id : `shift_${Date.now()}_${user.id}`,
           userId: user.id,
           date: selectedDayForBulk.date,
           shiftType,
           shiftPatternId: getShiftPatternId(shiftType),
         };
 
-        if (existingShiftIndex >= 0) {
-          newShifts[existingShiftIndex] = newShift;
-        } else {
-          newShifts.push(newShift);
-        }
+        newShifts = upsertShift(newShifts, newShift);
       });
 
       setShifts(newShifts);
@@ -113,7 +104,7 @@ export function useShiftOperations(
 
     const monthStartDate = period ? parseISO(period.startDate) : startOfMonth(selectedDate);
     const monthEndDate = period ? parseISO(period.endDate) : endOfMonth(selectedDate);
-    const newShifts = [...shifts];
+    let newShifts = shifts;
 
     let currentDate = monthStartDate;
     while (currentDate <= monthEndDate) {
@@ -123,27 +114,23 @@ export function useShiftOperations(
       const dayKey = dayKeys[dayOfWeek];
 
       const shiftType = user.shiftPatterns[dayKey];
-      const existingShiftIndex = newShifts.findIndex(shift =>
+      const existingShift = newShifts.find(shift =>
         shift.userId === userId && shift.date === dateStr
       );
 
       if (shiftType) {
         const newShift: Shift = {
-          id: existingShiftIndex >= 0 ? newShifts[existingShiftIndex].id : `shift_${Date.now()}_${dateStr}`,
+          id: existingShift ? existingShift.id : `shift_${Date.now()}_${dateStr}`,
           userId,
           date: dateStr,
           shiftType,
           shiftPatternId: getShiftPatternId(shiftType),
         };
 
-        if (existingShiftIndex >= 0) {
-          newShifts[existingShiftIndex] = newShift;
-        } else {
-          newShifts.push(newShift);
-        }
-      } else if (existingShiftIndex >= 0) {
+        newShifts = upsertShift(newShifts, newShift);
+      } else if (existingShift) {
         // パターン未設定（休日）の曜日: 既存シフトを削除
-        newShifts.splice(existingShiftIndex, 1);
+        newShifts = removeShift(newShifts, userId, dateStr);
       }
 
       currentDate = addDays(currentDate, 1);
@@ -154,7 +141,7 @@ export function useShiftOperations(
 
   // 全スタッフに一括シフトパターンを適用
   const applyPatternToAll = () => {
-    const newShifts = [...shifts];
+    let newShifts = shifts;
     const monthStartDate = period ? parseISO(period.startDate) : startOfMonth(selectedDate);
     const monthEndDate = period ? parseISO(period.endDate) : endOfMonth(selectedDate);
 
@@ -169,27 +156,23 @@ export function useShiftOperations(
         const dayKey = dayKeys[dayOfWeek];
 
         const shiftType = user.shiftPatterns[dayKey];
-        const existingShiftIndex = newShifts.findIndex(shift =>
+        const existingShift = newShifts.find(shift =>
           shift.userId === user.id && shift.date === dateStr
         );
 
         if (shiftType) {
           const newShift: Shift = {
-            id: existingShiftIndex >= 0 ? newShifts[existingShiftIndex].id : `shift_${Date.now()}_${user.id}_${dateStr}`,
+            id: existingShift ? existingShift.id : `shift_${Date.now()}_${user.id}_${dateStr}`,
             userId: user.id,
             date: dateStr,
             shiftType,
             shiftPatternId: getShiftPatternId(shiftType),
           };
 
-          if (existingShiftIndex >= 0) {
-            newShifts[existingShiftIndex] = newShift;
-          } else {
-            newShifts.push(newShift);
-          }
-        } else if (existingShiftIndex >= 0) {
+          newShifts = upsertShift(newShifts, newShift);
+        } else if (existingShift) {
           // パターン未設定（休日）の曜日: 既存シフトを削除
-          newShifts.splice(existingShiftIndex, 1);
+          newShifts = removeShift(newShifts, user.id, dateStr);
         }
 
         currentDate = addDays(currentDate, 1);

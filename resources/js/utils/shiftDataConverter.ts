@@ -58,6 +58,28 @@ export function convertShiftPatterns(shiftPatterns: ShiftPattern[]): ShiftTypeIn
 }
 
 /**
+ * シフト配列に1件を反映する（同一ユーザー・同一日付の既存分はすべて置き換える）
+ *
+ * 呼び出し側ごとに findIndex で1件だけ探して置換/追加する実装が重複しており、
+ * 同一ユーザー・同一日付のシフトが複数件残っていると1件しか置き換わらず、
+ * 集計（人数・日数）が古いシフトを数え続けてしまう。常にこの関数を通すことで
+ * 「ユーザー×日付」につき1件になることを保証する。
+ */
+export function upsertShift(shifts: Shift[], newShift: Shift): Shift[] {
+  const withoutTarget = shifts.filter(
+    (shift) => !(shift.userId === newShift.userId && shift.date === newShift.date)
+  );
+  return [...withoutTarget, newShift];
+}
+
+/**
+ * シフト配列から指定ユーザー・日付のシフトを取り除く（重複していてもすべて取り除く）
+ */
+export function removeShift(shifts: Shift[], userId: string, date: string): Shift[] {
+  return shifts.filter((shift) => !(shift.userId === userId && shift.date === date));
+}
+
+/**
  * 休みのShiftTypeInfo定義
  */
 export const restShiftInfo: ShiftTypeInfo = {

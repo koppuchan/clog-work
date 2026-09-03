@@ -44,21 +44,15 @@ Body : { "idm": "0123456789abcdef", "intent": "break-start" }
 
 ## deploy/
 
-前任者作成のデプロイ手順書・スクリプト・nginx 設定。
-サーバー構成の参考にする。
+前任者作成の nginx 設定テンプレート（旧サーバー移行時の参考資料）。
 
 **認証情報は `<REDACTED>` に置換済み。**
 
-判明しているサーバー構成:
+旧サーバー（162.43.90.89）は廃止済みで使用していない。現行サーバー（153.115.0.90）の
+構成・デプロイ手順・ロールバック・DBバックアップは [deploy/README.md](../../deploy/README.md) が正。
 
-| 項目 | 値 |
-| --- | --- |
-| アプリ配置 | `/var/www/attendance-web` |
-| ドキュメントルート | `/var/www/attendance-web/public` |
-| PHP-FPM | `unix:/run/php/php8.4-fpm.sock` |
-| DB | MySQL（同一ホスト） |
-
-FeliCa 用のカラム追加 SQL も `deploy.sh` 内に残っている。
+FeliCa 用のカラム追加 SQL は当時の `deploy.sh` に含まれていたが、現在は
+`felica_idm` / `felica_registered_at` ともにマイグレーション管理下にある。
 
 ```sql
 ALTER TABLE users

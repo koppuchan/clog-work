@@ -137,14 +137,26 @@ class DailyWorkSummaryBatchService
     {
         $dateString = $targetDate->format('Y-m-d');
 
-        // 既存の勤務実績が手動修正または申請修正の場合はスキップ
+        // 既存の勤務実績が手動修正または申請修正の場合はスキップ。
+        // ただし「手動入力」区分で出退勤時刻を持たない空のレコード
+        // （CSV移行で作られたテンプレート行など。編集画面から手動入力する場合は
+        // 必ず出退勤時刻が入るため、この組み合わせは移行時のテンプレート行にしか起きない）は
+        // 保護すべき内容が無いため自動集計を妨げないようにする。
+        // 休暇申請（REQUEST）による全休は出退勤時刻を持たないのが正常なため対象外とする。
         $existingSummary = $this->dailyWorkSummaryRepository->findByUserIdAndDate(
             $company->id,
             $user->id,
             $dateString
         );
 
-        if ($existingSummary && $existingSummary->record_source !== RecordSourceEnum::AUTO) {
+        $isEmptyManualPlaceholder = $existingSummary?->record_source === RecordSourceEnum::MANUAL
+            && $existingSummary->work_start === null;
+
+        if (
+            $existingSummary
+            && $existingSummary->record_source !== RecordSourceEnum::AUTO
+            && ! $isEmptyManualPlaceholder
+        ) {
             return 'skipped';
         }
 

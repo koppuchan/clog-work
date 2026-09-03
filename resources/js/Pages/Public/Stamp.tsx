@@ -258,7 +258,9 @@ export default function PublicStampPage({ company, users }: Props) {
           {message && (
             <div
               className={`mb-6 p-4 rounded-lg flex items-center gap-2 ${
-                message.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-yellow-50 text-yellow-800'
+                message.type === 'success'
+                  ? 'bg-green-50 text-green-800'
+                  : 'bg-yellow-200 text-yellow-900 border-2 border-yellow-600 font-semibold'
               }`}
             >
               {message.type === 'success' ? (

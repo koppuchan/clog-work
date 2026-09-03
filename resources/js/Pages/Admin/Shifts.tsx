@@ -10,7 +10,7 @@ import ShiftLegend from '@/Components/Shift/ShiftLegend';
 import MonthSelector from '@/Components/MonthSelector';
 import { useShiftStats } from '@/hooks/shift/useShiftStats';
 import { useShiftOperations } from '@/hooks/shift/useShiftOperations';
-import { convertBackendUsers, convertBackendShifts, convertShiftPatterns, getShiftTypeInfo as getShiftTypeInfoUtil, restShiftInfo } from '@/utils/shiftDataConverter';
+import { convertBackendUsers, convertBackendShifts, convertShiftPatterns, getShiftTypeInfo as getShiftTypeInfoUtil, restShiftInfo, upsertShift, removeShift } from '@/utils/shiftDataConverter';
 import { getActiveUsersForMonth as filterActiveUsers } from '@/utils/userFilters';
 import { router } from '@inertiajs/react';
 import axios from 'axios';
@@ -380,7 +380,7 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
       // 更新されたスタッフ情報を使ってシフトパターンを適用
       const periodStartDate = new Date(filters.start_date);
       const periodEndDate = new Date(filters.end_date);
-      const newShifts = [...shifts];
+      let newShifts = shifts;
 
       updatedUsers.forEach(user => {
         if (!user.shiftPatterns) return;
@@ -394,27 +394,23 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
 
           const shiftType = user.shiftPatterns[dayKey];
 
-          const existingShiftIndex = newShifts.findIndex(shift =>
+          const existingShift = newShifts.find(shift =>
             shift.userId === user.id && shift.date === dateStr
           );
 
           if (shiftType) {
             const newShift: Shift = {
-              id: existingShiftIndex >= 0 ? newShifts[existingShiftIndex].id : `shift_${Date.now()}_${user.id}_${dateStr}`,
+              id: existingShift ? existingShift.id : `shift_${Date.now()}_${user.id}_${dateStr}`,
               userId: user.id,
               date: dateStr,
               shiftType,
               shiftPatternId: getShiftPatternIdFromShiftType(shiftType),
             };
 
-            if (existingShiftIndex >= 0) {
-              newShifts[existingShiftIndex] = newShift;
-            } else {
-              newShifts.push(newShift);
-            }
-          } else if (existingShiftIndex >= 0) {
+            newShifts = upsertShift(newShifts, newShift);
+          } else if (existingShift) {
             // パターン未設定（休日）の曜日: 既存シフトを削除
-            newShifts.splice(existingShiftIndex, 1);
+            newShifts = removeShift(newShifts, user.id, dateStr);
           }
 
           currentDate = addDays(currentDate, 1);
@@ -458,7 +454,7 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
 
       <BulkPatternDialog
         showDialog={showBulkPatternDialog}
-        selectedDate={selectedDate}
+        periodLabel={getPeriodLabel(getCurrentPeriodMonth())}
         activeUsers={activeUsers}
         onApply={generateAllUsersShiftPatterns}
         onCancel={() => setShowBulkPatternDialog(false)}

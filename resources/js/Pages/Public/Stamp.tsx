@@ -410,7 +410,7 @@ export default function PublicStampPage({ company, users }: Props) {
                   <button
                     type="button"
                     onClick={() => setIsBreakMode((on) => !on)}
-                    className="inline-flex flex-col items-center justify-center gap-1 px-6 py-4 rounded-lg font-semibold text-white"
+                    className={`inline-flex flex-col items-center justify-center gap-1 px-6 py-4 rounded-lg font-semibold text-white ${isBreakMode ? 'animate-pulse' : ''}`}
                     style={{ backgroundColor: isBreakMode ? '#eab308' : '#f59e0b' }}
                   >
                     <Coffee className="w-6 h-6" />

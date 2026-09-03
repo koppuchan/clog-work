@@ -270,14 +270,31 @@ class DailyWorkSummaryService
             // 対象日の打刻レコード
             $todayRecords = $this->timeRecordRepository->findByUserIdAndDate($companyId, $userId, $workDate);
 
-            // 翌日の日跨ぎ退勤レコードもマージして削除対象に含める
+            // 翌日の日跨ぎ退勤レコードと、日跨ぎ退勤時刻以前の翌日休憩レコードもマージして削除対象に含める
+            // （夜勤の翌朝休憩や日跨ぎ休憩は翌日の日付に正規化されて保存されるため、
+            // 削除対象に含めないと孤立したレコードが残ってしまう）
             $nextDate = CarbonImmutable::parse($workDate)->addDay()->format('Y-m-d');
             $nextDayRecords = $this->timeRecordRepository->findByUserIdAndDate($companyId, $userId, $nextDate);
-            $nextDayCrossDayRecords = $nextDayRecords->filter(
+            $nextDayCrossEnd = $nextDayRecords->first(
                 fn ($r) => $r->record_type === TimeRecordTypeEnum::WORK_END_NEXT_DAY
             );
 
-            $targetIds = $todayRecords->merge($nextDayCrossDayRecords)
+            $nextDayRecordsToDelete = collect();
+            if ($nextDayCrossEnd !== null) {
+                $nextDayRecordsToDelete = $nextDayRecords->filter(function ($r) use ($nextDayCrossEnd) {
+                    if ($r->record_type === TimeRecordTypeEnum::WORK_END_NEXT_DAY) {
+                        return true;
+                    }
+                    if ($r->record_type === TimeRecordTypeEnum::BREAK_START
+                        || $r->record_type === TimeRecordTypeEnum::BREAK_END) {
+                        return $r->record_time->lte($nextDayCrossEnd->record_time);
+                    }
+
+                    return false;
+                });
+            }
+
+            $targetIds = $todayRecords->merge($nextDayRecordsToDelete)
                 ->pluck('id')
                 ->all();
 

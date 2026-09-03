@@ -272,6 +272,14 @@ class WorkSummaryCsvImportService
             $data['work_end'] = CarbonImmutable::parse($data['work_end'])->addDay()->format('Y-m-d H:i:s');
         }
 
+        // 旧環境の出力に「勤務時間」列（出退勤の実時間差）が無いため、
+        // 出退勤時刻から算出する。将来そのものの列がある形式が来た場合は
+        // 上のループで設定済みの値を優先する
+        if (! isset($data['work_minutes']) && $data['work_start'] !== null && $data['work_end'] !== null) {
+            $data['work_minutes'] = (int) CarbonImmutable::parse($data['work_start'])
+                ->diffInMinutes(CarbonImmutable::parse($data['work_end']));
+        }
+
         // 休憩は時刻の組で出力されるため、そこから分数を求める
         $breaks = $this->breakPeriods($values, $date);
 

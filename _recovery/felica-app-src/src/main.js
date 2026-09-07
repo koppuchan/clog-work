@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, globalShortcut } = require('electron');
 const path = require('node:path');
 
 const { startFelicaReader } = require('./felica');
@@ -291,22 +291,34 @@ app.whenReady().then(() => {
     }
   };
 
-  // IPC: 休憩開始モード ON/OFF/Toggle
-  ipcMain.handle('break-mode:set', (_event, enabled) => {
+  // 休憩開始モードの ON/OFF/Toggle 本体。IPC（ウィンドウ表示時のボタン操作）と
+  // グローバルショートカット（ウィンドウが非表示のトレイ常駐時）の両方から呼ぶ。
+  const setBreakMode = (enabled) => {
     breakStartArmed = !!enabled;
     if (breakStartArmed) startBreakArmTimeout();
     else cancelBreakArmTimeout();
     broadcastEvent('break-mode:changed', { armed: breakStartArmed });
     return breakStartArmed;
-  });
-  ipcMain.handle('break-mode:toggle', () => {
-    breakStartArmed = !breakStartArmed;
-    if (breakStartArmed) startBreakArmTimeout();
-    else cancelBreakArmTimeout();
-    broadcastEvent('break-mode:changed', { armed: breakStartArmed });
-    return breakStartArmed;
-  });
+  };
+  const toggleBreakMode = () => setBreakMode(!breakStartArmed);
+
+  // IPC: 休憩開始モード ON/OFF/Toggle（ウィンドウ表示中のボタン・ショートカット用）
+  ipcMain.handle('break-mode:set', (_event, enabled) => setBreakMode(enabled));
+  ipcMain.handle('break-mode:toggle', () => toggleBreakMode());
   ipcMain.handle('break-mode:get', () => breakStartArmed);
+
+  // グローバルショートカット: B / Esc
+  // 本アプリは通常タスクトレイに常駐し、ウィンドウを非表示にしているため、
+  // レンダラーの keydown リスナーだけではショートカットが一切反応しない
+  // （非表示ウィンドウはOSからキー入力を受け取れない）。ウィンドウの表示・
+  // フォーカス状態によらず動作するよう、OSレベルのグローバルショートカットとして登録する。
+  const registered = {
+    b: globalShortcut.register('B', () => toggleBreakMode()),
+    esc: globalShortcut.register('Escape', () => setBreakMode(false)),
+  };
+  if (!registered.b || !registered.esc) {
+    console.warn('グローバルショートカットの登録に失敗しました（他アプリと競合している可能性があります）:', registered);
+  }
 
   // 実機のリーダーを起動
   startFelicaReader({
@@ -317,6 +329,10 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on('window-all-closed', () => {

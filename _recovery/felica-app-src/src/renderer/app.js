@@ -225,20 +225,10 @@ window.felicaApi.onBreakModeChanged((evt) => {
   applyBreakArmed(!!evt.armed);
 });
 
-// キーボードショートカット: B で休憩開始モード ON、Esc でキャンセル
-document.addEventListener('keydown', async (e) => {
-  // 入力欄にフォーカスがあるときは無視
-  const tag = (e.target && e.target.tagName) || '';
-  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-
-  if (e.key === 'b' || e.key === 'B') {
-    const armed = await window.felicaApi.toggleBreakMode();
-    applyBreakArmed(armed);
-  } else if (e.key === 'Escape') {
-    await window.felicaApi.setBreakMode(false);
-    applyBreakArmed(false);
-  }
-});
+// B / Esc ショートカットはメインプロセス側でグローバルショートカットとして
+// 登録している（ウィンドウを閉じてトレイ常駐にしていても効くようにするため）。
+// 状態変化は onBreakModeChanged で受け取って画面に反映するので、ここでは
+// レンダラー側の keydown は不要（二重に登録すると連打時に状態が食い違う）。
 
 // 初期状態
 (async function initBreakMode() {

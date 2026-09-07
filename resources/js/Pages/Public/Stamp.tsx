@@ -415,8 +415,8 @@ export default function PublicStampPage({ company, users }: Props) {
             // スタッフ選択画面
             <div className="bg-white shadow rounded-lg p-6">
               <div className="text-center mb-6">
-                {/* 時計の右側に休憩開始モードの切り替えを置く */}
-                <div className="flex items-center justify-center gap-6 flex-wrap">
+                {/* 時計を左端、休憩開始モードの切り替えを右端に配置する */}
+                <div className="flex items-center justify-between gap-6 flex-wrap">
                   <div>
                     <div className="text-6xl font-bold text-gray-900 font-mono mb-2">
                       {format(currentTime, 'HH:mm:ss')}

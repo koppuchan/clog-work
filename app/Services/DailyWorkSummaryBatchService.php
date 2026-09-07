@@ -12,6 +12,7 @@ use App\Models\Shift;
 use App\Models\TimeRecord;
 use App\Models\User;
 use App\Repositories\Contracts\CompanyRepositoryInterface;
+use App\Repositories\Contracts\CompanyShiftRoundingSettingRepositoryInterface;
 use App\Repositories\Contracts\DailyWorkSummaryRepositoryInterface;
 use App\Repositories\Contracts\ShiftRepositoryInterface;
 use App\Repositories\Contracts\TimeRecordRepositoryInterface;
@@ -47,7 +48,8 @@ class DailyWorkSummaryBatchService
         private readonly DailyWorkSummaryRepositoryInterface $dailyWorkSummaryRepository,
         private readonly ShiftRepositoryInterface $shiftRepository,
         private readonly WorkTimeCalculator $workTimeCalculator,
-        private readonly AutoBreakFillService $autoBreakFillService
+        private readonly AutoBreakFillService $autoBreakFillService,
+        private readonly CompanyShiftRoundingSettingRepositoryInterface $roundingSettingRepository
     ) {}
 
     /**
@@ -405,28 +407,50 @@ class DailyWorkSummaryBatchService
             );
         }
 
+        $roundingUnitMinutes = $this->roundingSettingRepository->getRoundingMinutes($company->id);
         $breakMinutes = 0;
 
         foreach ($breakStarts as $index => $breakStart) {
             $breakEnd = $breakEnds->get($index);
             if ($breakEnd) {
-                $startTime = $breakStart->rounded_time ?? $breakStart->record_time;
-                $endTime = $breakEnd->rounded_time ?? $breakEnd->record_time;
-
-                $startCarbon = CarbonImmutable::parse($startTime);
-                $endCarbon = CarbonImmutable::parse($endTime);
+                // 実打刻（record_time）の差を先に計算し、休憩時間帯としては
+                // 丸めない。打刻ごとに丸めてから差し引くと、休憩開始・終了
+                // それぞれの丸め幅（最大で丸め単位ぶん）が重なって、実際より
+                // 過大な休憩時間になってしまうため。
+                $startCarbon = CarbonImmutable::parse($breakStart->record_time);
+                $endCarbon = CarbonImmutable::parse($breakEnd->record_time);
 
                 // 休憩終了が開始より前の場合は翌日とみなす（日跨ぎ勤務時）
                 if ($endCarbon->lte($startCarbon)) {
                     $endCarbon = $endCarbon->addDay();
                 }
 
-                $breakMinutes += (int) $startCarbon->diffInMinutes($endCarbon);
+                $rawMinutes = (int) $startCarbon->diffInMinutes($endCarbon);
+                $breakMinutes += $this->roundUpMinutes($rawMinutes, $roundingUnitMinutes);
             }
         }
 
         // 休憩打刻がなければ休憩0分（打刻ベースで計算）
         return $breakMinutes;
+    }
+
+    /**
+     * 分数を会社の丸め単位で切り上げる
+     *
+     * 休憩時間の丸めは労働者に不利にならない方向（休憩を長く見積もらない）
+     * ではなく、既存の出退勤打刻の丸め（開始=切り上げ／終了=切り捨て）と
+     * 同じ「安全側に倒す」考え方に揃え、切り上げで統一する。
+     *
+     * @param  int  $minutes  丸め前の分数
+     * @param  int|null  $unitMinutes  会社の丸め単位（分）。未設定・1以下なら丸めない
+     */
+    private function roundUpMinutes(int $minutes, ?int $unitMinutes): int
+    {
+        if ($unitMinutes === null || $unitMinutes <= 1) {
+            return $minutes;
+        }
+
+        return (int) (ceil($minutes / $unitMinutes) * $unitMinutes);
     }
 
     /**

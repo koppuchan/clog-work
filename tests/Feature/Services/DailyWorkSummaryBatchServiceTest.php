@@ -1573,9 +1573,12 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
     /**
      * @test
      */
-    public function aggregate_uses_rounded_time_for_break_calculation(): void
+    public function aggregate_uses_record_time_not_rounded_time_for_break_calculation(): void
     {
-        // Arrange: 休憩打刻も rounded_time が優先されることを確認
+        // Arrange: 休憩は打刻ごとの rounded_time ではなく実打刻(record_time)の差で
+        // 計算されるべき（丸めるのは差し引き後の1つの時間だけ）。
+        // rounded_time はあえて record_time と大きくずらし、
+        // 使われていないことを検証する。
         $targetDate = CarbonImmutable::parse('2025-03-12');
         $dateString = $targetDate->format('Y-m-d');
 
@@ -1588,23 +1591,23 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
             'record_source' => RecordSourceEnum::AUTO,
         ]);
 
-        // 休憩開始 record_time=12:03, rounded=12:05（切り上げ想定）
+        // 休憩開始 record_time=12:03, rounded_time=12:30（大きくずらす）
         TimeRecord::query()->create([
             'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'record_type' => TimeRecordTypeEnum::BREAK_START,
             'record_time' => $dateString.' 12:03:00',
-            'rounded_time' => $dateString.' 12:05:00',
+            'rounded_time' => $dateString.' 12:30:00',
             'record_source' => RecordSourceEnum::AUTO,
         ]);
 
-        // 休憩終了 record_time=12:58, rounded=12:55（切り捨て想定）
+        // 休憩終了 record_time=12:58, rounded_time=12:35（大きくずらす）
         TimeRecord::query()->create([
             'company_id' => $this->company->id,
             'user_id' => $this->user->id,
             'record_type' => TimeRecordTypeEnum::BREAK_END,
             'record_time' => $dateString.' 12:58:00',
-            'rounded_time' => $dateString.' 12:55:00',
+            'rounded_time' => $dateString.' 12:35:00',
             'record_source' => RecordSourceEnum::AUTO,
         ]);
 
@@ -1620,14 +1623,79 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
         // Act
         $this->service->aggregateByUser($this->company, $this->user, $targetDate);
 
-        // Assert: 休憩は rounded で 12:05〜12:55 = 50分（record_time基準なら55分）
+        // Assert: 実打刻 12:03〜12:58 = 55分（丸め設定なしのためそのまま）。
+        // rounded_timeを使っていれば5分になってしまう。
         $summary = DailyWorkSummary::query()
             ->where('user_id', $this->user->id)
             ->where('work_date', $dateString)
             ->first();
 
         $this->assertNotNull($summary);
-        $this->assertEquals(50, $summary->break_minutes, '休憩はrounded_time基準で計算されるべき');
+        $this->assertEquals(55, $summary->break_minutes, '休憩はrecord_time基準で計算されるべき');
+    }
+
+    /**
+     * @test
+     */
+    public function aggregate_rounds_up_break_minutes_to_company_rounding_unit(): void
+    {
+        // Arrange: 丸め単位5分の会社で、実休憩時間23分（切り上げで25分になるべき）
+        \App\Models\CompanyShiftRoundingSetting::query()->create([
+            'company_id' => $this->company->id,
+            'rounding_unit_id' => 2, // 5分単位
+        ]);
+
+        $targetDate = CarbonImmutable::parse('2025-03-12');
+        $dateString = $targetDate->format('Y-m-d');
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => $dateString.' 09:00:00',
+            'rounded_time' => $dateString.' 09:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        // 実休憩 12:00〜12:23 = 23分
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::BREAK_START,
+            'record_time' => $dateString.' 12:00:00',
+            'rounded_time' => $dateString.' 12:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::BREAK_END,
+            'record_time' => $dateString.' 12:23:00',
+            'rounded_time' => $dateString.' 12:23:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END,
+            'record_time' => $dateString.' 18:00:00',
+            'rounded_time' => $dateString.' 18:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        // Act
+        $this->service->aggregateByUser($this->company, $this->user, $targetDate);
+
+        // Assert: 23分を5分単位で切り上げ→25分
+        $summary = DailyWorkSummary::query()
+            ->where('user_id', $this->user->id)
+            ->where('work_date', $dateString)
+            ->first();
+
+        $this->assertNotNull($summary);
+        $this->assertEquals(25, $summary->break_minutes);
     }
 
     // ========================================

@@ -346,9 +346,10 @@ export default function PublicStampPage({ company, users }: Props) {
         </header>
 
         {/* FeliCaカード打刻の結果トースト（成功・重複防止など。常駐アプリからの打刻は
-            この画面上の操作を経由しないため、ここでポーリング結果を通知する） */}
+            この画面上の操作を経由しないため、ここでポーリング結果を通知する）。
+            ヘッダー・メインと同じ幅の枠に揃える */}
         {felicaEvents.length > 0 && (
-          <div className="space-y-1">
+          <div className="max-w-4xl mx-auto px-4 pt-4 space-y-1">
             {felicaEvents.map((event) => (
               <div
                 key={event.id}

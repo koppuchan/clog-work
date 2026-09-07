@@ -125,7 +125,7 @@ class WorkSummaryExportTest extends TestCase
         $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
 
         $this->assertStringContainsString('一般ユーザー', $content);
-        $this->assertStringContainsString('2025/01/01', $content);
+        $this->assertStringContainsString('1/1(水)', $content);
     }
 
     /**
@@ -148,7 +148,7 @@ class WorkSummaryExportTest extends TestCase
         $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
 
         // CSV本体にヘッダー行が含まれている（全員CSVと同形式）
-        $this->assertStringContainsString('氏名,日付,曜日,勤務区分,出勤時刻,退勤時刻', $content);
+        $this->assertStringContainsString('コード,氏名,日付,勤務区分,シフト開始,シフト終了', $content);
         // 出勤・退勤時刻
         $this->assertStringContainsString('09:00', $content);
         $this->assertStringContainsString('18:00', $content);
@@ -236,7 +236,7 @@ class WorkSummaryExportTest extends TestCase
         $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
 
         // ヘッダーと空のデータ行がある（全員CSVと同形式）
-        $this->assertStringContainsString('氏名,日付,曜日,勤務区分,出勤時刻,退勤時刻', $content);
+        $this->assertStringContainsString('コード,氏名,日付,勤務区分,シフト開始,シフト終了', $content);
     }
 
     // ========================================
@@ -448,8 +448,7 @@ class WorkSummaryExportTest extends TestCase
 
         $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
 
-        // 遅刻30分=0:30, 早退60分=1:00 が日次データ行に出力される
-        $this->assertStringContainsString('0:30', $content);
-        $this->assertStringContainsString('1:00', $content);
+        // 遅刻30分+早退60分=90分が、帳票と同じく遅刻早退の1列に合算されて出力される
+        $this->assertStringContainsString('1:30', $content);
     }
 }

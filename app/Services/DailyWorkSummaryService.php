@@ -6,13 +6,16 @@ namespace App\Services;
 
 use App\Enums\LeaveTypeEnum;
 use App\Enums\RecordSourceEnum;
+use App\Enums\RequestStatusEnum;
 use App\Enums\TimeRecordTypeEnum;
 use App\Exceptions\NotFoundException;
 use App\Models\DailyWorkSummary;
+use App\Models\Request as LeaveRequest;
 use App\Models\TimeRecordCorrection;
 use App\Models\User;
 use App\Repositories\Contracts\CompanyRepositoryInterface;
 use App\Repositories\Contracts\DailyWorkSummaryRepositoryInterface;
+use App\Repositories\Contracts\RequestRepositoryInterface;
 use App\Repositories\Contracts\TimeRecordCorrectionRepositoryInterface;
 use App\Repositories\Contracts\TimeRecordRepositoryInterface;
 use App\Repositories\Contracts\UserRepositoryInterface;
@@ -44,7 +47,8 @@ class DailyWorkSummaryService
         private readonly DailyWorkSummaryBatchService $dailyWorkSummaryBatchService,
         private readonly TimeRoundingService $timeRoundingService,
         private readonly RawStampTimeService $rawStampTimeService,
-        private readonly LateEarlyLeaveDisplay $lateEarlyLeaveDisplay
+        private readonly LateEarlyLeaveDisplay $lateEarlyLeaveDisplay,
+        private readonly RequestRepositoryInterface $requestRepository
     ) {}
 
     /**
@@ -767,7 +771,7 @@ class DailyWorkSummaryService
         $weekdays = ['日', '月', '火', '水', '木', '金', '土'];
 
         $lines = [];
-        $lines[] = ['氏名', '日付', '曜日', '勤務区分', '出勤時刻', '退勤時刻', '勤務時間', '休憩', '実働時間', '時間外', '休日', '深夜', '遅刻', '早退', '備考'];
+        $lines[] = ['コード', '氏名', '日付', '勤務区分', 'シフト開始', 'シフト終了', 'シフト休憩入', 'シフト休憩出', '出勤時刻', '退勤時刻', '休憩入①', '休憩出①', '休憩入②', '休憩出②', '労働時間', '時間外', '休日', '深夜', '遅刻早退', '備考/申請'];
 
         foreach ($users as $user) {
             $rawTimes = $this->rawStampTimeService->mapByDate(
@@ -785,31 +789,56 @@ class DailyWorkSummaryService
             );
             $summaryMap = $summaries->keyBy(fn ($s) => $s->work_date->format('Y-m-d'));
 
+            // 帳票（Excel）と同じ基準で1日所定勤務時間を求める（申請の日数・時間換算に使う）
+            $user->loadMissing('companies');
+            $primaryCompany = $user->companies->firstWhere('pivot.is_primary', true) ?? $user->companies->first();
+            $dailyWorkingMinutes = (int) (($primaryCompany?->daily_working_hours ?? 8) * 60);
+
+            // 帳票（Excel）と同じく、承認済み申請を日付ごとにまとめておく
+            $approvedRequests = $this->requestRepository->findByUserIdAndDateRange(
+                $companyId,
+                $user->id,
+                $startDate->format('Y-m-d'),
+                $endDate->format('Y-m-d'),
+                RequestStatusEnum::APPROVED->value
+            );
+            $requestMap = $approvedRequests->groupBy(fn (LeaveRequest $r) => $r->target_date->format('Y-m-d'));
+
             $currentDate = $startDate;
             while ($currentDate->lte($endDate)) {
                 $dateKey = $currentDate->format('Y-m-d');
                 $summary = $summaryMap->get($dateKey);
-                $dayOfWeek = $weekdays[$currentDate->dayOfWeek];
+                $dateText = $currentDate->format('n/j').'('.$weekdays[$currentDate->dayOfWeek].')';
 
                 // 表示は実打刻を使う。集計テーブルには丸め後の時刻が入っている。
                 $raw = $rawTimes[$dateKey] ?? null;
+                $breaks = $raw['breaks'] ?? [];
 
                 $lines[] = [
+                    $user->employee_code ?? '',
                     $user->name,
-                    $currentDate->format('Y/m/d'),
-                    $dayOfWeek,
+                    $dateText,
                     $this->resolveWorkType($summary, $currentDate),
+                    $this->formatScheduledTime($summary?->scheduled_start_time),
+                    $this->formatScheduledTime($summary?->scheduled_end_time),
+                    // シフト休憩入・休憩出: 帳票（Excel）にも対応する所定データがなく常に空欄
+                    '',
+                    '',
                     $raw['work_start'] ?? $summary?->work_start?->format('H:i') ?? '',
                     $raw['work_end'] ?? $summary?->work_end?->format('H:i') ?? '',
-                    $this->formatMinutesToHM($summary?->work_minutes ?? 0),
-                    $this->formatMinutesToHM($summary?->break_minutes ?? 0),
+                    $breaks[0]['start'] ?? '',
+                    $breaks[0]['end'] ?? '',
+                    $breaks[1]['start'] ?? '',
+                    $breaks[1]['end'] ?? '',
                     $this->formatMinutesToHM($summary?->net_work_minutes ?? 0),
                     $this->formatMinutesToHM($summary?->overtime_minutes ?? 0),
                     $this->formatMinutesToHM($summary?->holiday_minutes ?? 0),
                     $this->formatMinutesToHM($summary?->night_minutes ?? 0),
-                    $this->formatMinutesToHM($this->lateEarlyLeaveDisplay->lateMinutes($summary)),
-                    $this->formatMinutesToHM($this->lateEarlyLeaveDisplay->earlyLeaveMinutes($summary)),
-                    $summary?->note ?? '',
+                    $this->formatMinutesToHM(
+                        $this->lateEarlyLeaveDisplay->lateMinutes($summary)
+                        + $this->lateEarlyLeaveDisplay->earlyLeaveMinutes($summary)
+                    ),
+                    $this->buildNoteAndRequestColumn($summary, $requestMap->get($dateKey, collect()), $dailyWorkingMinutes),
                 ];
 
                 $currentDate = $currentDate->addDay();
@@ -822,6 +851,95 @@ class DailyWorkSummaryService
         }
 
         return $output;
+    }
+
+    /**
+     * シフトの所定時刻を「HH:MM」形式に変換する
+     *
+     * DBには「HH:MM:SS」形式で入っているため「HH:MM」に統一する
+     *
+     * @param  string|null  $time  時刻文字列（HH:MM:SS or HH:MM）
+     */
+    private function formatScheduledTime(?string $time): string
+    {
+        return $time ? substr($time, 0, 5) : '';
+    }
+
+    /**
+     * 備考/申請列を生成する（帳票=Excelと同じ判定基準）
+     *
+     * - 時間系申請（遅刻・早退・残業）: 「{N}H」形式
+     * - 日数系申請（有給・特別休暇・欠勤等）: leave_minutes ÷ 1日所定分 の日数
+     * - 1日に複数申請がある場合は改行区切りで表示する
+     *
+     * @param  mixed  $summary  daily_work_summaries レコード
+     * @param  \Illuminate\Support\Collection<int, LeaveRequest>  $dayRequests  当日の承認済み申請
+     * @param  int  $dailyWorkingMinutes  1日所定勤務時間（分）
+     */
+    private function buildNoteAndRequestColumn($summary, \Illuminate\Support\Collection $dayRequests, int $dailyWorkingMinutes): string
+    {
+        // 時間系の申請種別ID（遅刻=3, 早退=4, 残業申請=7）
+        $hourlyTypeIds = [3, 4, 7];
+
+        $entries = [];
+
+        foreach ($dayRequests as $request) {
+            $typeName = $request->applicationType?->name ?? '';
+
+            if ($typeName === '') {
+                continue;
+            }
+
+            if (in_array($request->type, $hourlyTypeIds, true)) {
+                $minutes = match ($request->type) {
+                    3 => $summary?->late_minutes ?? 0,
+                    4 => $summary?->early_leave_minutes ?? 0,
+                    7 => $summary?->overtime_minutes ?? 0,
+                    default => 0,
+                };
+                $valueStr = $minutes > 0 ? ((int) round($minutes / 60)).'H' : '';
+            } else {
+                $valueStr = $this->calculateLeaveDays($request->type, $request, $dailyWorkingMinutes);
+            }
+
+            $entries[] = trim($typeName.' '.$valueStr);
+        }
+
+        return implode("\n", $entries);
+    }
+
+    /**
+     * 休暇申請の日数を計算する（帳票=Excelと同じ基準）
+     *
+     * @param  int  $typeId  申請種別ID
+     * @param  LeaveRequest  $request  申請レコード
+     * @param  int  $dailyWorkingMinutes  1日所定勤務時間（分）
+     * @return string 日数文字列（例: "1.0", "0.5", "0.125"）
+     */
+    private function calculateLeaveDays(int $typeId, LeaveRequest $request, int $dailyWorkingMinutes): string
+    {
+        // 半日有給（type=9）: 常に0.5日
+        if ($typeId === 9) {
+            return '0.5';
+        }
+
+        // 時間有給（type=10）: start_time/end_time から時間数を算出し、1日所定時間で割る
+        if ($typeId === 10 && $request->start_time && $request->end_time) {
+            $start = CarbonImmutable::parse($request->start_time);
+            $end = CarbonImmutable::parse($request->end_time);
+            $leaveMinutes = (int) $start->diffInMinutes($end);
+
+            if ($dailyWorkingMinutes > 0 && $leaveMinutes > 0) {
+                $days = round($leaveMinutes / $dailyWorkingMinutes, 4);
+
+                return rtrim(rtrim(number_format($days, 4), '0'), '.');
+            }
+
+            return '0';
+        }
+
+        // 全日有給（type=1）/ 特別休暇（type=5）/ 欠勤（type=6）/ その他: 1.0日
+        return '1.0';
     }
 
     /**

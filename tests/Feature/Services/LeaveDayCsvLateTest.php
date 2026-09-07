@@ -63,7 +63,7 @@ class LeaveDayCsvLateTest extends TestCase
             $this->user,
         );
 
-        $lines = array_values(array_filter(explode("\n", $csv), fn ($line) => str_contains($line, '2026/06/24')));
+        $lines = array_values(array_filter(explode("\n", $csv), fn ($line) => str_contains($line, '6/24(水)')));
 
         return $lines[0] ?? '';
     }
@@ -77,9 +77,8 @@ class LeaveDayCsvLateTest extends TestCase
 
         $columns = str_getcsv($this->csvRowForDate());
 
-        // 氏名,日付,曜日,勤務区分,出勤時刻,退勤時刻,勤務時間,休憩,実働時間,時間外,休日,深夜,遅刻,早退,備考
-        $this->assertSame('0:00', $columns[12]);
-        $this->assertSame('0:00', $columns[13]);
+        // コード,氏名,日付,勤務区分,シフト開始,シフト終了,シフト休憩入,シフト休憩出,出勤時刻,退勤時刻,休憩入①,休憩出①,休憩入②,休憩出②,労働時間,時間外,休日,深夜,遅刻早退,備考/申請
+        $this->assertSame('0:00', $columns[18]);
     }
 
     /**
@@ -91,7 +90,7 @@ class LeaveDayCsvLateTest extends TestCase
 
         $columns = str_getcsv($this->csvRowForDate());
 
-        $this->assertSame('4:00', $columns[12]);
-        $this->assertSame('0:30', $columns[13]);
+        // 遅刻240分+早退30分が遅刻早退の1列に合算される
+        $this->assertSame('4:30', $columns[18]);
     }
 }

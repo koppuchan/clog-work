@@ -145,6 +145,7 @@ export interface ReportsPageProps {
   canExport: boolean;
   exportBatchSize?: number;
   shifts: Record<string, ShiftInfo>;
+  attendanceIssues: Record<string, string[]>;
   filters: ReportFilters;
 }
 

@@ -6,7 +6,6 @@ import { router, usePage } from '@inertiajs/react';
 import ReportExportModal from '@/Components/Reports/ReportExportModal';
 import ApprovedRequestDetailModal from '@/Components/Reports/ApprovedRequestDetailModal';
 import CorrectionDetailModal from '@/Components/Reports/CorrectionDetailModal';
-import AttendanceIssueBanner, { ISSUE_LABELS, type AttendanceIssueMap } from '@/Components/Reports/AttendanceIssueBanner';
 import WorkReportTable from '@/Components/Reports/WorkReportTable';
 import MonthSelector from '@/Components/MonthSelector';
 import ConfirmDialog from '@/Components/ConfirmDialog';
@@ -182,14 +181,6 @@ function ReportsPage() {
                 {req.type.label}
               </button>
             ))}
-            {(attendanceIssues?.[dateStr] ?? []).map((kind) => (
-              <span
-                key={kind}
-                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800"
-              >
-                {ISSUE_LABELS[kind] ?? kind}
-              </span>
-            ))}
             {corrections.length > 0 && (
               <button
                 type="button"
@@ -205,7 +196,7 @@ function ReportsPage() {
         </div>
       );
     },
-    [getApprovedRequestsForDate, timeRecordCorrections, attendanceIssues]
+    [getApprovedRequestsForDate, timeRecordCorrections]
   );
 
   const editColumn = {
@@ -235,8 +226,6 @@ function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <AttendanceIssueBanner issues={attendanceIssues ?? {}} />
-
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-900">勤務実績</h1>
         {canExport && (
@@ -297,6 +286,7 @@ function ReportsPage() {
         lastColumnHeader="備考"
         renderLastColumn={renderLastColumn}
         extraColumns={[editColumn]}
+        attendanceIssues={attendanceIssues}
       />
 
       {/* 勤務実績編集モーダル */}

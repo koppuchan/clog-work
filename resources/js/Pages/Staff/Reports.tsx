@@ -6,9 +6,8 @@ import type { ShiftDisplayPeriodType } from '@/types/shift';
 import { ApplicationDialog } from '@/Components/Staff/Reports';
 import ApprovedRequestDetailModal from '@/Components/Reports/ApprovedRequestDetailModal';
 import CorrectionDetailModal from '@/Components/Reports/CorrectionDetailModal';
-import AttendanceIssueBanner, { ISSUE_LABELS, type AttendanceIssueMap } from '@/Components/Reports/AttendanceIssueBanner';
 import LaborAlertPanel, { type LaborAlertItem } from '@/Components/Staff/LaborAlertPanel';
-import WorkReportTable from '@/Components/Reports/WorkReportTable';
+import WorkReportTable, { type AttendanceIssueMap } from '@/Components/Reports/WorkReportTable';
 import MonthSelector from '@/Components/MonthSelector';
 import { Clock, CheckCircle, XCircle } from 'lucide-react';
 import { getRequestBadgeStyle } from '@/utils/requestStyles';
@@ -227,14 +226,6 @@ function StaffReportsPage() {
                 )}
               </React.Fragment>
             ))}
-            {(attendanceIssues?.[dateStr] ?? []).map((kind) => (
-              <span
-                key={kind}
-                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800"
-              >
-                {ISSUE_LABELS[kind] ?? kind}
-              </span>
-            ))}
             {corrections.length > 0 && (
               <button
                 type="button"
@@ -256,12 +247,11 @@ function StaffReportsPage() {
         </div>
       );
     },
-    [getRequestsForDate, openApplicationDialog, setSelectedRequest, timeRecordCorrections, attendanceIssues]
+    [getRequestsForDate, openApplicationDialog, setSelectedRequest, timeRecordCorrections]
   );
 
   return (
     <div className="space-y-6">
-      <AttendanceIssueBanner issues={attendanceIssues ?? {}} />
 
       <LaborAlertPanel alerts={laborAlerts ?? []} />
 
@@ -312,6 +302,7 @@ function StaffReportsPage() {
         summaryLabel={getPeriodLabel(getCurrentPeriodMonth())}
         lastColumnHeader="備考/申請"
         renderLastColumn={renderLastColumn}
+        attendanceIssues={attendanceIssues}
       />
     </div>
   );

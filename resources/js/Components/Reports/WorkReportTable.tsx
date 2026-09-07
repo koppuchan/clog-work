@@ -13,6 +13,21 @@ const WORK_END_TYPES = [2, 3];
 const BREAK_START_TYPES = [4];
 const BREAK_END_TYPES = [5];
 
+export type AttendanceIssueMap = Record<string, string[]>;
+
+export const ISSUE_LABELS: Record<string, string> = {
+  missing_clock_out: '退勤忘れ',
+  not_calculated: '未計算',
+  missing_break_end: '休憩漏れ',
+};
+
+/** 要対応の種類ごとの色分け。退勤忘れと休憩漏れを見分けやすくする */
+const ISSUE_BADGE_STYLES: Record<string, string> = {
+  missing_clock_out: 'bg-orange-100 text-orange-800',
+  missing_break_end: 'bg-purple-100 text-purple-800',
+  not_calculated: 'bg-amber-100 text-amber-800',
+};
+
 /**
  * 指定日の指定種別に打刻修正があるか
  */
@@ -41,6 +56,8 @@ interface WorkReportTableProps {
   renderLastColumn: (date: Date, summary: WorkSummary | undefined) => React.ReactNode;
   /** 日付ごとの打刻修正履歴。修正された時刻を強調表示するために使う */
   corrections?: Record<string, TimeRecordCorrectionItem[]>;
+  /** 日付ごとの要対応状態（退勤忘れ・休憩打刻漏れ等）。日付の左に表示する */
+  attendanceIssues?: AttendanceIssueMap;
   /** 修正された時刻がクリックされたときに履歴を開く。typesでクリックされた項目（出勤・退勤・休憩開始・休憩終了）だけに絞り込む */
   onCorrectionClick?: (date: string, types: number[]) => void;
   extraColumns?: {
@@ -72,6 +89,7 @@ export default function WorkReportTable({
   corrections,
   onCorrectionClick,
   extraColumns,
+  attendanceIssues,
 }: WorkReportTableProps) {
   const daysInMonth = useMemo(() => {
     return eachDayOfInterval({ start: parseISO(startDate), end: parseISO(endDate) });
@@ -280,9 +298,14 @@ export default function WorkReportTable({
                 const dayOfWeek = date.getDay();
                 const dayName = format(date, 'E', { locale: ja });
                 const holiday = getHolidayName(date);
+                const dateStr = format(date, 'yyyy-MM-dd');
+                const issuesForDate = attendanceIssues?.[dateStr] ?? [];
 
                 return (
-                  <tr key={date.toString()} className={`${isCurrentDay ? 'bg-green-50' : ''} hover:bg-gray-50`}>
+                  <tr
+                    key={date.toString()}
+                    className={`${issuesForDate.length > 0 ? 'bg-orange-50' : isCurrentDay ? 'bg-green-50' : ''} hover:bg-gray-50`}
+                  >
                     <td className="px-3 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
                         <span className="text-sm font-medium text-gray-900">{format(date, 'd')}日</span>
@@ -298,6 +321,18 @@ export default function WorkReportTable({
                           ({dayName})
                         </span>
                       </div>
+                      {issuesForDate.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {issuesForDate.map((kind) => (
+                            <span
+                              key={kind}
+                              className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${ISSUE_BADGE_STYLES[kind] ?? 'bg-amber-100 text-amber-800'}`}
+                            >
+                              {ISSUE_LABELS[kind] ?? kind}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-3 text-sm text-gray-500">
                       {(() => {

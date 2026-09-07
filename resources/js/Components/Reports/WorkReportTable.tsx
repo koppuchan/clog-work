@@ -41,8 +41,8 @@ interface WorkReportTableProps {
   renderLastColumn: (date: Date, summary: WorkSummary | undefined) => React.ReactNode;
   /** 日付ごとの打刻修正履歴。修正された時刻を強調表示するために使う */
   corrections?: Record<string, TimeRecordCorrectionItem[]>;
-  /** 修正された時刻がクリックされたときに履歴を開く */
-  onCorrectionClick?: (date: string) => void;
+  /** 修正された時刻がクリックされたときに履歴を開く。typesでクリックされた項目（出勤・退勤・休憩開始・休憩終了）だけに絞り込む */
+  onCorrectionClick?: (date: string, types: number[]) => void;
   extraColumns?: {
     header: React.ReactNode;
     render: (date: Date, summary: WorkSummary | undefined) => React.ReactNode;
@@ -331,8 +331,9 @@ export default function WorkReportTable({
                           return '-';
                         }
 
-                        // 修正された時刻だけオレンジで示し、押すと履歴を開く
-                        const part = (value: string | null | undefined, corrected: boolean) => {
+                        // 修正された時刻だけオレンジで示し、押すと履歴を開く。
+                        // typesを渡して、クリックした側（出勤 or 退勤）だけの履歴に絞り込む
+                        const part = (value: string | null | undefined, corrected: boolean, types: number[]) => {
                           if (! value) {
                             return <span>-</span>;
                           }
@@ -344,7 +345,7 @@ export default function WorkReportTable({
                           return (
                             <button
                               type="button"
-                              onClick={() => onCorrectionClick?.(dateStr)}
+                              onClick={() => onCorrectionClick?.(dateStr, types)}
                               title="打刻修正あり。クリックで履歴を表示します"
                               className="font-medium text-orange-600 underline decoration-dotted underline-offset-2 hover:text-orange-700"
                             >
@@ -355,9 +356,9 @@ export default function WorkReportTable({
 
                         return (
                           <span>
-                            {part(startText, startCorrected)}
+                            {part(startText, startCorrected, WORK_START_TYPES)}
                             <span className="mx-1">~</span>
-                            {part(displayEnd, endCorrected)}
+                            {part(displayEnd, endCorrected, WORK_END_TYPES)}
                             {summary?.is_cross_day ? ' (翌)' : ''}
                           </span>
                         );
@@ -369,8 +370,8 @@ export default function WorkReportTable({
                         const breakStartCorrected = hasCorrection(corrections, breakDateStr, BREAK_START_TYPES);
                         const breakEndCorrected = hasCorrection(corrections, breakDateStr, BREAK_END_TYPES);
 
-                        // 修正のあった側だけを示す
-                        const breakPart = (value: string, corrected: boolean) => {
+                        // 修正のあった側だけを示す。typesでクリックした側（休憩開始 or 休憩終了）だけの履歴に絞り込む
+                        const breakPart = (value: string, corrected: boolean, types: number[]) => {
                           if (! corrected) {
                             return <span>{value}</span>;
                           }
@@ -378,7 +379,7 @@ export default function WorkReportTable({
                           return (
                             <button
                               type="button"
-                              onClick={() => onCorrectionClick?.(breakDateStr)}
+                              onClick={() => onCorrectionClick?.(breakDateStr, types)}
                               title="休憩の打刻修正あり。クリックで履歴を表示します"
                               className="font-medium text-orange-600 underline decoration-dotted underline-offset-2 hover:text-orange-700"
                             >
@@ -392,9 +393,9 @@ export default function WorkReportTable({
                         if (breakPeriods.length > 0) {
                           return breakPeriods.map((p, i) => (
                             <div key={i}>
-                              {breakPart(p.start, breakStartCorrected)}
+                              {breakPart(p.start, breakStartCorrected, BREAK_START_TYPES)}
                               <span className="mx-0.5">~</span>
-                              {breakPart(p.end, breakEndCorrected)}
+                              {breakPart(p.end, breakEndCorrected, BREAK_END_TYPES)}
                             </div>
                           ));
                         }

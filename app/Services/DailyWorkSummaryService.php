@@ -364,7 +364,10 @@ class DailyWorkSummaryService
                     // 編集モーダルは未変更のフィールドも含めて全項目を送信してくるため、
                     // 値が同じなら履歴を残さず、record_sourceも書き換えない
                     // （そうしないと無関係な項目の編集のたびに全打刻が「手動修正」扱いになる）。
-                    $hasChanged = $workStartRecord->record_time->format('Y-m-d H:i:s') !== $startDateTime->format('Y-m-d H:i:s');
+                    // 比較は分単位で行う。画面には秒を持たせておらず(H:i)、フォームも
+                    // 秒は常に00で送られてくるため、秒まで含めて比較すると実打刻の秒数
+                    // （例: 09:00:47）と一致せず、未変更でも「変更あり」と誤判定してしまう。
+                    $hasChanged = $workStartRecord->record_time->format('Y-m-d H:i') !== $startDateTime->format('Y-m-d H:i');
 
                     if ($hasChanged) {
                         if ($correctedBy !== null) {
@@ -441,7 +444,7 @@ class DailyWorkSummaryService
                 if ($workEndRecord) {
                     // 実際に変わった場合のみ修正扱いにする（理由はWORK_START側と同様）
                     $hasChanged = $workEndRecord->record_type !== $recordType
-                        || $workEndRecord->record_time->format('Y-m-d H:i:s') !== $endDateTime->format('Y-m-d H:i:s');
+                        || $workEndRecord->record_time->format('Y-m-d H:i') !== $endDateTime->format('Y-m-d H:i');
 
                     if ($hasChanged) {
                         if ($correctedBy !== null) {
@@ -550,8 +553,8 @@ class DailyWorkSummaryService
                 $existingEnd = $existingBreakEnds[$i];
 
                 // 開始・終了それぞれ、実際に変わった側だけ修正扱いにする
-                $startChanged = $existingStart->record_time->format('Y-m-d H:i:s') !== $breakStartDateTime->format('Y-m-d H:i:s');
-                $endChanged = $existingEnd->record_time->format('Y-m-d H:i:s') !== $breakEndDateTime->format('Y-m-d H:i:s');
+                $startChanged = $existingStart->record_time->format('Y-m-d H:i') !== $breakStartDateTime->format('Y-m-d H:i');
+                $endChanged = $existingEnd->record_time->format('Y-m-d H:i') !== $breakEndDateTime->format('Y-m-d H:i');
 
                 if ($correctedBy !== null && $startChanged) {
                     $this->timeRecordCorrectionRepository->create([

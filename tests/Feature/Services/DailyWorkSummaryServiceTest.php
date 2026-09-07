@@ -995,6 +995,112 @@ class DailyWorkSummaryServiceTest extends TestCase
         $this->assertEquals($workDate.' 13:15:00', $breakEndRecord->record_time->format('Y-m-d H:i:s'));
     }
 
+    /**
+     * @test
+     *
+     * 実際の打刻は秒まで記録される（例: 09:00:47）が、画面・フォームはH:iまでしか
+     * 扱わない。分単位ではなく秒まで含めて比較すると、未変更の出退勤でも
+     * 「秒が00でない」というだけで常に「変更あり」と誤判定してしまう。
+     */
+    public function update_work_times_ignores_seconds_when_detecting_actual_changes(): void
+    {
+        // Arrange: 出退勤の実打刻には00以外の秒が付いている（実際のオートタイムスタンプを再現）
+        $workDate = '2025-04-01';
+
+        $workStartRecord = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => $workDate.' 09:00:47',
+            'rounded_time' => $workDate.' 09:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $workEndRecord = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END,
+            'record_time' => $workDate.' 18:00:23',
+            'rounded_time' => $workDate.' 18:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $breakStartRecord = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::BREAK_START,
+            'record_time' => $workDate.' 12:00:12',
+            'rounded_time' => $workDate.' 12:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $breakEndRecord = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::BREAK_END,
+            'record_time' => $workDate.' 13:00:05',
+            'rounded_time' => $workDate.' 13:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $summary = DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => $workDate,
+            'work_start' => '09:00:00',
+            'work_end' => '18:00:00',
+            'work_minutes' => 540,
+            'break_minutes' => 60,
+            'net_work_minutes' => 480,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $admin = User::factory()->forCompany($this->company->id)->create();
+
+        // Act: 編集モーダル同様、H:iまでの値で全項目を送信するが、実際に変えるのは休憩だけ
+        $this->service->updateWorkTimes(
+            $summary->id,
+            '09:00',
+            '18:00',
+            [['start' => '12:00', 'end' => '13:15']],
+            $admin->id
+        );
+
+        // Assert: 秒が00でないだけの出勤・退勤・休憩開始には修正履歴を残さない
+        $this->assertSame(
+            0,
+            TimeRecordCorrection::query()->where('time_record_id', $workStartRecord->id)->count(),
+            '秒が異なるだけで分は変わっていない出勤には修正履歴を残すべきではない'
+        );
+        $this->assertSame(
+            0,
+            TimeRecordCorrection::query()->where('time_record_id', $workEndRecord->id)->count(),
+            '秒が異なるだけで分は変わっていない退勤には修正履歴を残すべきではない'
+        );
+        $this->assertSame(
+            0,
+            TimeRecordCorrection::query()->where('time_record_id', $breakStartRecord->id)->count(),
+            '秒が異なるだけで分は変わっていない休憩開始には修正履歴を残すべきではない'
+        );
+        $this->assertSame(
+            1,
+            TimeRecordCorrection::query()->where('time_record_id', $breakEndRecord->id)->count(),
+            '実際に分が変わった休憩終了には修正履歴が残るべき'
+        );
+
+        // Assert: record_sourceも変更されていない打刻はAUTOのまま、元の秒も保持される
+        $workStartRecord->refresh();
+        $workEndRecord->refresh();
+        $breakStartRecord->refresh();
+
+        $this->assertEquals(RecordSourceEnum::AUTO, $workStartRecord->record_source);
+        $this->assertEquals($workDate.' 09:00:47', $workStartRecord->record_time->format('Y-m-d H:i:s'));
+        $this->assertEquals(RecordSourceEnum::AUTO, $workEndRecord->record_source);
+        $this->assertEquals($workDate.' 18:00:23', $workEndRecord->record_time->format('Y-m-d H:i:s'));
+        $this->assertEquals(RecordSourceEnum::AUTO, $breakStartRecord->record_source);
+        $this->assertEquals($workDate.' 12:00:12', $breakStartRecord->record_time->format('Y-m-d H:i:s'));
+    }
+
     // ========================================
     // updateWorkTimes 空休憩フォールバック制御テスト
     // ========================================

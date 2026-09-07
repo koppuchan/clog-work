@@ -296,8 +296,11 @@ function StaffReportsPage() {
 
       <WorkReportTable
         corrections={timeRecordCorrections}
-        onCorrectionClick={(date) =>
-          setSelectedCorrection({ date, items: timeRecordCorrections?.[date] ?? [] })
+        onCorrectionClick={(date, types) =>
+          setSelectedCorrection({
+            date,
+            items: (timeRecordCorrections?.[date] ?? []).filter((c) => types.includes(c.record_type.value)),
+          })
         }
         workSummaries={workSummaries}
         monthlySummary={monthlySummary}

@@ -367,7 +367,7 @@ export default function PublicStampPage({ company, users }: Props) {
             {felicaEvents.map((event) => (
               <div
                 key={event.id}
-                className={`flex items-start justify-between gap-3 px-4 py-3 border-2 ${
+                className={`flex items-start justify-between gap-3 px-4 py-3 rounded-lg border-2 ${
                   event.status === 'success'
                     ? 'bg-green-50 border-green-500 text-green-800'
                     : 'bg-yellow-100 border-yellow-600 text-yellow-900'

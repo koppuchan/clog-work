@@ -54,7 +54,7 @@ class StampService
 
             // ビジネスルールチェック: 本日既に出勤打刻済みでないか
             if ($this->hasClockInToday($companyId, $userId, $recordTime)) {
-                throw new BusinessException('本日は既に出勤打刻済みです。打刻時間を変更する場合は申請してください。');
+                throw new BusinessException('本日は出勤と退勤の打刻ができております。打刻時間を変更する場合は申請してください。');
             }
 
             return $this->timeRecordRepository->create([

@@ -299,4 +299,30 @@ class StampServiceTest extends TestCase
 
         CarbonImmutable::setTestNow();
     }
+
+    /**
+     * @test
+     *
+     * 出勤・退勤済みの状態でFeliCa等から再度タップされ出勤を試みた場合、
+     * 「出勤打刻済みです」ではなく出勤・退勤とも記録済みであることが
+     * 分かるメッセージを返す。
+     */
+    public function clock_in_after_completing_today_shows_both_clock_in_and_out_message(): void
+    {
+        // Arrange: 本日すでに出勤・退勤済み
+        $now = CarbonImmutable::parse('2025-01-16 09:00:00');
+        CarbonImmutable::setTestNow($now);
+        $this->service->clockIn($this->company->id, $this->user->id);
+
+        CarbonImmutable::setTestNow($now->addHours(9));
+        $this->service->clockOut($this->company->id, $this->user->id);
+
+        // Act & Assert
+        $this->expectException(BusinessException::class);
+        $this->expectExceptionMessage('本日は出勤と退勤の打刻ができております。打刻時間を変更する場合は申請してください。');
+
+        $this->service->clockIn($this->company->id, $this->user->id);
+
+        CarbonImmutable::setTestNow();
+    }
 }

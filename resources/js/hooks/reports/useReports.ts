@@ -318,26 +318,26 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
   );
 
   // モーダル編集: 編集開始（既存summaryまたは日付のみ）
+  //
+  // 「登録」（summary未作成の日）でも、出勤のみ打刻されていて退勤打刻が
+  // まだ無い（バッチ集計がまだ走っていない等）場合はtimeRecordsに実打刻が
+  // 残っているため、「編集」と同じくtimeRecordsから読み込む。ここを
+  // 分けると、登録ボタンから開いたときだけ実打刻があるのに空欄になる。
   const openEditModal = useCallback(
     (summaryOrDate: WorkSummary | string) => {
-      if (typeof summaryOrDate === 'string') {
-        // 日付文字列の場合: 新規作成モード
-        setEditingSummary(null);
-        setEditingDate(summaryOrDate);
-        setEditForm({ work_start: '', work_end: '', break_periods: [{ start: '', end: '' }, { start: '', end: '' }] });
-      } else {
-        // WorkSummaryの場合: 既存編集モード
-        // work_start/work_endはtimeRecordsの生の値（丸めなし）を優先し、
-        // 打刻が無い場合のみsummaryの値（バッチ計算結果）にフォールバック
-        const { workStart, workEnd } = getWorkTimesFromRecords(summaryOrDate.work_date);
-        setEditingSummary(summaryOrDate);
-        setEditingDate(summaryOrDate.work_date);
-        setEditForm({
-          work_start: workStart ?? summaryOrDate.work_start ?? '',
-          work_end: workEnd ?? summaryOrDate.work_end ?? '',
-          break_periods: getBreakPeriodsFromRecords(summaryOrDate.work_date),
-        });
-      }
+      const summary = typeof summaryOrDate === 'string' ? null : summaryOrDate;
+      const dateStr = typeof summaryOrDate === 'string' ? summaryOrDate : summaryOrDate.work_date;
+
+      // work_start/work_endはtimeRecordsの生の値（丸めなし）を優先し、
+      // 打刻が無い場合のみsummaryの値（バッチ計算結果）にフォールバック
+      const { workStart, workEnd } = getWorkTimesFromRecords(dateStr);
+      setEditingSummary(summary);
+      setEditingDate(dateStr);
+      setEditForm({
+        work_start: workStart ?? summary?.work_start ?? '',
+        work_end: workEnd ?? summary?.work_end ?? '',
+        break_periods: getBreakPeriodsFromRecords(dateStr),
+      });
       setEditErrors([]);
       setShowEditModal(true);
     },

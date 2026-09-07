@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Services;
 
+use App\Enums\RecordSourceEnum;
+use App\Enums\RequestStatusEnum;
 use App\Models\Company;
+use App\Models\DailyWorkSummary;
+use App\Models\Request;
 use App\Models\User;
 use App\Services\AttendanceExcelExportService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -116,5 +120,44 @@ class AttendanceExcelExportTest extends TestCase
 
         // 31日ある月に備えて37行目まで用意されているが、今回は空のまま
         $this->assertSame('', (string) $sheet->getCell('A37')->getValue());
+    }
+
+    /**
+     * @test
+     *
+     * 残業申請は承認しても daily_work_summaries.overtime_minutes を書き換えない設計
+     * (OvertimeApplicationService::applyOvertimeToWorkSummary が無効化されている)。
+     * そのため overtime_minutes が0のままでも、申請自体の開始・終了時刻から
+     * 残業時間を算出して備考/申請列(R・S列)に出力する。
+     */
+    public function 残業申請の時間数が備考申請列に出力される(): void
+    {
+        // 6/21始まりの期間で6/24は10行目
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-24',
+            'work_start' => '2026-06-24 09:00:00',
+            'work_end' => '2026-06-24 18:00:00',
+            'net_work_minutes' => 480,
+            'overtime_minutes' => 0,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        Request::query()->create([
+            'company_id' => $this->company->id,
+            'requested_by' => $this->user->id,
+            'type' => 7, // 残業申請
+            'target_date' => '2026-06-24',
+            'start_time' => '18:00',
+            'end_time' => '20:00',
+            'reason' => '月次締め作業のため',
+            'status' => RequestStatusEnum::APPROVED,
+        ]);
+
+        $sheet = $this->generatedSheet();
+
+        $this->assertSame('残業申請', (string) $sheet->getCell('R10')->getValue());
+        $this->assertSame('2H', (string) $sheet->getCell('S10')->getValue());
     }
 }

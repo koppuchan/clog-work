@@ -165,4 +165,51 @@ class DailyWorkSummaryCsvExportColumnsTest extends TestCase
 
         $this->assertSame('有給休暇 1.0', $row[19]); // 備考/申請
     }
+
+    /**
+     * @test
+     *
+     * 残業申請は承認しても daily_work_summaries.overtime_minutes を書き換えない設計
+     * (OvertimeApplicationService::applyOvertimeToWorkSummary が無効化されている)。
+     * そのため overtime_minutes が0のままでも、申請自体の開始・終了時刻から
+     * 残業時間を算出して備考/申請列に出力する。
+     */
+    public function csv_note_column_shows_overtime_request_hours_even_when_summary_overtime_is_zero(): void
+    {
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-24',
+            'work_start' => '2026-06-24 09:00:00',
+            'work_end' => '2026-06-24 18:00:00',
+            'net_work_minutes' => 480,
+            'overtime_minutes' => 0,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        Request::query()->create([
+            'company_id' => $this->company->id,
+            'requested_by' => $this->user->id,
+            'type' => 7, // 残業申請
+            'target_date' => '2026-06-24',
+            'start_time' => '18:00',
+            'end_time' => '20:00',
+            'reason' => '月次締め作業のため',
+            'status' => RequestStatusEnum::APPROVED,
+        ]);
+
+        $csv = $this->service->generateCsv(
+            $this->company->id,
+            $this->user->id,
+            '2026-06-24',
+            '2026-06-24',
+            $this->user,
+        );
+        $row = str_getcsv(array_values(array_filter(
+            explode("\n", $csv),
+            fn ($line) => str_contains($line, '6/24(水)')
+        ))[0]);
+
+        $this->assertSame('残業申請 2H', $row[19]); // 備考/申請
+    }
 }

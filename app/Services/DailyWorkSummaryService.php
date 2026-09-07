@@ -878,9 +878,6 @@ class DailyWorkSummaryService
      */
     private function buildNoteAndRequestColumn($summary, \Illuminate\Support\Collection $dayRequests, int $dailyWorkingMinutes): string
     {
-        // 時間系の申請種別ID（遅刻=3, 早退=4, 残業申請=7）
-        $hourlyTypeIds = [3, 4, 7];
-
         $entries = [];
 
         foreach ($dayRequests as $request) {
@@ -890,22 +887,50 @@ class DailyWorkSummaryService
                 continue;
             }
 
-            if (in_array($request->type, $hourlyTypeIds, true)) {
-                $minutes = match ($request->type) {
-                    3 => $summary?->late_minutes ?? 0,
-                    4 => $summary?->early_leave_minutes ?? 0,
-                    7 => $summary?->overtime_minutes ?? 0,
-                    default => 0,
-                };
-                $valueStr = $minutes > 0 ? ((int) round($minutes / 60)).'H' : '';
-            } else {
-                $valueStr = $this->calculateLeaveDays($request->type, $request, $dailyWorkingMinutes);
-            }
+            $valueStr = match ($request->type) {
+                // 遅刻・早退: 申請自体に時間の指定はないため、打刻ベースの自動計算値を使う
+                3 => $this->formatHourlyRequestValue($summary?->late_minutes ?? 0),
+                4 => $this->formatHourlyRequestValue($summary?->early_leave_minutes ?? 0),
+                // 残業申請: 承認しても daily_work_summaries の overtime_minutes は
+                // 書き換えない設計（打刻ベースの自動計算値を維持するため）なので、
+                // ここで summary の overtime_minutes を参照すると常に空欄/実態と
+                // ずれた値になってしまう。申請自体の開始・終了時刻から算出する。
+                7 => $this->formatHourlyRequestValue($this->requestRangeMinutes($request)),
+                default => $this->calculateLeaveDays($request->type, $request, $dailyWorkingMinutes),
+            };
 
             $entries[] = trim($typeName.' '.$valueStr);
         }
 
         return implode("\n", $entries);
+    }
+
+    /**
+     * 時間系申請（遅刻・早退・残業）の表示値を生成する
+     *
+     * @param  int  $minutes  時間（分）
+     * @return string 「{N}H」形式、0以下の場合は空文字
+     */
+    private function formatHourlyRequestValue(int $minutes): string
+    {
+        return $minutes > 0 ? ((int) round($minutes / 60)).'H' : '';
+    }
+
+    /**
+     * 申請自体の開始・終了時刻から時間数（分）を算出する
+     *
+     * @param  LeaveRequest  $request  申請レコード
+     */
+    private function requestRangeMinutes(LeaveRequest $request): int
+    {
+        if (! $request->start_time || ! $request->end_time) {
+            return 0;
+        }
+
+        $start = CarbonImmutable::parse($request->start_time);
+        $end = CarbonImmutable::parse($request->end_time);
+
+        return max(0, (int) $start->diffInMinutes($end));
     }
 
     /**

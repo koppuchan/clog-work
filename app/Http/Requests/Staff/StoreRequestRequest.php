@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Staff;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 /**
  * スタッフ申請作成リクエスト
@@ -75,5 +76,35 @@ class StoreRequestRequest extends FormRequest
             'break_start_time' => '休憩開始時刻',
             'break_end_time' => '休憩終了時刻',
         ];
+    }
+
+    /**
+     * 時間有給が1時間単位（60分の倍数）になっているか確認する
+     *
+     * 画面側（ApplicationDialog）でも同じ判定をしているが、APIを直接
+     * 呼ばれた場合の保護として、サーバー側でも同じ基準で弾く。
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            if ($this->input('type') !== 'hourly-leave') {
+                return;
+            }
+
+            $startTime = $this->input('start_time');
+            $endTime = $this->input('end_time');
+
+            if (! $startTime || ! $endTime) {
+                return;
+            }
+
+            [$startHour, $startMinute] = array_map('intval', explode(':', $startTime));
+            [$endHour, $endMinute] = array_map('intval', explode(':', $endTime));
+            $durationMinutes = ($endHour * 60 + $endMinute) - ($startHour * 60 + $startMinute);
+
+            if ($durationMinutes <= 0 || $durationMinutes % 60 !== 0) {
+                $validator->errors()->add('end_time', '時間有給は１時間単位で請求してください。');
+            }
+        });
     }
 }

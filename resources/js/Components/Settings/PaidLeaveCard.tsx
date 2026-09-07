@@ -73,8 +73,15 @@ export default function PaidLeaveCard({
               min="1"
               max="24"
               step="1"
+              inputMode="numeric"
               value={dailyWorkingHours}
-              onChange={(e) => onDailyWorkingHoursChange(e.target.value)}
+              onChange={(e) => {
+                const raw = e.target.value;
+                // 時間有給は1時間単位で扱うため、小数点以下は入力させない
+                if (raw === '' || /^\d+$/.test(raw)) {
+                  onDailyWorkingHoursChange(raw);
+                }
+              }}
               className="w-32 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <p className="text-xs text-gray-500 mt-1">時間有給の計算に使用されます</p>

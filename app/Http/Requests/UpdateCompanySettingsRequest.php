@@ -51,7 +51,7 @@ class UpdateCompanySettingsRequest extends FormRequest
             // 有給休暇設定
             'paidLeaveHalfDay' => ['boolean'],
             'paidLeaveHourly' => ['boolean'],
-            'dailyWorkingHours' => ['nullable', 'numeric', 'min:0', 'max:24'],
+            'dailyWorkingHours' => ['nullable', 'integer', 'min:0', 'max:24'],
 
             // 労務アラート設定
             'alertOvertimeNotification' => ['nullable', 'integer', 'min:0'],
@@ -96,7 +96,7 @@ class UpdateCompanySettingsRequest extends FormRequest
         return [
             'companyName.required' => '会社名は必須です。',
             'companyName.max' => '会社名は100文字以内で入力してください。',
-            'dailyWorkingHours.numeric' => '所定労働時間は数値で入力してください。',
+            'dailyWorkingHours.integer' => '所定労働時間は1時間単位（小数点以下は入力不可）で入力してください。',
             'dailyWorkingHours.min' => '所定労働時間は0以上で入力してください。',
             'dailyWorkingHours.max' => '所定労働時間は24時間以内で入力してください。',
             'alertOvertimeNotification.integer' => '残業時間アラートは整数で入力してください。',

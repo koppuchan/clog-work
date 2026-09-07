@@ -43,6 +43,15 @@ const LEAVE_UNIT_OPTIONS = [
 // 開始時刻〜終了時刻の入力が必要な申請タイプ
 const TIME_RANGE_TYPES = ['hourly-leave', 'overtime'];
 
+// 時間有給が1時間単位（60分の倍数）になっているか判定する
+// 例: 12:15-13:15は1時間なのでOK、12:30-13:15は45分なのでNG
+function isWholeHourRange(startTime: string, endTime: string): boolean {
+  const [startH, startM] = startTime.split(':').map(Number);
+  const [endH, endM] = endTime.split(':').map(Number);
+  const durationMinutes = endH * 60 + endM - (startH * 60 + startM);
+  return durationMinutes > 0 && durationMinutes % 60 === 0;
+}
+
 export function ApplicationDialog({ isOpen, onClose, onSubmit, date, leaveSettings, existingTypes = [] }: ApplicationDialogProps) {
   const [applicationType, setApplicationType] = useState('');
   const [reason, setReason] = useState('');
@@ -92,6 +101,11 @@ export function ApplicationDialog({ isOpen, onClose, onSubmit, date, leaveSettin
         } else if (TIME_RANGE_TYPES.includes(applicationType)) {
           if (!leaveStartTime || !leaveEndTime) {
             setError('開始時刻と終了時刻を入力してください。');
+            setIsSubmitting(false);
+            return;
+          }
+          if (applicationType === 'hourly-leave' && !isWholeHourRange(leaveStartTime, leaveEndTime)) {
+            setError('時間有給は１時間単位で請求してください。');
             setIsSubmitting(false);
             return;
           }

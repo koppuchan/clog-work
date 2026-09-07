@@ -320,6 +320,50 @@ class TimeRecordCorrectionRequestServiceTest extends TestCase
         $this->assertEquals($this->approver->id, $correction->corrected_by);
     }
 
+    /**
+     * @test
+     *
+     * 修正後の時刻が既存の打刻時刻と同じ（実質的な変更なし）場合は、
+     * 打刻レコードを触らず、修正履歴も残さない。時間数の再計算だけを
+     * 目的とした承認で、打刻修正の表示・色分けが出てしまうのを防ぐ。
+     */
+    public function approve_correction_request_does_not_create_history_when_time_is_unchanged(): void
+    {
+        // Arrange
+        $targetDate = '2025-01-15';
+
+        $existingRecord = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => $targetDate.' 09:00:00',
+            'rounded_time' => $targetDate.' 09:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        // 申請の修正後時刻が、既存の打刻時刻と同じ（分単位で一致）
+        $correctionRequest = $this->createCorrectionRequestWithDetail(
+            $targetDate,
+            $existingRecord,
+            TimeRecordTypeEnum::WORK_START,
+            '09:00:00'
+        );
+
+        // Act
+        $this->service->approveCorrectionRequest($correctionRequest->id, $this->approver->id);
+
+        // Assert: 打刻レコードは変更されない（record_sourceもAUTOのまま）
+        $existingRecord->refresh();
+        $this->assertEquals($targetDate.' 09:00:00', $existingRecord->record_time->format('Y-m-d H:i:s'));
+        $this->assertEquals(RecordSourceEnum::AUTO, $existingRecord->record_source);
+
+        // Assert: 修正履歴が作られない（打刻修正の表示・色分けの元になるため）
+        $correction = TimeRecordCorrection::query()
+            ->where('time_record_id', $existingRecord->id)
+            ->first();
+        $this->assertNull($correction);
+    }
+
     // ========================================
     // approveCorrectionRequest テスト（新規レコード作成）
     // ========================================

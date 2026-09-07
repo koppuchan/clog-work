@@ -246,6 +246,17 @@ class TimeRecordCorrectionRequestService
             fn (TimeRecordCorrectionRequestDetail $detail) => $detail->time_record_id !== null && $existingRecords->has($detail->time_record_id)
         );
 
+        // 既存レコードと同じ時刻（実質的な変更なし）の明細は、修正扱いにしない。
+        // 打刻時刻の変更が無いのに時間数の再計算だけ行った場合、打刻修正の
+        // 履歴・色分け表示が出てしまうのを防ぐため（比較は分単位で行う。
+        // 画面には秒を持たせておらず、実打刻の秒数と一致しないだけで
+        // 「変更あり」と誤判定してしまうため）。
+        $detailsWithExistingRecord = $detailsWithExistingRecord->filter(function (TimeRecordCorrectionRequestDetail $detail) use ($existingRecords) {
+            $existingRecord = $existingRecords->get($detail->time_record_id);
+
+            return $existingRecord->record_time->format('Y-m-d H:i') !== $detail->corrected_record_time->format('Y-m-d H:i');
+        });
+
         $detailsWithoutRecord = $correctionRequest->details->filter(
             fn (TimeRecordCorrectionRequestDetail $detail) => $detail->time_record_id === null || ! $existingRecords->has($detail->time_record_id)
         );

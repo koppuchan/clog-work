@@ -821,6 +821,51 @@ class TimeRecordCorrectionRequestServiceTest extends TestCase
 
     /**
      * @test
+     *
+     * 出勤は正しく打刻されていて、退勤の打刻だけを忘れた夜勤（日跨ぎ）の
+     * 場合の回帰テスト。画面の案内どおり「間違えた項目のみ入力」で
+     * start_timeを空欄にして退勤だけ申請しても、既存の出勤打刻を基準に
+     * 日付越え(WORK_END_NEXT_DAY)と判定されるべき。ここがWORK_ENDのまま
+     * だと、退勤時刻が出勤時刻より前の時刻として記録され、集計時に
+     * 「出勤より後の退勤」しか拾わない判定から漏れて、修正が反映されない
+     * ように見えてしまう。
+     */
+    public function create_clock_error_request_infers_cross_day_from_existing_work_start_when_start_time_omitted(): void
+    {
+        // Arrange: 前日22:00に出勤打刻済み（退勤の打刻だけを忘れている）
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => '2025-01-15 22:00:00',
+            'rounded_time' => '2025-01-15 22:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        // Act: 出勤は合っているのでstart_timeは空欄にし、退勤だけ申請する
+        $data = [
+            'target_date' => '2025-01-15',
+            'reason' => '夜勤の退勤打刻忘れ',
+            'start_time' => null,
+            'end_time' => '06:00', // 翌朝
+        ];
+
+        $result = $this->service->createClockErrorRequest(
+            $this->company->id,
+            $this->user->id,
+            $data
+        );
+
+        // Assert: 既存の出勤打刻(22:00)を基準に日付越えと判定される
+        $this->assertCount(1, $result->details);
+
+        $workEndDetail = $result->details->where('record_type', TimeRecordTypeEnum::WORK_END_NEXT_DAY)->first();
+        $this->assertNotNull($workEndDetail, '既存の出勤打刻を基準に日付越え(WORK_END_NEXT_DAY)と判定されるべき');
+        $this->assertEquals('2025-01-16 06:00:00', $workEndDetail->corrected_record_time->format('Y-m-d H:i:s'));
+    }
+
+    /**
+     * @test
      */
     public function create_clock_error_request_creates_request_with_break_end_detail(): void
     {

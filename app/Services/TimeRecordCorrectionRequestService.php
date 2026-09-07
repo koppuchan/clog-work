@@ -498,9 +498,22 @@ class TimeRecordCorrectionRequestService
                 'status' => RequestStatusEnum::PENDING->value,
             ]);
 
+            $existingWorkStart = $existingRecords->first(fn ($r) => $r->record_type === TimeRecordTypeEnum::WORK_START);
+
+            // 夜勤の翌日判定（退勤・休憩）の基準にする出勤時刻。
+            // 出勤時刻が今回の申請に含まれない場合（出勤は合っていて退勤だけ
+            // 間違っていた場合など）は、既存の出勤打刻を基準にする。ここを
+            // 申請内のstart_timeだけで判定すると、出勤は合っていて退勤だけ
+            // 間違っていた（画面の案内どおりstart_timeを空欄で送る）ケースで
+            // 日付越え判定が働かず、既存の出勤打刻より前の時刻とみなされて
+            // 集計から漏れてしまう。
+            $referenceStartTime = $data['start_time'] ?? null;
+            if (empty($referenceStartTime) && $existingWorkStart) {
+                $referenceStartTime = $existingWorkStart->record_time->format('H:i');
+            }
+
             // 明細を作成（出勤時刻）
             if (! empty($data['start_time'])) {
-                $existingWorkStart = $existingRecords->first(fn ($r) => $r->record_type === TimeRecordTypeEnum::WORK_START);
                 $correctedStart = CarbonImmutable::parse("{$targetDate} {$data['start_time']}");
 
                 $this->correctionRequestDetailRepository->create([
@@ -523,9 +536,9 @@ class TimeRecordCorrectionRequestService
 
                 $endDateTime = CarbonImmutable::parse("{$targetDate} {$data['end_time']}");
 
-                // 終了時刻が開始時刻より前の場合は翌日とみなす
+                // 終了時刻が出勤時刻（referenceStartTime）より前の場合は翌日とみなす
                 $recordType = TimeRecordTypeEnum::WORK_END;
-                if (! empty($data['start_time']) && $data['end_time'] < $data['start_time']) {
+                if (! empty($referenceStartTime) && $data['end_time'] < $referenceStartTime) {
                     $endDateTime = $endDateTime->addDay();
                     $recordType = TimeRecordTypeEnum::WORK_END_NEXT_DAY;
                 }
@@ -542,15 +555,9 @@ class TimeRecordCorrectionRequestService
             }
 
             // 夜勤の休憩翌日補正用: 出勤時刻を基準にする
-            $workStartForBreak = null;
-            if (! empty($data['start_time'])) {
-                $workStartForBreak = CarbonImmutable::parse("{$targetDate} {$data['start_time']}");
-            } else {
-                $existingWorkStart = $existingRecords->first(fn ($r) => $r->record_type === TimeRecordTypeEnum::WORK_START);
-                if ($existingWorkStart) {
-                    $workStartForBreak = CarbonImmutable::parse($existingWorkStart->record_time);
-                }
-            }
+            $workStartForBreak = ! empty($referenceStartTime)
+                ? CarbonImmutable::parse("{$targetDate} {$referenceStartTime}")
+                : null;
 
             // 明細を作成（休憩開始時刻）
             if (! empty($data['break_start_time'])) {

@@ -195,6 +195,53 @@ class TimeRecordCorrectionE2ETest extends TestCase
         $this->assertEquals(480, $summary->work_minutes, '22:00-06:00 = 480分');
     }
 
+    /**
+     * @test
+     *
+     * 出勤は正しく打刻されていて、退勤の打刻だけを忘れた夜勤の回帰E2E。
+     * 画面の案内どおり「間違えた項目のみ入力」でstart_timeを空欄にして
+     * 退勤だけ申請し、承認後にDailyWorkSummaryへ正しく反映されることを
+     * 確認する。ここが直る前は、退勤が出勤より前の時刻(WORK_END)として
+     * 記録され、集計時に「出勤より後の退勤」しか拾わない判定から漏れて
+     * work_endが空のままになり、申請が「反映されない」ように見えていた。
+     */
+    public function e2e_approve_cross_day_correction_with_start_time_omitted(): void
+    {
+        $targetDate = '2025-01-15';
+
+        // 出勤は既に正しく打刻されている（退勤の打刻だけを忘れている）
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => $targetDate.' 22:00:00',
+            'rounded_time' => $targetDate.' 22:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        // 出勤は合っているのでstart_timeは空欄にし、退勤だけ申請する
+        $data = [
+            'target_date' => $targetDate,
+            'reason' => '夜勤打刻忘れ',
+            'start_time' => null,
+            'end_time' => '06:00',
+        ];
+
+        $correctionRequest = $this->correctionService->createClockErrorRequest(
+            $this->company->id,
+            $this->user->id,
+            $data
+        );
+
+        $this->correctionService->approveCorrectionRequest($correctionRequest->id, $this->approver->id);
+
+        $summary = $this->getSummary($targetDate);
+        $this->assertNotNull($summary);
+        $this->assertNotNull($summary->work_end, '退勤の申請が反映され、work_endが空のままにならない');
+        $this->assertTrue($summary->is_cross_day);
+        $this->assertEquals(480, $summary->work_minutes, '22:00-06:00 = 480分');
+    }
+
     // ========================================
     // 取消・差し戻しフロー
     // ========================================

@@ -309,4 +309,27 @@ class AttendanceIssueServiceTest extends TestCase
 
         $this->assertSame([], $issues);
     }
+
+    /**
+     * @test
+     *
+     * 退勤忘れの翌日以降に別の出勤・退勤があると、その後日の退勤を
+     * 「この出勤より後に退勤打刻がある」というだけで誤って一致させて
+     * しまい、実際には退勤忘れの日を見逃す不具合の回帰テスト。
+     * 本番で桜本真治の9/5に実際に起きていたパターン
+     * （9/5出勤・退勤なし → 9/6出勤・退勤あり）。
+     */
+    public function 退勤忘れの翌日に別の出退勤があっても見逃さない(): void
+    {
+        $issues = $this->service->detectMissingClockOut(collect([
+            $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-05 10:44:00'),
+            $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-06 09:00:00'),
+            $this->timeRecord(TimeRecordTypeEnum::WORK_END, '2026-09-06 18:00:00'),
+        ]), self::TODAY);
+
+        $this->assertSame(
+            ['2026-09-05' => [AttendanceIssueService::MISSING_CLOCK_OUT]],
+            $issues,
+        );
+    }
 }

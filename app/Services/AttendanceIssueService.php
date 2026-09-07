@@ -110,9 +110,16 @@ class AttendanceIssueService
      * detect()は勤務実績（バッチ集計済みのDailyWorkSummary）を見て判定するため、
      * 集計がまだ走っていない日（打刻直後〜翌日0時のバッチ実行まで）は
      * 判定対象に含められない。ここでは打刻データから直接判定することで、
-     * 集計を待たずに退勤忘れを検出する。日付越え退勤(WORK_END_NEXT_DAY)も
-     * 正しく拾えるよう、出勤より後に発生した退勤打刻の有無で判定する
-     * （DailyWorkSummaryBatchService::calculateSummaryと同じ考え方）。
+     * 集計を待たずに退勤忘れを検出する。
+     *
+     * 出勤・退勤打刻を時系列順に走査し、「開いたまま（対応する退勤がない）
+     * 出勤」を検出する。単純に「この出勤より後に退勤打刻があるか」だけで
+     * 判定すると、後日の別の出勤に対応する退勤を誤って「この出勤の退勤」
+     * とみなしてしまい、実際には退勤忘れの日を見逃す（例:
+     * 9/5 10:44出勤・退勤なし → 9/6 09:00出勤 → 9/6 18:00退勤、という
+     * データでは9/5が退勤忘れなのに、9/6の退勤で満たされたと誤判定する）。
+     * そのため、出勤の後に次の出勤が来たら、前の出勤は退勤忘れとして
+     * 確定させる。
      *
      * @param  Collection<int, \App\Models\TimeRecord>  $timeRecords  打刻データ
      * @param  string|null  $today  当日（Y-m-d）。省略時は現在日
@@ -128,27 +135,44 @@ class AttendanceIssueService
             ->sortBy(fn ($record) => $record->record_time->getTimestamp())
             ->values();
 
-        $workStartsByDate = $workRecords
-            ->filter(fn ($record) => $record->record_type->isWorkStart())
-            ->groupBy(fn ($record) => $record->record_time->format('Y-m-d'));
+        $openWorkStart = null;
 
-        foreach ($workStartsByDate as $date => $records) {
-            if ($date >= $today) {
+        foreach ($workRecords as $record) {
+            if ($record->record_type->isWorkStart()) {
+                if ($openWorkStart !== null) {
+                    $this->flagMissingClockOutIfPast($issues, $openWorkStart, $today);
+                }
+                $openWorkStart = $record;
+
                 continue;
             }
 
-            $workStart = $records->first();
+            // 退勤打刻。直前に開いていた出勤に対応するとみなして閉じる
+            $openWorkStart = null;
+        }
 
-            $hasWorkEnd = $workRecords->contains(
-                fn ($record) => $record->record_type->isWorkEnd() && $record->record_time->gt($workStart->record_time)
-            );
-
-            if (! $hasWorkEnd) {
-                $issues[$date] = [self::MISSING_CLOCK_OUT];
-            }
+        if ($openWorkStart !== null) {
+            $this->flagMissingClockOutIfPast($issues, $openWorkStart, $today);
         }
 
         return $issues;
+    }
+
+    /**
+     * 出勤打刻の日付が過去であれば、退勤忘れとして記録する
+     *
+     * @param  array<string, array<int, string>>  $issues
+     * @param  \App\Models\TimeRecord  $workStart
+     */
+    private function flagMissingClockOutIfPast(array &$issues, $workStart, string $today): void
+    {
+        $date = $workStart->record_time->format('Y-m-d');
+
+        if ($date >= $today) {
+            return;
+        }
+
+        $issues[$date] = [self::MISSING_CLOCK_OUT];
     }
 
     /**

@@ -51,7 +51,7 @@ function ReportsPage() {
     saveEdit,
     deleteEdit,
     setEditForm,
-  } = useReports({ users, workSummaries, timeRecords, approvedRequests, filters });
+  } = useReports({ users, workSummaries, timeRecords, approvedRequests, shifts, filters });
 
   // シフト管理と同じ期間計算ロジック
   const getDateRangeForPeriod = (baseDate: Date): { start: Date; end: Date } => {

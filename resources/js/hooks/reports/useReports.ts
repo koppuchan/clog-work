@@ -3,7 +3,7 @@ import { format, parseISO, eachDayOfInterval, addDays } from 'date-fns';
 import { router } from '@inertiajs/react';
 import { getHolidayName } from '@/lib/holidays';
 import { formatMinutesToHM } from '@/utils/timeFormat';
-import type { ReportUser, WorkSummary, ApprovedRequest, ExportFormats, TimeRecord } from '@/types/reports';
+import type { ReportUser, WorkSummary, ApprovedRequest, ExportFormats, TimeRecord, ShiftInfo } from '@/types/reports';
 import type { ExportScope } from '@/Components/Reports/ReportExportModal';
 
 interface UseReportsProps {
@@ -11,6 +11,7 @@ interface UseReportsProps {
   workSummaries: WorkSummary[];
   timeRecords: TimeRecord[];
   approvedRequests: ApprovedRequest[];
+  shifts: Record<string, ShiftInfo>;
   filters: {
     start_date: string;
     end_date: string;
@@ -29,7 +30,7 @@ export interface EditForm {
   break_periods: BreakPeriodForm[];
 }
 
-export function useReports({ users, workSummaries, timeRecords, approvedRequests, filters }: UseReportsProps) {
+export function useReports({ users, workSummaries, timeRecords, approvedRequests, shifts, filters }: UseReportsProps) {
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportFormats, setExportFormats] = useState<ExportFormats>({
     csv: false,
@@ -278,8 +279,14 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
   );
 
   // 指定日の休憩時間帯をtimeRecordsから取得
+  //
+  // 休憩の打刻が1件もない場合、出勤・退勤の両方が打刻されていて、かつ
+  // シフトの休憩自動反映(auto_fill_break)が有効なら、集計（休憩時間）に
+  // 使われているシフトの休憩時間帯を編集フォームにも表示する。打刻が
+  // 無いまま裏で計算だけ効いてしまい、編集画面では見えないという状態を
+  // 避けるため。
   const getBreakPeriodsFromRecords = useCallback(
-    (dateStr: string): BreakPeriodForm[] => {
+    (dateStr: string, hasWorkStartAndEnd: boolean): BreakPeriodForm[] => {
       const records = getRecordsIncludingNextDayCarryOver(dateStr);
       const starts = records
         .filter((r) => String(r.record_type.value) === '4')
@@ -293,13 +300,21 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
           periods.push({ start: starts[i].record_time, end: ends[i].record_time });
         }
       }
+
+      if (periods.length === 0 && hasWorkStartAndEnd) {
+        const shiftInfo = shifts[dateStr];
+        if (shiftInfo?.auto_fill_break && shiftInfo.break_start && shiftInfo.break_end) {
+          periods.push({ start: shiftInfo.break_start, end: shiftInfo.break_end });
+        }
+      }
+
       // 最低2行は表示
       while (periods.length < 2) {
         periods.push({ start: '', end: '' });
       }
       return periods;
     },
-    [getRecordsIncludingNextDayCarryOver]
+    [getRecordsIncludingNextDayCarryOver, shifts]
   );
 
   // 指定日の出退勤時刻をtimeRecordsから取得（丸めなしの生の値）
@@ -331,12 +346,14 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
       // work_start/work_endはtimeRecordsの生の値（丸めなし）を優先し、
       // 打刻が無い場合のみsummaryの値（バッチ計算結果）にフォールバック
       const { workStart, workEnd } = getWorkTimesFromRecords(dateStr);
+      const resolvedWorkStart = workStart ?? summary?.work_start ?? '';
+      const resolvedWorkEnd = workEnd ?? summary?.work_end ?? '';
       setEditingSummary(summary);
       setEditingDate(dateStr);
       setEditForm({
-        work_start: workStart ?? summary?.work_start ?? '',
-        work_end: workEnd ?? summary?.work_end ?? '',
-        break_periods: getBreakPeriodsFromRecords(dateStr),
+        work_start: resolvedWorkStart,
+        work_end: resolvedWorkEnd,
+        break_periods: getBreakPeriodsFromRecords(dateStr, Boolean(resolvedWorkStart && resolvedWorkEnd)),
       });
       setEditErrors([]);
       setShowEditModal(true);

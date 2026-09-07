@@ -177,8 +177,14 @@ export default function WorkReportTable({
         return { rawStart: null, rawEnd: null };
       }
 
-      const workStartRecord = records.find((r) => r.record_type.is_work_start);
-      const workEndRecord = [...records].reverse().find((r) => r.record_type.is_work_end);
+      // 退勤は「今回の出勤より後」に発生したものだけを対象にする。
+      // 日跨ぎ夜勤の翌日欄には、前夜の残り(WORK_END_NEXT_DAY、当日の新しい出勤より前)と
+      // 当日の新しい出勤が混在することがある。出勤位置より前を含めて探すと、
+      // 前夜の退勤時刻を当日の退勤として誤表示してしまう。
+      const workStartIndex = records.findIndex((r) => r.record_type.is_work_start);
+      const workStartRecord = workStartIndex >= 0 ? records[workStartIndex] : undefined;
+      const workEndSearchRecords = workStartIndex >= 0 ? records.slice(workStartIndex) : records;
+      const workEndRecord = [...workEndSearchRecords].reverse().find((r) => r.record_type.is_work_end);
       return {
         rawStart: workStartRecord?.record_time ?? null,
         rawEnd: workEndRecord?.record_time ?? null,

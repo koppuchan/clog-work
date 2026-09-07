@@ -252,15 +252,19 @@ class DailyWorkSummaryBatchService
             ->filter(fn (TimeRecord $r) => $r->record_type->isWorkStart())
             ->first();
 
-        // 勤務終了打刻を取得（通常終了または日付越え終了）
-        $workEnd = $timeRecords
-            ->filter(fn (TimeRecord $r) => $r->record_type->isWorkEnd())
-            ->last();
-
         // 勤務開始打刻がない場合はスキップ
         if (! $workStart) {
             return null;
         }
+
+        // 勤務終了打刻を取得（通常終了または日付越え終了）。
+        // 今回の出勤より後に発生したものだけを対象にする。日付越え退勤
+        // (WORK_END_NEXT_DAY)の翌日分には、前夜の残りと当日の新しい出勤が
+        // 混在することがあり、出勤より前の退勤（前夜の分）まで拾うと
+        // 前夜の退勤時刻を当日の退勤として誤集計してしまう。
+        $workEnd = $timeRecords
+            ->filter(fn (TimeRecord $r) => $r->record_type->isWorkEnd() && $r->record_time->gt($workStart->record_time))
+            ->last();
 
         $dateString = $targetDate->format('Y-m-d');
         $workStartTime = $workStart->rounded_time ?? $workStart->record_time;

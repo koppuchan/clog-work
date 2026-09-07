@@ -556,6 +556,62 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
 
     /**
      * @test
+     *
+     * 日付越え退勤(WORK_END_NEXT_DAY)の翌日に、同じ日付で新しい出勤打刻をした場合、
+     * 前夜の残りの退勤時刻ではなく、当日の実際の退勤（未退勤ならnull）が
+     * 集計されるべき。前夜の退勤時刻をそのまま拾うと、翌日の勤務時間が
+     * 実際より大幅に長く（または0本来ならnullなのに値あり）計算されてしまう。
+     */
+    public function aggregate_by_user_does_not_use_previous_night_end_time_for_new_shift_same_day(): void
+    {
+        // Arrange: 1/15 22:00出勤 → 1/16 02:00退勤（日付越え）
+        $prevDateString = '2025-01-15';
+        $dateString = '2025-01-16';
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => $prevDateString.' 22:00:00',
+            'rounded_time' => $prevDateString.' 22:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END_NEXT_DAY,
+            'record_time' => $dateString.' 02:00:00',
+            'rounded_time' => $dateString.' 02:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        // 1/16 09:00に新しい出勤打刻（まだ退勤していない）
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => $dateString.' 09:00:00',
+            'rounded_time' => $dateString.' 09:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        // Act: 1/16分を集計
+        $this->service->aggregateByUser($this->company, $this->user, CarbonImmutable::parse($dateString));
+
+        // Assert: 1/16の退勤は未打刻（null）であるべき。前夜の02:00を拾うべきではない
+        $summary = DailyWorkSummary::query()
+            ->where('company_id', $this->company->id)
+            ->where('user_id', $this->user->id)
+            ->where('work_date', $dateString)
+            ->first();
+
+        $this->assertNotNull($summary);
+        $this->assertEquals($dateString.' 09:00:00', $summary->work_start->format('Y-m-d H:i:s'));
+        $this->assertNull($summary->work_end, '前夜の退勤時刻(02:00)が当日の退勤として誤集計されるべきではない');
+    }
+
+    /**
+     * @test
      */
     public function aggregate_all_users_processes_all_companies_and_users(): void
     {

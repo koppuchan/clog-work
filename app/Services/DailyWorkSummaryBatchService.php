@@ -401,8 +401,14 @@ class DailyWorkSummaryBatchService
 
         $hasAnyBreakRecord = $breakStarts->isNotEmpty() || $breakEnds->isNotEmpty();
 
-        // 休憩の打刻が1件もない日は、シフトの休憩時刻で補う（設定で有効な場合のみ）
-        if ($this->autoBreakFillService->isApplicable($pattern, $hasAnyBreakRecord)) {
+        // 休憩の打刻が1件もない日は、シフトの休憩時刻で補う（設定で有効な場合のみ）。
+        // ただし、勤務打刻が手動修正・申請修正されている場合はフォールバックしない
+        // （打刻修正で休憩の打刻を消した後に残っていないのは「休憩なし」を意味するため。
+        // collectBreakPeriods()と同じ判断基準に揃える）。
+        if (
+            ! $this->hasManuallyModifiedWorkRecord($timeRecords)
+            && $this->autoBreakFillService->isApplicable($pattern, $hasAnyBreakRecord)
+        ) {
             return $this->autoBreakFillService->fillMinutes(
                 $pattern,
                 $workDate,

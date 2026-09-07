@@ -3542,4 +3542,123 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
         $this->assertEquals(30, $summary->late_minutes, '遅刻30分');
         $this->assertEquals(30, $summary->overtime_minutes, '実労働 − 所定 = 30分');
     }
+
+    /**
+     * @test
+     *
+     * 休憩打刻が1件もなく、勤務打刻もすべて自動（AUTO）の場合は、
+     * シフトの休憩時刻（auto_fill_break）で休憩時間を補ってよい。
+     */
+    public function aggregate_by_user_auto_fills_break_when_work_records_are_auto(): void
+    {
+        $targetDate = CarbonImmutable::parse('2025-01-15');
+        $dateString = $targetDate->format('Y-m-d');
+
+        $shiftPattern = ShiftPattern::query()->create([
+            'company_id' => $this->company->id,
+            'name' => '通常勤務',
+            'start_time' => '09:00',
+            'end_time' => '18:00',
+            'work_minutes' => 480,
+            'break_mode' => 2,
+            'break_start' => '12:00',
+            'break_end' => '13:00',
+            'auto_fill_break' => true,
+        ]);
+
+        Shift::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'shift_date' => $dateString,
+            'shift_pattern_id' => $shiftPattern->id,
+        ]);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => $dateString.' 09:00:00',
+            'rounded_time' => $dateString.' 09:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END,
+            'record_time' => $dateString.' 18:00:00',
+            'rounded_time' => $dateString.' 18:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $this->service->aggregateByUser($this->company, $this->user, $targetDate);
+
+        $summary = DailyWorkSummary::query()
+            ->where('user_id', $this->user->id)
+            ->where('work_date', $dateString)
+            ->first();
+
+        $this->assertNotNull($summary);
+        $this->assertEquals(60, $summary->break_minutes, 'シフトの休憩時刻(12:00-13:00)で補われる');
+    }
+
+    /**
+     * @test
+     *
+     * 打刻修正・申請修正で勤務打刻(出勤/退勤)が触られた後、休憩の打刻が1件もない場合は
+     * 「休憩なし」を意味するため、シフトの休憩時刻(auto_fill_break)で補ってはいけない。
+     * 補ってしまうと、休憩打刻を消しただけなのに休憩時刻に1:00(60分)などと
+     * 表示されてしまう不具合になる。
+     */
+    public function aggregate_by_user_does_not_auto_fill_break_after_manual_correction(): void
+    {
+        $targetDate = CarbonImmutable::parse('2025-01-15');
+        $dateString = $targetDate->format('Y-m-d');
+
+        $shiftPattern = ShiftPattern::query()->create([
+            'company_id' => $this->company->id,
+            'name' => '通常勤務',
+            'start_time' => '09:00',
+            'end_time' => '18:00',
+            'work_minutes' => 480,
+            'break_mode' => 2,
+            'break_start' => '12:00',
+            'break_end' => '13:00',
+            'auto_fill_break' => true,
+        ]);
+
+        Shift::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'shift_date' => $dateString,
+            'shift_pattern_id' => $shiftPattern->id,
+        ]);
+
+        // 打刻修正によって作られた勤務打刻（休憩の打刻は無い）
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => $dateString.' 09:00:00',
+            'rounded_time' => $dateString.' 09:00:00',
+            'record_source' => RecordSourceEnum::MANUAL,
+        ]);
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END,
+            'record_time' => $dateString.' 18:00:00',
+            'rounded_time' => $dateString.' 18:00:00',
+            'record_source' => RecordSourceEnum::MANUAL,
+        ]);
+
+        $this->service->aggregateByUser($this->company, $this->user, $targetDate);
+
+        $summary = DailyWorkSummary::query()
+            ->where('user_id', $this->user->id)
+            ->where('work_date', $dateString)
+            ->first();
+
+        $this->assertNotNull($summary);
+        $this->assertEquals(0, $summary->break_minutes, '打刻修正後は休憩なし(0分)であるべき。シフトの休憩時刻(1:00)で補われるべきではない');
+    }
 }

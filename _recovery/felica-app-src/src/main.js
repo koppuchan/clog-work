@@ -9,6 +9,18 @@ const { getConfig, setConfig } = require('./config');
 
 const isDev = process.argv.includes('--dev');
 
+// 常駐アプリが誤って多重起動されると、同一の物理タップに対して
+// 各プロセスが独立に card イベントを受け取り、それぞれが打刻APIへ
+// POSTしてしまう（プロセスごとにデバウンス用Mapが別なので、片方の
+// デバウンスはもう片方の重複送信を防げない）。これによりサーバ側の
+// クールダウン判定をすり抜けて本来1回のはずの打刻が2件登録される
+// ことがあったため、2つ目以降の起動は既存ウィンドウを表示するだけに
+// して終了させる。
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
+
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
 /** @type {Tray | null} */
@@ -232,7 +244,19 @@ function ensureAutoLaunchEnabled() {
   }
 }
 
+app.on('second-instance', () => {
+  // 2つ目のプロセスが起動しようとした場合、新しいウィンドウは作らず
+  // 既存のウィンドウを表示するだけにする
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
+
 app.whenReady().then(() => {
+  if (!gotSingleInstanceLock) return;
+
   ensureAutoLaunchEnabled();
   createWindow();
   createTray();

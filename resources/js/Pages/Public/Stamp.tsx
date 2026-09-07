@@ -149,8 +149,14 @@ export default function PublicStampPage({ company, users }: Props) {
   // 数秒おきに新しいFeliCa打刻結果をポーリングする
   useEffect(() => {
     let cancelled = false;
+    // 通信が遅れて前回のポーリングがまだ終わっていない場合に、同じ
+    // since_id で二重にリクエストして同一イベントを2回表示してしまうのを防ぐ
+    let isPolling = false;
 
     const poll = async () => {
+      if (isPolling) return;
+      isPolling = true;
+
       try {
         const params = felicaSinceIdRef.current === null
           ? {}
@@ -162,10 +168,18 @@ export default function PublicStampPage({ company, users }: Props) {
 
         const newEvents: FelicaEvent[] = response.data.events;
         if (newEvents.length > 0) {
-          setFelicaEvents((prev) => [...prev, ...newEvents]);
+          // idの重複を除いてから追加する（何らかの理由で同じイベントが
+          // 2回取得された場合に、トーストが2つ出るのを防ぐ）
+          setFelicaEvents((prev) => {
+            const existingIds = new Set(prev.map((e) => e.id));
+            const uniqueNewEvents = newEvents.filter((e) => !existingIds.has(e.id));
+            return uniqueNewEvents.length > 0 ? [...prev, ...uniqueNewEvents] : prev;
+          });
         }
       } catch {
         // ポーリング1回分の失敗は無視し、次の周期で再試行する
+      } finally {
+        isPolling = false;
       }
     };
 

@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Exceptions\BusinessException;
 use App\Services\FelicaCardRegistrationService;
 use App\Services\PublicStampService;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -258,79 +259,108 @@ class PublicStampController extends Controller
             return response()->json(['success' => false, 'message' => '退職済みのユーザーです。'], 400);
         }
 
-        // 続けてかざした場合に、出勤の直後へ退勤が記録されるのを防ぐ
-        $wait = $this->publicStampService->secondsUntilStampAllowed($company->id, $user->id);
+        // カードリーダーの多重起動やドライバの重複イベントで、同一ユーザーの
+        // 打刻リクエストがほぼ同時に届くことがある。ロックなしではクールダウン
+        // 判定(SELECT)から打刻登録(INSERT)までの間に競合し、本来1回のはずの
+        // 打刻が2件登録されてしまうため、ユーザー単位の排他ロックの中で行う。
+        try {
+            return $this->publicStampService->withFelicaStampLock(
+                $company->id,
+                $user->id,
+                function () use ($company, $user, $idm, $validated): JsonResponse {
+                    // 続けてかざした場合に、出勤の直後へ退勤が記録されるのを防ぐ
+                    $wait = $this->publicStampService->secondsUntilStampAllowed($company->id, $user->id);
 
-        if ($wait !== null) {
+                    if ($wait !== null) {
+                        $this->publicStampService->logFelicaAttempt(
+                            $company->id,
+                            $user->id,
+                            $idm,
+                            'cooldown',
+                            '重複打刻防止のため受け付けませんでした',
+                            sprintf('%d秒後にもう一度カードをかざしてください', $wait)
+                        );
+
+                        return response()->json([
+                            'success' => false,
+                            'message' => sprintf('打刻を受け付けました。あと %d 秒お待ちください。', $wait),
+                            'user' => ['id' => $user->id, 'name' => $user->name],
+                        ], 429);
+                    }
+
+                    $status = $this->publicStampService->getCurrentStatus($company->id, $user->id);
+
+                    if ($status['isOnBreak']) {
+                        $method = 'breakEnd';
+                    } elseif ($status['isWorking']) {
+                        $method = ($validated['intent'] ?? null) === 'break-start' ? 'breakStart' : 'clockOut';
+                    } else {
+                        $method = 'clockIn';
+                    }
+
+                    try {
+                        $record = $this->publicStampService->$method($company->id, $user->id);
+                    } catch (BusinessException $e) {
+                        $this->publicStampService->logFelicaAttempt(
+                            $company->id,
+                            $user->id,
+                            $idm,
+                            'error',
+                            $e->getMessage()
+                        );
+
+                        return response()->json([
+                            'success' => false,
+                            'message' => $e->getMessage(),
+                        ], 422);
+                    }
+
+                    $this->publicStampService->logFelicaAttempt(
+                        $company->id,
+                        $user->id,
+                        $idm,
+                        'success',
+                        $record->record_type->stampedMessage(),
+                        null,
+                        $record->id
+                    );
+
+                    return response()->json([
+                        'success' => true,
+                        'message' => $record->record_type->stampedMessage(),
+                        'user' => [
+                            'id' => $user->id,
+                            'name' => $user->name,
+                            'employee_code' => $user->employee_code,
+                        ],
+                        'record' => [
+                            'id' => $record->id,
+                            'type' => $record->record_type->name,
+                            'typeLabel' => $record->record_type->label(),
+                            'time' => $record->record_time->format('H:i'),
+                        ],
+                        'currentStatus' => $this->publicStampService->getCurrentStatus($company->id, $user->id),
+                    ]);
+                }
+            );
+        } catch (LockTimeoutException) {
+            // 規定時間内にロックを取得できなかった。処理が詰まっている状況と
+            // みなし、重複防止と同様の扱いでいったん受け付けない。
             $this->publicStampService->logFelicaAttempt(
                 $company->id,
                 $user->id,
                 $idm,
                 'cooldown',
                 '重複打刻防止のため受け付けませんでした',
-                sprintf('%d秒後にもう一度カードをかざしてください', $wait)
+                'もう一度カードをかざしてください'
             );
 
             return response()->json([
                 'success' => false,
-                'message' => sprintf('打刻を受け付けました。あと %d 秒お待ちください。', $wait),
+                'message' => '打刻処理が混み合っています。もう一度カードをかざしてください。',
                 'user' => ['id' => $user->id, 'name' => $user->name],
             ], 429);
         }
-
-        $status = $this->publicStampService->getCurrentStatus($company->id, $user->id);
-
-        if ($status['isOnBreak']) {
-            $method = 'breakEnd';
-        } elseif ($status['isWorking']) {
-            $method = ($validated['intent'] ?? null) === 'break-start' ? 'breakStart' : 'clockOut';
-        } else {
-            $method = 'clockIn';
-        }
-
-        try {
-            $record = $this->publicStampService->$method($company->id, $user->id);
-        } catch (BusinessException $e) {
-            $this->publicStampService->logFelicaAttempt(
-                $company->id,
-                $user->id,
-                $idm,
-                'error',
-                $e->getMessage()
-            );
-
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 422);
-        }
-
-        $this->publicStampService->logFelicaAttempt(
-            $company->id,
-            $user->id,
-            $idm,
-            'success',
-            $record->record_type->stampedMessage(),
-            null,
-            $record->id
-        );
-
-        return response()->json([
-            'success' => true,
-            'message' => $record->record_type->stampedMessage(),
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'employee_code' => $user->employee_code,
-            ],
-            'record' => [
-                'id' => $record->id,
-                'type' => $record->record_type->name,
-                'typeLabel' => $record->record_type->label(),
-                'time' => $record->record_time->format('H:i'),
-            ],
-            'currentStatus' => $this->publicStampService->getCurrentStatus($company->id, $user->id),
-        ]);
     }
 
     /**

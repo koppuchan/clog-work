@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Tests\Feature\Controllers;
 
 use App\Models\Company;
+use App\Models\TimeRecord;
 use App\Models\User;
 use App\Services\PublicStampService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 /**
@@ -246,6 +248,43 @@ class PublicStampFelicaTest extends TestCase
             'success' => true,
             'message' => '退勤を記録しました。',
         ]);
+    }
+
+    /**
+     * @test
+     *
+     * カードリーダーの多重起動やドライバの重複イベントで、同一ユーザーの
+     * 打刻リクエストがほぼ同時に届くことがある。排他ロックがないと、
+     * クールダウン判定(SELECT)から打刻登録(INSERT)までの間に競合し、
+     * 本来1回のはずの打刻が2件登録されてしまう不具合の回帰テスト。
+     *
+     * ここでは「先行リクエストが処理中でロックを保持している」状況を、
+     * ロックを直接取得したまま解放しないことで再現する。この状態で
+     * かざしても、ロック取得待ちでタイムアウトし、打刻が作成されない
+     * ことを確認する。
+     */
+    public function 処理中に重ねてかざしても打刻が2件登録されない(): void
+    {
+        // Arrange: 同一ユーザーの打刻ロックを先に取得したまま保持し、
+        // 「別のリクエストが処理中」の状態を再現する
+        $lock = Cache::lock("felica-stamp-lock:{$this->company->id}:{$this->user->id}", 60);
+        $this->assertTrue($lock->get());
+
+        try {
+            // Act: ロックが解放されないまま、続けてかざす
+            $response = $this->tap();
+
+            // Assert: ロック取得待ちでタイムアウトし、重複防止と同様に拒否される。
+            // 打刻は1件も作成されない
+            $response->assertStatus(429)->assertJson(['success' => false]);
+            $this->assertSame(0, TimeRecord::query()->count());
+        } finally {
+            $lock->release();
+        }
+
+        // Assert: ロック解放後は通常どおり打刻できる
+        $this->tap()->assertOk()->assertJson(['success' => true]);
+        $this->assertSame(1, TimeRecord::query()->count());
     }
 
     /**

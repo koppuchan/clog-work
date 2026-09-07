@@ -33,6 +33,19 @@ class PublicStampService
     private const VERIFY_TOKEN_TTL_SECONDS = 30;
 
     /**
+     * FeliCa打刻の排他ロックの保持時間（秒）
+     *
+     * クールダウン秒数と同程度に設定し、ロック解放後に再度競合しても
+     * クールダウン判定で弾けるようにしている。
+     */
+    private const FELICA_STAMP_LOCK_TTL_SECONDS = 10;
+
+    /**
+     * FeliCa打刻の排他ロック取得を待つ最大秒数
+     */
+    private const FELICA_STAMP_LOCK_WAIT_SECONDS = 5;
+
+    /**
      * リクエスト内で取得済みのユーザー
      *
      * 打刻処理は所属確認・退職確認・パスワード照合で同じユーザーを引くため、
@@ -229,6 +242,38 @@ class PublicStampService
     private function verifiedTokenCacheKey(string $token): string
     {
         return "stamp-verified-token:{$token}";
+    }
+
+    /**
+     * FeliCa打刻の判定〜記録を、同一ユーザーに対する排他ロックの中で行う
+     *
+     * カードリーダーの多重起動やドライバの重複イベントにより、同一ユーザーの
+     * 打刻リクエストがごく短い間隔で同時に届くことがある。ロックなしでは
+     * クールダウン判定（SELECT）から打刻登録（INSERT）までの間に競合し、
+     * 本来1回のはずの打刻が2件登録されてしまう。ロックの中で実行することで
+     * 後続のリクエストは先行リクエストの完了を待ってから判定するようになり、
+     * 通常どおりクールダウンとして弾かれるようになる。
+     *
+     * @template TReturn
+     *
+     * @param  int  $companyId  会社ID
+     * @param  int  $userId  ユーザーID
+     * @param  callable(): TReturn  $callback  ロック内で実行する処理
+     * @return TReturn
+     *
+     * @throws \Illuminate\Contracts\Cache\LockTimeoutException 規定時間内にロックを取得できなかった場合
+     */
+    public function withFelicaStampLock(int $companyId, int $userId, callable $callback): mixed
+    {
+        return Cache::lock(
+            $this->felicaStampLockKey($companyId, $userId),
+            self::FELICA_STAMP_LOCK_TTL_SECONDS
+        )->block(self::FELICA_STAMP_LOCK_WAIT_SECONDS, $callback);
+    }
+
+    private function felicaStampLockKey(int $companyId, int $userId): string
+    {
+        return "felica-stamp-lock:{$companyId}:{$userId}";
     }
 
     /**

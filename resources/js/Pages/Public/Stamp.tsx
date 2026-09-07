@@ -24,6 +24,8 @@ interface FelicaEvent {
 
 const FELICA_EVENTS_POLL_INTERVAL_MS = 3000;
 const FELICA_TOAST_DURATION_MS = { success: 8000, warning: 12000 } as const;
+// 休憩開始モードをつけたまま名前を選ばずに放置された場合、自動で通常モードへ戻すまでの時間
+const BREAK_MODE_TIMEOUT_MS = 30000;
 
 interface UserItem {
   id: number;
@@ -81,7 +83,9 @@ export default function PublicStampPage({ company, users }: Props) {
     );
   }, [users, nameQuery]);
 
-  // 休憩開始モードは Esc でも解除できるようにする
+  // 休憩開始モードは Esc でも解除できるようにする。
+  // 共有端末でONにしたまま放置されると次の人が誤って休憩開始で打刻してしまうため、
+  // 一定時間操作がなければ自動的に通常モードへ戻す。
   useEffect(() => {
     if (! isBreakMode) {
       return;
@@ -94,8 +98,12 @@ export default function PublicStampPage({ company, users }: Props) {
     };
 
     window.addEventListener('keydown', onKeyDown);
+    const timeout = setTimeout(() => setIsBreakMode(false), BREAK_MODE_TIMEOUT_MS);
 
-    return () => window.removeEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      clearTimeout(timeout);
+    };
   }, [isBreakMode]);
 
   // 検索を始めたら一覧を開き、消したら畳む

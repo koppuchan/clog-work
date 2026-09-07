@@ -93,8 +93,59 @@ class AttendanceIssueService
     {
         $issues = $this->detect($summaries, $today);
 
+        foreach ($this->detectMissingClockOut($timeRecords, $today) as $date => $codes) {
+            $issues[$date] = array_values(array_unique([...($issues[$date] ?? []), ...$codes]));
+        }
+
         foreach ($this->detectMissingBreakEnd($timeRecords, $today) as $date => $codes) {
             $issues[$date] = array_values(array_unique([...($issues[$date] ?? []), ...$codes]));
+        }
+
+        return $issues;
+    }
+
+    /**
+     * 打刻データから、退勤打刻がない日を検出する
+     *
+     * detect()は勤務実績（バッチ集計済みのDailyWorkSummary）を見て判定するため、
+     * 集計がまだ走っていない日（打刻直後〜翌日0時のバッチ実行まで）は
+     * 判定対象に含められない。ここでは打刻データから直接判定することで、
+     * 集計を待たずに退勤忘れを検出する。日付越え退勤(WORK_END_NEXT_DAY)も
+     * 正しく拾えるよう、出勤より後に発生した退勤打刻の有無で判定する
+     * （DailyWorkSummaryBatchService::calculateSummaryと同じ考え方）。
+     *
+     * @param  Collection<int, \App\Models\TimeRecord>  $timeRecords  打刻データ
+     * @param  string|null  $today  当日（Y-m-d）。省略時は現在日
+     * @return array<string, array<int, string>> 日付をキーとした状態の一覧
+     */
+    public function detectMissingClockOut(Collection $timeRecords, ?string $today = null): array
+    {
+        $today ??= CarbonImmutable::now()->format('Y-m-d');
+        $issues = [];
+
+        $workRecords = $timeRecords
+            ->filter(fn ($record) => $record->record_type->isWorkStart() || $record->record_type->isWorkEnd())
+            ->sortBy(fn ($record) => $record->record_time->getTimestamp())
+            ->values();
+
+        $workStartsByDate = $workRecords
+            ->filter(fn ($record) => $record->record_type->isWorkStart())
+            ->groupBy(fn ($record) => $record->record_time->format('Y-m-d'));
+
+        foreach ($workStartsByDate as $date => $records) {
+            if ($date >= $today) {
+                continue;
+            }
+
+            $workStart = $records->first();
+
+            $hasWorkEnd = $workRecords->contains(
+                fn ($record) => $record->record_type->isWorkEnd() && $record->record_time->gt($workStart->record_time)
+            );
+
+            if (! $hasWorkEnd) {
+                $issues[$date] = [self::MISSING_CLOCK_OUT];
+            }
         }
 
         return $issues;

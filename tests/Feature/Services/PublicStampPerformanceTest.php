@@ -129,4 +129,70 @@ class PublicStampPerformanceTest extends TestCase
         sort($sorted, SORT_STRING);
         $this->assertSame($sorted, $names);
     }
+
+    /**
+     * @test
+     *
+     * 退勤打刻は「出勤中か」「休憩中か」を同じ現在セッションから判定できるのに、
+     * 以前はisWorking()/isOnBreak()がそれぞれ独立にセッションを問い合わせて
+     * いた。1回にまとめたことで発行クエリ数が増えないことを固定する。
+     */
+    public function 退勤打刻で出勤中休憩中の判定を重複して問い合わせない(): void
+    {
+        // Arrange
+        $stampService = app(\App\Services\StampService::class);
+        $stampService->clockIn($this->company->id, $this->user->id);
+
+        // Act
+        $queries = $this->countQueries(
+            fn () => $stampService->clockOut($this->company->id, $this->user->id)
+        );
+
+        // Assert
+        $this->assertLessThanOrEqual(13, $queries, "発行クエリ数が想定を超えています（{$queries}件）");
+    }
+
+    /**
+     * @test
+     *
+     * 休憩開始打刻も退勤と同様、出勤中か・休憩中でないかの判定を
+     * 1回のセッション取得にまとめている。
+     */
+    public function 休憩開始打刻で出勤中休憩中の判定を重複して問い合わせない(): void
+    {
+        // Arrange
+        $stampService = app(\App\Services\StampService::class);
+        $stampService->clockIn($this->company->id, $this->user->id);
+
+        // Act
+        $queries = $this->countQueries(
+            fn () => $stampService->breakStart($this->company->id, $this->user->id)
+        );
+
+        // Assert
+        $this->assertLessThanOrEqual(5, $queries, "発行クエリ数が想定を超えています（{$queries}件）");
+    }
+
+    /**
+     * @test
+     *
+     * 会社の丸め設定は、打刻のたびにTimeRoundingServiceと
+     * DailyWorkSummaryBatchService（退勤時の即時集計）の両方から
+     * 参照されるが、同一会社であればリクエスト内で使い回されるべき。
+     */
+    public function 丸め設定は同一会社なら使い回されクエリが増えない(): void
+    {
+        // Arrange
+        $repository = app(\App\Repositories\Contracts\CompanyShiftRoundingSettingRepositoryInterface::class);
+
+        // Act: 同じ会社IDに対して複数回問い合わせる
+        $queries = $this->countQueries(function () use ($repository) {
+            $repository->getRoundingMinutes($this->company->id);
+            $repository->getRoundingMinutes($this->company->id);
+            $repository->getRoundingMinutes($this->company->id);
+        });
+
+        // Assert: 2回目以降はキャッシュから返るため1クエリで済む
+        $this->assertSame(1, $queries, "発行クエリ数が想定を超えています（{$queries}件）");
+    }
 }

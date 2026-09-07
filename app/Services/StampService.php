@@ -83,13 +83,18 @@ class StampService
         $record = DB::transaction(function () use ($companyId, $userId, $recordTime): TimeRecord {
             $recordTime = $recordTime ?? CarbonImmutable::now();
 
+            // 出勤中か・休憩中かは同じ「現在のセッション」から判定できるため、
+            // 1回のクエリで両方の判定に使い回す（打刻のたびに重複クエリが
+            // 発生しないようにするため）。
+            $session = $this->getCurrentWorkSession($companyId, $userId);
+
             // ビジネスルールチェック: 出勤中か
-            if (! $this->isWorking($companyId, $userId)) {
+            if (! $session['isWorking']) {
                 throw new BusinessException('出勤していません。先に出勤打刻を行ってください。');
             }
 
             // ビジネスルールチェック: 休憩中でないか
-            if ($this->isOnBreak($companyId, $userId)) {
+            if ($session['isOnBreak']) {
                 throw new BusinessException('休憩中は退勤できません。先に休憩終了打刻を行ってください。');
             }
 
@@ -147,13 +152,17 @@ class StampService
         return DB::transaction(function () use ($companyId, $userId, $recordTime): TimeRecord {
             $recordTime = $recordTime ?? CarbonImmutable::now();
 
+            // 出勤中か・休憩中かは同じ「現在のセッション」から判定できるため、
+            // 1回のクエリで両方の判定に使い回す。
+            $session = $this->getCurrentWorkSession($companyId, $userId);
+
             // ビジネスルールチェック: 出勤中か
-            if (! $this->isWorking($companyId, $userId)) {
+            if (! $session['isWorking']) {
                 throw new BusinessException('出勤していません。先に出勤打刻を行ってください。');
             }
 
             // ビジネスルールチェック: 既に休憩中でないか
-            if ($this->isOnBreak($companyId, $userId)) {
+            if ($session['isOnBreak']) {
                 throw new BusinessException('既に休憩中です。先に休憩終了打刻を行ってください。');
             }
 

@@ -78,7 +78,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(CompanyLaborAlertSettingRepositoryInterface::class, CompanyLaborAlertSettingRepository::class);
         $this->app->bind(RegistrationTokenRepositoryInterface::class, RegistrationTokenRepository::class);
         $this->app->bind(ApplicationTypeRepositoryInterface::class, ApplicationTypeRepository::class);
-        $this->app->bind(CompanyShiftRoundingSettingRepositoryInterface::class, CompanyShiftRoundingSettingRepository::class);
+        // 打刻のたびに複数箇所（TimeRoundingService、DailyWorkSummaryBatchServiceの
+        // 休憩計算）から同じ会社の丸め設定を引くため、リクエスト内で使い回せるよう
+        // scopedにする（会社の丸め設定は同一リクエスト内で変わらない）。
+        $this->app->scoped(CompanyShiftRoundingSettingRepositoryInterface::class, CompanyShiftRoundingSettingRepository::class);
         $this->app->bind(CorrectionRequestDetailRepositoryInterface::class, CorrectionRequestDetailRepository::class);
         $this->app->bind(FelicaStampAttemptRepositoryInterface::class, FelicaStampAttemptRepository::class);
     }

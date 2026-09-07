@@ -11,7 +11,9 @@ use App\Repositories\Contracts\FelicaStampAttemptRepositoryInterface;
 use App\Repositories\Contracts\UserRepositoryInterface;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 /**
  * 公開打刻サービス
@@ -20,6 +22,16 @@ use Illuminate\Support\Facades\Hash;
  */
 class PublicStampService
 {
+    /**
+     * パスワード検証済みトークンの有効期限（秒）
+     *
+     * パスワード確認（/verify-password）の直後に打刻APIを呼ぶ通常の
+     * 操作フローを想定した猶予時間。bcryptのHash::checkは意図的に重い
+     * （数百ms）ため、直前に確認済みであれば打刻API側では再検証せず
+     * このトークンで済ませ、体感速度を改善する。
+     */
+    private const VERIFY_TOKEN_TTL_SECONDS = 30;
+
     /**
      * リクエスト内で取得済みのユーザー
      *
@@ -173,6 +185,50 @@ class PublicStampService
 
         // 未設定の場合はログインパスワードでフォールバック
         return Hash::check($password, $user->password);
+    }
+
+    /**
+     * パスワード検証成功直後に、短時間だけ有効な検証済みトークンを発行する
+     *
+     * 打刻専用画面は「パスワード確認 → 直後に打刻」の2リクエストで完結するが、
+     * 両方でbcryptのHash::checkを行うと打刻の体感速度が悪化する。
+     * ユーザーIDだけを鍵にせず乱数トークンを介するのは、ユーザーIDが
+     * 推測可能な連番のため、それだけでは「直前に別人が検証した」ことを
+     * 悪用したなりすまし打刻を防げないため。
+     *
+     * @param  int  $userId  ユーザーID
+     * @return string 打刻APIへ渡す検証済みトークン
+     */
+    public function issueVerifiedToken(int $userId): string
+    {
+        $token = Str::random(40);
+        Cache::put($this->verifiedTokenCacheKey($token), $userId, self::VERIFY_TOKEN_TTL_SECONDS);
+
+        return $token;
+    }
+
+    /**
+     * 検証済みトークンを消費する（1回限り有効）
+     *
+     * @param  string|null  $token  打刻APIに渡された検証済みトークン
+     * @param  int  $userId  打刻対象のユーザーID
+     * @return bool トークンが有効（発行直後・対象ユーザー一致）だったか
+     */
+    public function consumeVerifiedToken(?string $token, int $userId): bool
+    {
+        if ($token === null || $token === '') {
+            return false;
+        }
+
+        $key = $this->verifiedTokenCacheKey($token);
+        $cachedUserId = Cache::pull($key);
+
+        return $cachedUserId !== null && (int) $cachedUserId === $userId;
+    }
+
+    private function verifiedTokenCacheKey(string $token): string
+    {
+        return "stamp-verified-token:{$token}";
     }
 
     /**

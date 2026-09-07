@@ -115,6 +115,9 @@ export default function PublicStampPage({ company, users }: Props) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [verifiedPassword, setVerifiedPassword] = useState('');
+  // verify-password成功時にサーバーが発行する短時間有効なトークン。
+  // 直後の打刻APIでこれを渡すと、bcryptでのパスワード再検証を省略できる。
+  const [verifyToken, setVerifyToken] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<CurrentStatus | null>(null);
   const [todayRecords, setTodayRecords] = useState<StampRecord[]>([]);
@@ -207,12 +210,13 @@ export default function PublicStampPage({ company, users }: Props) {
       if (response.data.success) {
         setIsAuthenticated(true);
         setVerifiedPassword(password);
+        setVerifyToken(response.data.verifyToken ?? '');
         setCurrentStatus(response.data.currentStatus);
         setTodayRecords(response.data.todayRecords);
 
         // 休憩開始モードなら打刻種別を選ばせずそのまま記録する
         if (isBreakMode) {
-          await stampWith('break-start', password);
+          await stampWith('break-start', password, response.data.verifyToken);
           setIsBreakMode(false);
         }
 
@@ -232,12 +236,15 @@ export default function PublicStampPage({ company, users }: Props) {
   /**
    * 打刻を記録する
    *
-   * 認証直後にそのまま打刻する場合、verifiedPassword の反映を待てないため
-   * パスワードを引数で受け取れるようにしている。
+   * 認証直後にそのまま打刻する場合、verifiedPassword/verifyToken の反映を
+   * 待てないため、引数でも受け取れるようにしている。
+   * verify_token が有効なら、サーバー側はパスワードの再検証（bcrypt）を
+   * 省略するため、体感速度が上がる。
    */
   const stampWith = async (
     action: 'clock-in' | 'clock-out' | 'break-start' | 'break-end',
-    passwordToUse?: string
+    passwordToUse?: string,
+    tokenToUse?: string
   ) => {
     if (!selectedUser) return;
 
@@ -246,6 +253,7 @@ export default function PublicStampPage({ company, users }: Props) {
       const response = await axios.post(`/stamp/${company.uuid}/${action}`, {
         user_id: selectedUser.id,
         password: passwordToUse ?? verifiedPassword,
+        verify_token: tokenToUse ?? verifyToken,
       });
       if (response.data.success) {
         setMessage({ type: 'success', text: response.data.message });
@@ -266,6 +274,7 @@ export default function PublicStampPage({ company, users }: Props) {
           setIsAuthenticated(false);
           setPassword('');
           setVerifiedPassword('');
+          setVerifyToken('');
           setCurrentStatus(null);
           setTodayRecords([]);
           setNameQuery('');
@@ -291,6 +300,7 @@ export default function PublicStampPage({ company, users }: Props) {
     setIsAuthenticated(false);
     setPassword('');
     setVerifiedPassword('');
+    setVerifyToken('');
     setCurrentStatus(null);
     setTodayRecords([]);
     setMessage(null);
@@ -300,6 +310,7 @@ export default function PublicStampPage({ company, users }: Props) {
     setIsAuthenticated(false);
     setPassword('');
     setVerifiedPassword('');
+    setVerifyToken('');
     setCurrentStatus(null);
     setTodayRecords([]);
     setMessage(null);

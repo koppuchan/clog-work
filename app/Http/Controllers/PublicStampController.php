@@ -157,6 +157,7 @@ class PublicStampController extends Controller
 
         return response()->json([
             'success' => true,
+            'verifyToken' => $this->publicStampService->issueVerifiedToken($userId),
             'currentStatus' => $this->publicStampService->getCurrentStatus($company->id, $userId),
             'todayRecords' => $this->publicStampService->getTodayRecords($company->id, $userId),
         ]);
@@ -345,21 +346,27 @@ class PublicStampController extends Controller
 
         $userId = (int) $request->input('user_id');
         $password = (string) $request->input('password');
+        $verifyToken = $request->input('verify_token');
 
         if (! $userId) {
             return response()->json(['success' => false, 'message' => 'ユーザーを選択してください。'], 400);
-        }
-
-        if (! $password) {
-            return response()->json(['success' => false, 'message' => 'パスワードが必要です。'], 400);
         }
 
         if (! $this->publicStampService->isUserInCompany($userId, $company->id)) {
             return response()->json(['success' => false, 'message' => 'ユーザーが見つかりません。'], 404);
         }
 
-        if (! $this->publicStampService->verifyPassword($userId, $password)) {
-            return response()->json(['success' => false, 'message' => 'パスワードが正しくありません。'], 401);
+        // 直前の /verify-password 成功時に発行したトークンが有効なら、
+        // bcryptでの再検証を省略する（体感速度対策）。
+        // トークンがない・期限切れの場合は通常通りパスワードを検証する。
+        if (! $this->publicStampService->consumeVerifiedToken($verifyToken, $userId)) {
+            if (! $password) {
+                return response()->json(['success' => false, 'message' => 'パスワードが必要です。'], 400);
+            }
+
+            if (! $this->publicStampService->verifyPassword($userId, $password)) {
+                return response()->json(['success' => false, 'message' => 'パスワードが正しくありません。'], 401);
+            }
         }
 
         if ($this->publicStampService->isUserRetired($userId)) {

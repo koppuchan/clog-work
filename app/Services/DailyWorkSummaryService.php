@@ -360,28 +360,35 @@ class DailyWorkSummaryService
                 );
 
                 if ($workStartRecord) {
-                    // 修正履歴を記録（correctedByが指定されている場合のみ）
-                    if ($correctedBy !== null) {
-                        $this->timeRecordCorrectionRepository->create([
-                            'time_record_id' => $workStartRecord->id,
-                            'record_type' => $workStartRecord->record_type->value,
-                            'before_record_time' => $workStartRecord->record_time,
-                            'before_rounded_time' => $workStartRecord->rounded_time,
-                            'before_record_source' => $workStartRecord->record_source->value,
-                            'after_record_time' => $startDateTime,
-                            'after_rounded_time' => $roundedStart,
-                            'after_record_source' => RecordSourceEnum::MANUAL->value,
-                            'corrected_by' => $correctedBy,
-                            'correction_note' => self::NOTE_ADMIN_CORRECTION,
+                    // 実際に時刻が変わった場合のみ修正扱いにする。
+                    // 編集モーダルは未変更のフィールドも含めて全項目を送信してくるため、
+                    // 値が同じなら履歴を残さず、record_sourceも書き換えない
+                    // （そうしないと無関係な項目の編集のたびに全打刻が「手動修正」扱いになる）。
+                    $hasChanged = $workStartRecord->record_time->format('Y-m-d H:i:s') !== $startDateTime->format('Y-m-d H:i:s');
+
+                    if ($hasChanged) {
+                        if ($correctedBy !== null) {
+                            $this->timeRecordCorrectionRepository->create([
+                                'time_record_id' => $workStartRecord->id,
+                                'record_type' => $workStartRecord->record_type->value,
+                                'before_record_time' => $workStartRecord->record_time,
+                                'before_rounded_time' => $workStartRecord->rounded_time,
+                                'before_record_source' => $workStartRecord->record_source->value,
+                                'after_record_time' => $startDateTime,
+                                'after_rounded_time' => $roundedStart,
+                                'after_record_source' => RecordSourceEnum::MANUAL->value,
+                                'corrected_by' => $correctedBy,
+                                'correction_note' => self::NOTE_ADMIN_CORRECTION,
+                            ]);
+                        }
+
+                        $this->timeRecordRepository->update($workStartRecord->id, [
+                            'record_time' => $startDateTime,
+                            'rounded_time' => $roundedStart,
+                            'record_source' => RecordSourceEnum::MANUAL,
+                            'note' => self::NOTE_ADMIN_CORRECTION,
                         ]);
                     }
-
-                    $this->timeRecordRepository->update($workStartRecord->id, [
-                        'record_time' => $startDateTime,
-                        'rounded_time' => $roundedStart,
-                        'record_source' => RecordSourceEnum::MANUAL,
-                        'note' => self::NOTE_ADMIN_CORRECTION,
-                    ]);
                 } else {
                     $newRecord = $this->timeRecordRepository->create([
                         'company_id' => $companyId,
@@ -432,29 +439,34 @@ class DailyWorkSummaryService
                 );
 
                 if ($workEndRecord) {
-                    // 修正履歴を記録（correctedByが指定されている場合のみ）
-                    if ($correctedBy !== null) {
-                        $this->timeRecordCorrectionRepository->create([
-                            'time_record_id' => $workEndRecord->id,
-                            'record_type' => $workEndRecord->record_type->value,
-                            'before_record_time' => $workEndRecord->record_time,
-                            'before_rounded_time' => $workEndRecord->rounded_time,
-                            'before_record_source' => $workEndRecord->record_source->value,
-                            'after_record_time' => $endDateTime,
-                            'after_rounded_time' => $roundedEnd,
-                            'after_record_source' => RecordSourceEnum::MANUAL->value,
-                            'corrected_by' => $correctedBy,
-                            'correction_note' => self::NOTE_ADMIN_CORRECTION,
+                    // 実際に変わった場合のみ修正扱いにする（理由はWORK_START側と同様）
+                    $hasChanged = $workEndRecord->record_type !== $recordType
+                        || $workEndRecord->record_time->format('Y-m-d H:i:s') !== $endDateTime->format('Y-m-d H:i:s');
+
+                    if ($hasChanged) {
+                        if ($correctedBy !== null) {
+                            $this->timeRecordCorrectionRepository->create([
+                                'time_record_id' => $workEndRecord->id,
+                                'record_type' => $workEndRecord->record_type->value,
+                                'before_record_time' => $workEndRecord->record_time,
+                                'before_rounded_time' => $workEndRecord->rounded_time,
+                                'before_record_source' => $workEndRecord->record_source->value,
+                                'after_record_time' => $endDateTime,
+                                'after_rounded_time' => $roundedEnd,
+                                'after_record_source' => RecordSourceEnum::MANUAL->value,
+                                'corrected_by' => $correctedBy,
+                                'correction_note' => self::NOTE_ADMIN_CORRECTION,
+                            ]);
+                        }
+
+                        $this->timeRecordRepository->update($workEndRecord->id, [
+                            'record_type' => $recordType,
+                            'record_time' => $endDateTime,
+                            'rounded_time' => $roundedEnd,
+                            'record_source' => RecordSourceEnum::MANUAL,
+                            'note' => self::NOTE_ADMIN_CORRECTION,
                         ]);
                     }
-
-                    $this->timeRecordRepository->update($workEndRecord->id, [
-                        'record_type' => $recordType,
-                        'record_time' => $endDateTime,
-                        'rounded_time' => $roundedEnd,
-                        'record_source' => RecordSourceEnum::MANUAL,
-                        'note' => self::NOTE_ADMIN_CORRECTION,
-                    ]);
                 } else {
                     $newRecord = $this->timeRecordRepository->create([
                         'company_id' => $companyId,
@@ -537,7 +549,11 @@ class DailyWorkSummaryService
                 $existingStart = $existingBreakStarts[$i];
                 $existingEnd = $existingBreakEnds[$i];
 
-                if ($correctedBy !== null) {
+                // 開始・終了それぞれ、実際に変わった側だけ修正扱いにする
+                $startChanged = $existingStart->record_time->format('Y-m-d H:i:s') !== $breakStartDateTime->format('Y-m-d H:i:s');
+                $endChanged = $existingEnd->record_time->format('Y-m-d H:i:s') !== $breakEndDateTime->format('Y-m-d H:i:s');
+
+                if ($correctedBy !== null && $startChanged) {
                     $this->timeRecordCorrectionRepository->create([
                         'time_record_id' => $existingStart->id,
                         'record_type' => TimeRecordTypeEnum::BREAK_START->value,
@@ -550,7 +566,9 @@ class DailyWorkSummaryService
                         'corrected_by' => $correctedBy,
                         'correction_note' => self::NOTE_ADMIN_CORRECTION,
                     ]);
+                }
 
+                if ($correctedBy !== null && $endChanged) {
                     $this->timeRecordCorrectionRepository->create([
                         'time_record_id' => $existingEnd->id,
                         'record_type' => TimeRecordTypeEnum::BREAK_END->value,
@@ -565,18 +583,22 @@ class DailyWorkSummaryService
                     ]);
                 }
 
-                $this->timeRecordRepository->update($existingStart->id, [
-                    'record_time' => $breakStartDateTime,
-                    'rounded_time' => $roundedBreakStart,
-                    'record_source' => RecordSourceEnum::MANUAL,
-                    'note' => self::NOTE_ADMIN_CORRECTION,
-                ]);
-                $this->timeRecordRepository->update($existingEnd->id, [
-                    'record_time' => $breakEndDateTime,
-                    'rounded_time' => $roundedBreakEnd,
-                    'record_source' => RecordSourceEnum::MANUAL,
-                    'note' => self::NOTE_ADMIN_CORRECTION,
-                ]);
+                if ($startChanged) {
+                    $this->timeRecordRepository->update($existingStart->id, [
+                        'record_time' => $breakStartDateTime,
+                        'rounded_time' => $roundedBreakStart,
+                        'record_source' => RecordSourceEnum::MANUAL,
+                        'note' => self::NOTE_ADMIN_CORRECTION,
+                    ]);
+                }
+                if ($endChanged) {
+                    $this->timeRecordRepository->update($existingEnd->id, [
+                        'record_time' => $breakEndDateTime,
+                        'rounded_time' => $roundedBreakEnd,
+                        'record_source' => RecordSourceEnum::MANUAL,
+                        'note' => self::NOTE_ADMIN_CORRECTION,
+                    ]);
+                }
             }
 
             // 2. 既存が新規より多い場合: 余剰の既存ペアを削除する

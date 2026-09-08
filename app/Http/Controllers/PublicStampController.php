@@ -338,6 +338,10 @@ class PublicStampController extends Controller
                         $record->id
                     );
 
+                    // 読み取り機の多重発火で直後にクールダウン拒否のリクエストが
+                    // 届いても、成功直後は重複防止の警告を出さないようにする
+                    $this->publicStampService->suppressCooldownNotificationAfterSuccess($user->id);
+
                     return response()->json([
                         'success' => true,
                         'message' => $record->record_type->stampedMessage(),

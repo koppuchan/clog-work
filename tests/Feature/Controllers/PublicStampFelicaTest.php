@@ -258,11 +258,14 @@ class PublicStampFelicaTest extends TestCase
      * NFCリーダーが1回のタップで複数回イベントを発火すると、クールダウン中の
      * 重複リクエストがサーバーに複数回届くことがある。打刻自体は
      * withFelicaStampLock()により1件しか登録されないが（別テストで担保）、
-     * 重複防止の試行ログ(felica_stamp_attempts)まで毎回作られると、
-     * 打刻専用画面に警告トーストが届いた数だけ積み重なって表示されて
-     * しまう。クールダウン中の重複は最初の1回だけログを残すべき。
+     * 重複防止の試行ログ(felica_stamp_attempts)が作られると、成功トーストと
+     * 並んで「重複打刻防止」の警告トーストが表示され、ユーザーには1回
+     * タップしただけなのに何かおかしいように見えてしまう
+     * （実際のクライアント報告: 成功表示の直後に重複警告が出た）。
+     * 成功直後のクールダウン拒否は読み取り機の多重発火によるものと
+     * みなし、警告ログを一切残さない。
      */
-    public function クールダウン中に3回かざしても重複防止ログは1件だけ記録される(): void
+    public function クールダウン中に3回かざしても重複防止ログは記録されない(): void
     {
         // Arrange
         config(['attendance.felica_stamp_cooldown_seconds' => 10]);
@@ -272,9 +275,9 @@ class PublicStampFelicaTest extends TestCase
         $this->tap()->assertStatus(429);
         $this->tap()->assertStatus(429);
 
-        // Assert: 成功1件 + 重複防止ログは1件だけ（2件目の重複はログされない）
+        // Assert: 成功1件のみで、重複防止の警告ログは記録されない
         $this->assertSame(1, \App\Models\FelicaStampAttempt::query()->where('status', 'success')->count());
-        $this->assertSame(1, \App\Models\FelicaStampAttempt::query()->where('status', 'cooldown')->count());
+        $this->assertSame(0, \App\Models\FelicaStampAttempt::query()->where('status', 'cooldown')->count());
     }
 
     /**

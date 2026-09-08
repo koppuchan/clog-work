@@ -114,25 +114,53 @@ class PublicStampFelicaEventsTest extends TestCase
 
     /**
      * @test
+     *
+     * 読み取り機の多重発火による重複は、成功直後は警告を出さないよう
+     * 抑制される（PublicStampService::suppressCooldownNotificationAfterSuccess）。
+     * そのため、直前にFeliCaで成功している場合は、直後のクールダウン拒否は
+     * イベントとして残らない。
      */
-    public function 重複打刻防止で拒否された試行もイベントとして取得できる(): void
+    public function 成功直後の重複打刻防止はイベントとして残らない(): void
     {
         // Arrange
         config(['attendance.felica_stamp_cooldown_seconds' => 10]);
         $before = $this->baseline()->json('lastId');
         $this->tap()->assertOk();
 
-        // Act: 直後に再度かざして拒否させる
+        // Act: 直後に再度かざして拒否させる（読み取り機の多重発火を模す）
+        $this->tap()->assertStatus(429);
+        $response = $this->events($before);
+
+        // Assert: 成功イベントのみで、重複防止の警告イベントは残らない
+        $events = $response->json('events');
+        $this->assertCount(1, $events);
+        $this->assertSame('success', $events[0]['status']);
+    }
+
+    /**
+     * @test
+     *
+     * 直前の打刻がFeliCa経由の成功ではない場合（スタッフ画面や管理者による
+     * 手動登録など、別経路で直近に打刻済みの場合）は抑制フラグが立たない
+     * ため、クールダウン拒否は従来どおりイベントとして取得できる。
+     */
+    public function 別経路で直近に打刻済みの場合はクールダウン拒否がイベントとして取得できる(): void
+    {
+        // Arrange: FeliCa以外の経路（スタッフ画面等を想定）で直近に出勤済み
+        config(['attendance.felica_stamp_cooldown_seconds' => 10]);
+        app(\App\Services\PublicStampService::class)->clockIn($this->company->id, $this->user->id);
+        $before = $this->baseline()->json('lastId');
+
+        // Act: 直後にFeliCaでかざして拒否させる
         $this->tap()->assertStatus(429);
         $response = $this->events($before);
 
         // Assert
         $events = $response->json('events');
-        $this->assertCount(2, $events);
-        $this->assertSame('success', $events[0]['status']);
-        $this->assertSame('cooldown', $events[1]['status']);
-        $this->assertSame('重複打刻防止のため受け付けませんでした', $events[1]['message']);
-        $this->assertStringContainsString('秒後にもう一度カードをかざしてください', $events[1]['detail']);
+        $this->assertCount(1, $events);
+        $this->assertSame('cooldown', $events[0]['status']);
+        $this->assertSame('重複打刻防止のため受け付けませんでした', $events[0]['message']);
+        $this->assertStringContainsString('秒後にもう一度カードをかざしてください', $events[0]['detail']);
     }
 
     /**

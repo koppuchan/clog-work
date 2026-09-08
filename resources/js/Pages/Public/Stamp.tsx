@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, FormEvent } from 'react';
 import { Head } from '@inertiajs/react';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { AlertCircle, CheckCircle, User, ChevronLeft, Lock, Coffee, X } from 'lucide-react';
+import { AlertCircle, CheckCircle, User, ChevronLeft, ChevronDown, Lock, Coffee, X } from 'lucide-react';
 import axios from 'axios';
 import { useCurrentTime } from '@/hooks/useCurrentTime';
 
@@ -474,20 +474,21 @@ export default function PublicStampPage({ company, users }: Props) {
               </h2>
 
               {/* 人数が多いと一覧が長くなるため、初期は畳んでおき検索で開く */}
-              <div className="mb-4 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+              <div className="mb-4 flex flex-col gap-2">
                 <input
                   type="text"
                   value={nameQuery}
                   onChange={(e) => setNameQuery(e.target.value)}
-                  placeholder="名前・個人コードで検索"
-                  className="flex-1 border border-gray-300 rounded-lg px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="名前または個人コードで検索"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <button
                   type="button"
                   onClick={() => setIsListOpen((open) => !open)}
-                  className="px-4 py-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 whitespace-nowrap"
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-lg border-2 border-gray-900 bg-white hover:bg-gray-50 text-base font-medium text-gray-900"
                 >
-                  {isListOpen ? '一覧を閉じる' : '従業員一覧'}
+                  <span>{isListOpen ? '一覧を閉じる' : '従業員一覧'}</span>
+                  <ChevronDown className={`w-5 h-5 transition-transform ${isListOpen ? 'rotate-180' : ''}`} />
                 </button>
               </div>
 

@@ -8,6 +8,7 @@ use App\Enums\ErrorCodeEnum;
 use App\Exceptions\BusinessException;
 use App\Exceptions\NotFoundException;
 use App\Models\Shift;
+use App\Repositories\Contracts\DepartmentRepositoryInterface;
 use App\Repositories\Contracts\ShiftRepositoryInterface;
 use App\Repositories\Contracts\UserRepositoryInterface;
 use App\Traits\HasLogService;
@@ -25,7 +26,8 @@ class ShiftService
 
     public function __construct(
         private readonly ShiftRepositoryInterface $shiftRepository,
-        private readonly UserRepositoryInterface $userRepository
+        private readonly UserRepositoryInterface $userRepository,
+        private readonly DepartmentRepositoryInterface $departmentRepository
     ) {}
 
     /**
@@ -275,22 +277,36 @@ class ShiftService
         $shifts = $this->shiftRepository->findByCompanyIdAndDateRange($companyId, $startDate, $endDate)
             ->filter(fn ($shift) => in_array($shift->user_id, $userIds, true));
 
+        // 部署の並び順（作成日時の昇順）を管理者画面（シフト管理）と揃える。
+        // 部署名の文字列比較（あいうえお順）だと、カタカナの部署名が漢字の
+        // 部署名よりUnicode上で若くなり、管理者画面と逆順になってしまう
+        // （例:「パート」が「本社」より前に来る）。
+        $departmentOrder = $this->departmentRepository->findByCompanyId($companyId)
+            ->pluck('id')
+            ->flip();
+
         // ユーザー情報をフォーマット（自分かどうかのフラグ付き）
         // 部署ごとにまとめて表示できるよう部署名を持たせ、個人コード順に並べる
         $usersFormatted = $users
             ->filter(fn ($user) => $user !== null)
-            ->map(fn ($user) => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'employee_code' => $user->employee_code,
-                'department_name' => $user->primaryDepartment()?->first()?->name,
-                'is_self' => $user->id === $userId,
-            ])
+            ->map(function ($user) use ($departmentOrder, $userId) {
+                $departmentId = $user->primaryDepartment()?->first()?->id;
+
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'employee_code' => $user->employee_code,
+                    'department_name' => $user->primaryDepartment()?->first()?->name,
+                    'department_order' => $departmentId !== null ? ($departmentOrder[$departmentId] ?? PHP_INT_MAX) : PHP_INT_MAX,
+                    'is_self' => $user->id === $userId,
+                ];
+            })
             ->sortBy([
-                fn (array $a, array $b) => ($a['department_name'] ?? '') <=> ($b['department_name'] ?? ''),
+                fn (array $a, array $b) => $a['department_order'] <=> $b['department_order'],
                 fn (array $a, array $b) => ($a['employee_code'] ?? '') <=> ($b['employee_code'] ?? ''),
             ])
             ->values()
+            ->map(fn (array $user) => collect($user)->except('department_order')->all())
             ->toArray();
 
         // シフトを日付・ユーザーでインデックス化

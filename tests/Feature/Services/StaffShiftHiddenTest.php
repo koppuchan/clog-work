@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Services;
 
 use App\Models\Company;
+use App\Models\Department;
 use App\Models\Shift;
 use App\Models\ShiftPattern;
 use App\Models\User;
@@ -133,5 +134,35 @@ class StaffShiftHiddenTest extends TestCase
         // 閲覧者の予定は渡り、非表示のスタッフの予定は渡らない
         $this->assertArrayHasKey($viewer->id, $data['shifts']['2026-06-10']);
         $this->assertArrayNotHasKey($hidden->id, $data['shifts']['2026-06-10']);
+    }
+
+    /**
+     * @test
+     *
+     * 部署の並びは作成日時順（管理者のシフト管理画面と同じ基準）にする。
+     * 部署名の文字列比較（あいうえお順）だと、カタカナの部署名
+     * （例:「パート」）が漢字の部署名（例:「本社」）よりUnicode上で
+     * 若くなり、管理者画面と逆順になってしまっていた。
+     */
+    public function 部署の並びは作成日時順で管理者画面と揃う(): void
+    {
+        // Arrange: 「本社」を先に作成する（あいうえお順だと「パート」が先に来てしまう部署名）
+        $honsha = Department::factory()->forCompany($this->company->id)->create(['name' => '本社']);
+        $part = Department::factory()->forCompany($this->company->id)->create(['name' => 'パート']);
+
+        $viewer = $this->createUser('閲覧 太郎');
+        $viewer->departments()->attach($honsha->id, ['is_primary' => true]);
+
+        $partUser = $this->createUser('パート 花子');
+        $partUser->departments()->attach($part->id, ['is_primary' => true]);
+
+        // Act
+        $names = $this->visibleNames($viewer->id);
+
+        // Assert: 作成順どおり「本社」所属者が先、「パート」所属者が後
+        $this->assertSame(
+            ['閲覧 太郎', 'パート 花子'],
+            $names,
+        );
     }
 }

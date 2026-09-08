@@ -50,7 +50,11 @@ class DepartmentRepository implements DepartmentRepositoryInterface
         return $this->department->query()
             ->where('company_id', $companyId)
             ->withCount('users')
+            // created_atは秒単位のため、同じ会社設定画面でまとめて作成した
+            // 部署は同じ値になり得る。その場合の並びを安定させるためidも
+            // 補助キーにする（作成順とidの採番順は一致するため）。
             ->orderBy('created_at', 'asc')
+            ->orderBy('id', 'asc')
             ->get();
     }
 

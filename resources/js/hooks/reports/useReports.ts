@@ -319,11 +319,19 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
 
   // 指定日の出退勤時刻をtimeRecordsから取得（丸めなしの生の値）
   // 日跨ぎ夜勤の場合、退勤は翌日の WORK_END_NEXT_DAY から取得する
+  //
+  // 退勤は「今回の出勤より後」に発生したものだけを対象にする。日付越え
+  // 退勤の翌日欄には、前夜の残り(WORK_END_NEXT_DAY、当日の出勤より前)と
+  // 当日の出勤が混在することがある。出勤位置より前を含めて探すと、
+  // まだ退勤していなくても前夜の退勤時刻を編集フォームの退勤時刻として
+  // 誤表示してしまう。
   const getWorkTimesFromRecords = useCallback(
     (dateStr: string): { workStart: string | null; workEnd: string | null } => {
       const records = getRecordsIncludingNextDayCarryOver(dateStr);
-      const workStartRecord = records.find((r) => r.record_type.is_work_start);
-      const workEndRecord = [...records].reverse().find((r) => r.record_type.is_work_end);
+      const workStartIndex = records.findIndex((r) => r.record_type.is_work_start);
+      const workStartRecord = workStartIndex >= 0 ? records[workStartIndex] : undefined;
+      const workEndSearchRecords = workStartIndex >= 0 ? records.slice(workStartIndex) : records;
+      const workEndRecord = [...workEndSearchRecords].reverse().find((r) => r.record_type.is_work_end);
       return {
         workStart: workStartRecord?.record_time ?? null,
         workEnd: workEndRecord?.record_time ?? null,

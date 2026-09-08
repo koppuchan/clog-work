@@ -31,9 +31,11 @@ class AttendanceIssueService
     public const MISSING_BREAK_END = 'missing_break_end';
 
     /**
-     * 日付ごとの要対応状態を返す
+     * 勤務実績（集計済みDailyWorkSummary）から、未集計の日を返す
      *
-     * 当日は勤務の途中である可能性が高いため対象外とする。
+     * 当日は勤務の途中である可能性が高いため対象外とする。退勤忘れは
+     * detectMissingClockOut()（打刻データを直接見る、より正確な判定）が
+     * 別途担当するため、ここでは扱わない。
      *
      * @param  Collection<int, array<string, mixed>>|Collection<int, object>  $summaries  勤務実績
      * @param  string|null  $today  当日（Y-m-d）。省略時は現在日
@@ -62,19 +64,9 @@ class AttendanceIssueService
             $workEnd = $this->value($summary, 'work_end');
             $netMinutes = $this->value($summary, 'net_work_minutes');
 
-            $found = [];
-
-            if ($this->filled($workStart) && ! $this->filled($workEnd)) {
-                $found[] = self::MISSING_CLOCK_OUT;
-            }
-
             // 出退勤が揃っているのに労働時間が算出されていない
             if ($this->filled($workStart) && $this->filled($workEnd) && ! $this->filled($netMinutes)) {
-                $found[] = self::NOT_CALCULATED;
-            }
-
-            if ($found !== []) {
-                $issues[$date] = $found;
+                $issues[$date] = [self::NOT_CALCULATED];
             }
         }
 
@@ -86,14 +78,15 @@ class AttendanceIssueService
      *
      * @param  Collection<int, array<string, mixed>>|Collection<int, object>  $summaries  勤務実績
      * @param  Collection<int, \App\Models\TimeRecord>  $timeRecords  打刻データ
-     * @param  string|null  $today  当日（Y-m-d）。省略時は現在日
+     * @param  string|null  $now  現在時刻（Y-m-d H:i:s等）。省略時は現在日時
      * @return array<string, array<int, string>> 日付をキーとした状態の一覧
      */
-    public function detectAll(Collection $summaries, Collection $timeRecords, ?string $today = null): array
+    public function detectAll(Collection $summaries, Collection $timeRecords, ?string $now = null): array
     {
+        $today = $now !== null ? substr($now, 0, 10) : null;
         $issues = $this->detect($summaries, $today);
 
-        foreach ($this->detectMissingClockOut($timeRecords, $today) as $date => $codes) {
+        foreach ($this->detectMissingClockOut($timeRecords, $summaries, $now) as $date => $codes) {
             $issues[$date] = array_values(array_unique([...($issues[$date] ?? []), ...$codes]));
         }
 
@@ -121,14 +114,35 @@ class AttendanceIssueService
      * そのため、出勤の後に次の出勤が来たら、前の出勤は退勤忘れとして
      * 確定させる。
      *
+     * 日付が変わった瞬間に検出すると、日跨ぎ夜勤の途中（まだ退勤打刻が
+     * 来ていないだけ）を誤検出してしまうため、出勤から
+     * attendance.work_session_max_hours（既定24時間、打刻し忘れとみなして
+     * セッションを打ち切る基準と同じ値）が経過するまでは検出しない。
+     *
+     * また、打刻データ上は開いたままに見えても、勤務実績
+     * （DailyWorkSummary）側で既に退勤時刻が確定している日は検出しない。
+     * 日付越え退勤を含む修正で前日側の再集計が漏れている等、打刻データと
+     * 集計結果が一時的に食い違うケースで、確定済みの表示と矛盾する警告を
+     * 出さないようにするため。
+     *
      * @param  Collection<int, \App\Models\TimeRecord>  $timeRecords  打刻データ
-     * @param  string|null  $today  当日（Y-m-d）。省略時は現在日
+     * @param  Collection<int, array<string, mixed>>|Collection<int, object>  $summaries  勤務実績
+     * @param  string|null  $now  現在時刻（Y-m-d H:i:s等）。省略時は現在日時
      * @return array<string, array<int, string>> 日付をキーとした状態の一覧
      */
-    public function detectMissingClockOut(Collection $timeRecords, ?string $today = null): array
+    public function detectMissingClockOut(Collection $timeRecords, Collection $summaries, ?string $now = null): array
     {
-        $today ??= CarbonImmutable::now()->format('Y-m-d');
+        $now = $now !== null ? CarbonImmutable::parse($now) : CarbonImmutable::now();
+        $thresholdHours = (int) config('attendance.work_session_max_hours', 24);
         $issues = [];
+
+        $closedDates = [];
+        foreach ($summaries as $summary) {
+            $date = $this->value($summary, 'work_date');
+            if (is_string($date) && $date !== '' && $this->filled($this->value($summary, 'work_end'))) {
+                $closedDates[substr($date, 0, 10)] = true;
+            }
+        }
 
         $workRecords = $timeRecords
             ->filter(fn ($record) => $record->record_type->isWorkStart() || $record->record_type->isWorkEnd())
@@ -140,7 +154,7 @@ class AttendanceIssueService
         foreach ($workRecords as $record) {
             if ($record->record_type->isWorkStart()) {
                 if ($openWorkStart !== null) {
-                    $this->flagMissingClockOutIfPast($issues, $openWorkStart, $today);
+                    $this->flagMissingClockOutIfOverdue($issues, $openWorkStart, $now, $thresholdHours, $closedDates);
                 }
                 $openWorkStart = $record;
 
@@ -152,23 +166,28 @@ class AttendanceIssueService
         }
 
         if ($openWorkStart !== null) {
-            $this->flagMissingClockOutIfPast($issues, $openWorkStart, $today);
+            $this->flagMissingClockOutIfOverdue($issues, $openWorkStart, $now, $thresholdHours, $closedDates);
         }
 
         return $issues;
     }
 
     /**
-     * 出勤打刻の日付が過去であれば、退勤忘れとして記録する
+     * 出勤から所定時間が経過していれば、退勤忘れとして記録する
      *
      * @param  array<string, array<int, string>>  $issues
      * @param  \App\Models\TimeRecord  $workStart
+     * @param  array<string, bool>  $closedDates  勤務実績側で既に退勤が確定している日付
      */
-    private function flagMissingClockOutIfPast(array &$issues, $workStart, string $today): void
+    private function flagMissingClockOutIfOverdue(array &$issues, $workStart, CarbonImmutable $now, int $thresholdHours, array $closedDates): void
     {
         $date = $workStart->record_time->format('Y-m-d');
 
-        if ($date >= $today) {
+        if (isset($closedDates[$date])) {
+            return;
+        }
+
+        if ($now->diffInHours($workStart->record_time, absolute: true) < $thresholdHours) {
             return;
         }
 

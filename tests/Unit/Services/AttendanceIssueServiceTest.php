@@ -36,21 +36,6 @@ class AttendanceIssueServiceTest extends TestCase
     /**
      * @test
      */
-    public function 退勤打刻がない日を検出する(): void
-    {
-        $issues = $this->detect([
-            ['work_date' => '2026-09-08', 'work_start' => '09:00', 'work_end' => null, 'net_work_minutes' => null],
-        ]);
-
-        $this->assertSame(
-            ['2026-09-08' => [AttendanceIssueService::MISSING_CLOCK_OUT]],
-            $issues,
-        );
-    }
-
-    /**
-     * @test
-     */
     public function 出退勤が揃っていて集計済みなら何も検出しない(): void
     {
         $issues = $this->detect([
@@ -91,31 +76,6 @@ class AttendanceIssueServiceTest extends TestCase
     /**
      * @test
      */
-    public function 当日は勤務の途中とみなして検出しない(): void
-    {
-        // 出勤済みで未退勤でも、当日なら退勤忘れではない
-        $issues = $this->detect([
-            ['work_date' => self::TODAY, 'work_start' => '09:00', 'work_end' => null, 'net_work_minutes' => null],
-        ]);
-
-        $this->assertSame([], $issues);
-    }
-
-    /**
-     * @test
-     */
-    public function 未来日は検出しない(): void
-    {
-        $issues = $this->detect([
-            ['work_date' => '2026-09-20', 'work_start' => '09:00', 'work_end' => null, 'net_work_minutes' => null],
-        ]);
-
-        $this->assertSame([], $issues);
-    }
-
-    /**
-     * @test
-     */
     public function 出勤自体がない日は検出しない(): void
     {
         // 休日や欠勤を要対応として扱わない
@@ -129,10 +89,22 @@ class AttendanceIssueServiceTest extends TestCase
     /**
      * @test
      */
+    public function 未来日は検出しない(): void
+    {
+        $issues = $this->detect([
+            ['work_date' => '2026-09-20', 'work_start' => '09:00', 'work_end' => '18:00', 'net_work_minutes' => null],
+        ]);
+
+        $this->assertSame([], $issues);
+    }
+
+    /**
+     * @test
+     */
     public function 日時形式の日付でも判定できる(): void
     {
         $issues = $this->detect([
-            ['work_date' => '2026-09-08 00:00:00', 'work_start' => '09:00', 'work_end' => null],
+            ['work_date' => '2026-09-08 00:00:00', 'work_start' => '09:00', 'work_end' => '18:00', 'net_work_minutes' => null],
         ]);
 
         $this->assertArrayHasKey('2026-09-08', $issues);
@@ -144,7 +116,7 @@ class AttendanceIssueServiceTest extends TestCase
     public function オブジェクトでも判定できる(): void
     {
         $issues = $this->service->detect(
-            collect([(object) ['work_date' => '2026-09-08', 'work_start' => '09:00', 'work_end' => null]]),
+            collect([(object) ['work_date' => '2026-09-08', 'work_start' => '09:00', 'work_end' => '18:00', 'net_work_minutes' => null]]),
             self::TODAY,
         );
 
@@ -157,7 +129,7 @@ class AttendanceIssueServiceTest extends TestCase
     public function 複数日をまとめて検出する(): void
     {
         $issues = $this->detect([
-            ['work_date' => '2026-09-07', 'work_start' => '09:00', 'work_end' => null],
+            ['work_date' => '2026-09-07', 'work_start' => '09:00', 'work_end' => '18:00', 'net_work_minutes' => null],
             ['work_date' => '2026-09-08', 'work_start' => '09:00', 'work_end' => '18:00', 'net_work_minutes' => 480],
             ['work_date' => '2026-09-09', 'work_start' => '09:00', 'work_end' => '18:00', 'net_work_minutes' => null],
         ]);
@@ -238,6 +210,7 @@ class AttendanceIssueServiceTest extends TestCase
                 ['work_date' => '2026-09-08', 'work_start' => '09:00', 'work_end' => null, 'net_work_minutes' => null],
             ]),
             collect([
+                $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-08 09:00:00'),
                 $this->timeRecord(TimeRecordTypeEnum::BREAK_START, '2026-09-08 12:00:00'),
             ]),
             self::TODAY,
@@ -261,7 +234,7 @@ class AttendanceIssueServiceTest extends TestCase
     {
         $issues = $this->service->detectMissingClockOut(collect([
             $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-08 10:44:00'),
-        ]), self::TODAY);
+        ]), collect(), self::TODAY);
 
         $this->assertSame(
             ['2026-09-08' => [AttendanceIssueService::MISSING_CLOCK_OUT]],
@@ -277,7 +250,7 @@ class AttendanceIssueServiceTest extends TestCase
         $issues = $this->service->detectMissingClockOut(collect([
             $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-08 09:00:00'),
             $this->timeRecord(TimeRecordTypeEnum::WORK_END, '2026-09-08 18:00:00'),
-        ]), self::TODAY);
+        ]), collect(), self::TODAY);
 
         $this->assertSame([], $issues);
     }
@@ -293,7 +266,7 @@ class AttendanceIssueServiceTest extends TestCase
         $issues = $this->service->detectMissingClockOut(collect([
             $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-08 22:00:00'),
             $this->timeRecord(TimeRecordTypeEnum::WORK_END_NEXT_DAY, '2026-09-09 06:00:00'),
-        ]), self::TODAY);
+        ]), collect(), self::TODAY);
 
         $this->assertSame([], $issues);
     }
@@ -305,7 +278,7 @@ class AttendanceIssueServiceTest extends TestCase
     {
         $issues = $this->service->detectMissingClockOut(collect([
             $this->timeRecord(TimeRecordTypeEnum::WORK_START, self::TODAY.' 09:00:00'),
-        ]), self::TODAY);
+        ]), collect(), self::TODAY);
 
         $this->assertSame([], $issues);
     }
@@ -325,11 +298,73 @@ class AttendanceIssueServiceTest extends TestCase
             $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-05 10:44:00'),
             $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-06 09:00:00'),
             $this->timeRecord(TimeRecordTypeEnum::WORK_END, '2026-09-06 18:00:00'),
-        ]), self::TODAY);
+        ]), collect(), self::TODAY);
 
         $this->assertSame(
             ['2026-09-05' => [AttendanceIssueService::MISSING_CLOCK_OUT]],
             $issues,
         );
+    }
+
+    /**
+     * @test
+     *
+     * 日付が変わった直後は、出勤からまだ24時間（打刻し忘れとみなして
+     * セッションを打ち切る基準時間 = attendance.work_session_max_hours）
+     * 経っていないことがある。日跨ぎ夜勤の途中を退勤忘れと誤検出しない
+     * ように、経過時間で判定する（前田9/7の09:14出勤について、9/8に
+     * なった直後に退勤忘れ表示が出てしまっていた不具合の回帰テスト）。
+     */
+    public function 出勤から24時間経っていなければ検出しない(): void
+    {
+        $issues = $this->service->detectMissingClockOut(
+            collect([$this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-07 09:14:00')]),
+            collect(),
+            '2026-09-08 03:00:00', // 出勤から17時間45分しか経っていない
+        );
+
+        $this->assertSame([], $issues);
+    }
+
+    /**
+     * @test
+     */
+    public function 出勤から24時間経てば検出する(): void
+    {
+        $issues = $this->service->detectMissingClockOut(
+            collect([$this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-07 09:14:00')]),
+            collect(),
+            '2026-09-08 10:00:00', // 出勤から24時間46分経過
+        );
+
+        $this->assertSame(
+            ['2026-09-07' => [AttendanceIssueService::MISSING_CLOCK_OUT]],
+            $issues,
+        );
+    }
+
+    /**
+     * @test
+     *
+     * 打刻データ上は開いたまま（対応する退勤が見当たらない）に見えても、
+     * 勤務実績（DailyWorkSummary）側で既にその日の退勤時刻が確定して
+     * いれば検出しない。日付越え退勤を含む日を後から修正した際、前日側の
+     * 集計が再実行されずに残るなどして打刻データと集計結果が一時的に
+     * 食い違うことがあり、その場合に確定済みの表示と矛盾する退勤忘れ
+     * 警告を出さないようにするため（前田9/2の回帰テスト。表示上は
+     * 21:48〜09:15(翌)の勤務時間が確定しているのに、退勤忘れバッジが
+     * 出てしまっていた）。
+     */
+    public function 勤務実績で退勤が確定していれば打刻データ上は開いていても検出しない(): void
+    {
+        $issues = $this->service->detectMissingClockOut(
+            collect([$this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-02 21:48:00')]),
+            collect([
+                ['work_date' => '2026-09-02', 'work_start' => '21:48', 'work_end' => '09:15', 'net_work_minutes' => 450],
+            ]),
+            self::TODAY,
+        );
+
+        $this->assertSame([], $issues);
     }
 }

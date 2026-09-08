@@ -106,6 +106,16 @@ export default function PublicStampPage({ company, users }: Props) {
     };
   }, [isBreakMode]);
 
+  // 休憩開始モードのON/OFFをサーバーにも伝える。
+  // FeliCa常駐アプリはこの画面のトグルを知らず自分のショートカット（B/Esc）
+  // でしか休憩開始モードを持たないため、このトグルを押してもカードを
+  // かざした結果には何も反映されず「休憩がどうしても入らない」問い合わせの
+  // 原因になっていた。サーバー側にも同じフラグを立て、FeliCaタップの
+  // 判定にも使ってもらう。
+  useEffect(() => {
+    axios.post(`/stamp/${company.uuid}/felica-break-mode`, { armed: isBreakMode }).catch(() => {});
+  }, [isBreakMode, company.uuid]);
+
   // 検索を始めたら一覧を開き、消したら畳む
   useEffect(() => {
     if (nameQuery.trim() !== '') {

@@ -133,6 +133,74 @@ class PublicStampFelicaTest extends TestCase
 
     /**
      * @test
+     *
+     * 打刻専用画面の「休憩開始」トグルは、これまでブラウザ内の状態のみで
+     * FeliCa常駐アプリには一切伝わっていなかった（常駐アプリは自身の
+     * ショートカットB/Escでしか休憩開始モードを持たない）。トグルを
+     * サーバーに反映すれば、intentなしのタップでも休憩開始として
+     * 記録できることを確認する。
+     */
+    public function 打刻専用画面のトグルで休憩開始モードを有効にするとintentなしでも休憩開始になる(): void
+    {
+        // Arrange: 出勤中 + 打刻専用画面のトグルで休憩開始モードを有効化
+        app(PublicStampService::class)->clockIn($this->company->id, $this->user->id);
+        $this->postJson("/stamp/{$this->company->uuid}/felica-break-mode", ['armed' => true])->assertOk();
+
+        // Act: intentを付けずにかざす（常駐アプリ自身のショートカットは使っていない想定）
+        $response = $this->tap();
+
+        // Assert
+        $response->assertOk()->assertJson([
+            'success' => true,
+            'message' => '休憩開始を記録しました。',
+        ]);
+    }
+
+    /**
+     * @test
+     *
+     * 休憩開始モードは1回タップしたら消費される（次のタップには影響しない）。
+     */
+    public function 打刻専用画面のトグルによる休憩開始モードは1回で消費される(): void
+    {
+        // Arrange
+        app(PublicStampService::class)->clockIn($this->company->id, $this->user->id);
+        $this->postJson("/stamp/{$this->company->uuid}/felica-break-mode", ['armed' => true])->assertOk();
+        $this->tap()->assertOk();
+
+        // Act: 休憩終了してから、休憩開始モードを有効化しないままもう一度かざす
+        app(PublicStampService::class)->breakEnd($this->company->id, $this->user->id);
+        $response = $this->tap();
+
+        // Assert: 通常どおり退勤になる（休憩開始モードは残っていない）
+        $response->assertOk()->assertJson([
+            'success' => true,
+            'message' => '退勤を記録しました。',
+        ]);
+    }
+
+    /**
+     * @test
+     */
+    public function 打刻専用画面のトグルを_of_fにすると休憩開始モードが解除される(): void
+    {
+        // Arrange
+        app(PublicStampService::class)->clockIn($this->company->id, $this->user->id);
+        $this->postJson("/stamp/{$this->company->uuid}/felica-break-mode", ['armed' => true])->assertOk();
+        $this->postJson("/stamp/{$this->company->uuid}/felica-break-mode", ['armed' => false])->assertOk();
+
+        // Act: intentなしでかざす
+        $response = $this->tap();
+
+        // Assert: 休憩開始モードは解除済みなので通常どおり退勤になる
+        $response->assertOk()->assertJson([
+            'success' => true,
+            'message' => '退勤を記録しました。',
+        ]);
+    }
+
+    /**
+     * @test
      */
     public function 休憩中にカードをかざすと休憩終了が記録される(): void
     {

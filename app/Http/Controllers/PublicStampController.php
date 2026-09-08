@@ -197,6 +197,30 @@ class PublicStampController extends Controller
     }
 
     /**
+     * 打刻専用画面の休憩開始モードのON/OFFをサーバー側にも反映する
+     *
+     * ブラウザの「休憩開始」トグルはこれまでブラウザ内の状態のみで、
+     * FeliCa常駐アプリのタップには一切影響しなかった。ここで会社単位の
+     * フラグとして保存し、felica()での打刻種別判定にも使う。
+     */
+    public function setFelicaBreakMode(Request $request, string $uuid): JsonResponse
+    {
+        $validated = $request->validate([
+            'armed' => ['required', 'boolean'],
+        ]);
+
+        $company = $this->publicStampService->findCompanyByUuid($uuid);
+
+        if (! $company) {
+            return response()->json(['success' => false, 'message' => '会社が見つかりません。'], 404);
+        }
+
+        $this->publicStampService->setFelicaBreakMode($company->id, $validated['armed']);
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
      * FeliCaカードによる打刻を行う
      *
      * 常駐アプリ（FeliCa打刻）から呼ばれる。カードをかざすだけの操作のため
@@ -205,7 +229,10 @@ class PublicStampController extends Controller
      *
      * リクエスト:
      *   { "idm": "0123456789abcdef", "intent": "break-start" }
-     *   intent は休憩開始モード時のみ付与され、通常は省略される。
+     *   intent は常駐アプリ自身のショートカット（B/Esc）で休憩開始モードに
+     *   した場合のみ付与され、通常は省略される。打刻専用画面のトグルから
+     *   有効化された場合はintentが付かないため、setFelicaBreakMode()で
+     *   立てたサーバー側フラグ（consumeFelicaBreakMode()）でも判定する。
      *
      * 打刻種別は現在の勤務状態から決定する。
      *   休憩中           → 休憩終了
@@ -298,8 +325,11 @@ class PublicStampController extends Controller
                     // 休憩中は常に休憩終了として扱う（intentに関わらず）
                     if ($status['isOnBreak']) {
                         $method = 'breakEnd';
-                    } elseif (($validated['intent'] ?? null) === 'break-start') {
-                        // 休憩開始モードでのタップは常にbreakStart()に委ね、出勤して
+                    } elseif (($validated['intent'] ?? null) === 'break-start'
+                        || $this->publicStampService->consumeFelicaBreakMode($company->id)) {
+                        // 休憩開始はintent（常駐アプリ自身のショートカット）または、
+                        // 打刻専用画面のトグルから有効化されたサーバー側フラグの
+                        // どちらでも成立する。タップは常にbreakStart()に委ね、出勤して
                         // いない場合はそちらのビジネスルールでエラーにする。ここで
                         // isWorkingがfalseだからと出勤打刻にフォールバックすると、
                         // 休憩開始モードを選んだのに何も知らせずに出勤が記録されて

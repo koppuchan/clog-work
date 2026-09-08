@@ -31,6 +31,8 @@ Route::prefix('stamp')->name('public.stamp.')->group(function () {
     Route::post('/{uuid}/break-end', [PublicStampController::class, 'breakEnd'])->name('break-end');
     // FeliCa打刻アプリ（常駐アプリ）からの打刻
     Route::post('/{uuid}/felica', [PublicStampController::class, 'felica'])->name('felica');
+    // 打刻専用画面の休憩開始モード切り替え（常駐アプリ側のFeliCaタップにも反映するため）
+    Route::post('/{uuid}/felica-break-mode', [PublicStampController::class, 'setFelicaBreakMode'])->name('felica-break-mode');
 });
 
 // ルートページ - 認証済みならadmin/shiftsへリダイレクト

@@ -335,6 +335,62 @@ class PublicStampService
     }
 
     /**
+     * 休憩開始モードの有効時間（秒）
+     *
+     * 打刻専用画面（ブラウザ）のON表示が消えるまでの時間（30秒）に合わせる。
+     */
+    private const FELICA_BREAK_MODE_TTL_SECONDS = 30;
+
+    /**
+     * 打刻専用画面の休憩開始モードのON/OFFを切り替える
+     *
+     * 打刻専用画面の「休憩開始」トグルはこれまでブラウザ内の状態でしか
+     * なく、FeliCa常駐アプリへは一切伝わっていなかった。常駐アプリは
+     * 自身のショートカット（B/Esc）で休憩開始モードを管理しており、
+     * 画面のトグルを押してもカードをかざした結果には何も反映されず、
+     * 「休憩がどうしても入らない」という問い合わせの原因になっていた。
+     * サーバー側にも同じ意図のフラグ（会社単位、1回だけ有効）を持たせ、
+     * felica()での打刻種別判定にも使う。
+     *
+     * @param  int  $companyId  会社ID
+     * @param  bool  $armed  休憩開始モードを有効にするか
+     */
+    public function setFelicaBreakMode(int $companyId, bool $armed): void
+    {
+        if ($armed) {
+            Cache::put($this->felicaBreakModeCacheKey($companyId), true, self::FELICA_BREAK_MODE_TTL_SECONDS);
+
+            return;
+        }
+
+        Cache::forget($this->felicaBreakModeCacheKey($companyId));
+    }
+
+    /**
+     * 打刻専用画面から有効化された休憩開始モードを、1回分だけ消費して判定する
+     *
+     * @param  int  $companyId  会社ID
+     * @return bool 休憩開始モードが有効だった場合はtrue（消費済みにする）
+     */
+    public function consumeFelicaBreakMode(int $companyId): bool
+    {
+        $key = $this->felicaBreakModeCacheKey($companyId);
+
+        if (! Cache::has($key)) {
+            return false;
+        }
+
+        Cache::forget($key);
+
+        return true;
+    }
+
+    private function felicaBreakModeCacheKey(int $companyId): string
+    {
+        return "stamp:arm-break-start:{$companyId}";
+    }
+
+    /**
      * ユーザーの現在の勤務状態を取得
      *
      * @param  int  $companyId  会社ID

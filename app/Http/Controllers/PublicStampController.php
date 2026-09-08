@@ -295,10 +295,18 @@ class PublicStampController extends Controller
 
                     $status = $this->publicStampService->getCurrentStatus($company->id, $user->id);
 
+                    // 休憩中は常に休憩終了として扱う（intentに関わらず）
                     if ($status['isOnBreak']) {
                         $method = 'breakEnd';
+                    } elseif (($validated['intent'] ?? null) === 'break-start') {
+                        // 休憩開始モードでのタップは常にbreakStart()に委ね、出勤して
+                        // いない場合はそちらのビジネスルールでエラーにする。ここで
+                        // isWorkingがfalseだからと出勤打刻にフォールバックすると、
+                        // 休憩開始モードを選んだのに何も知らせずに出勤が記録されて
+                        // しまい、「休憩の打刻が入らない」という混乱の原因になる。
+                        $method = 'breakStart';
                     } elseif ($status['isWorking']) {
-                        $method = ($validated['intent'] ?? null) === 'break-start' ? 'breakStart' : 'clockOut';
+                        $method = 'clockOut';
                     } else {
                         $method = 'clockIn';
                     }

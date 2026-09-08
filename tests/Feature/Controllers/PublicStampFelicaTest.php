@@ -111,6 +111,28 @@ class PublicStampFelicaTest extends TestCase
 
     /**
      * @test
+     *
+     * 休憩開始モードを付けたまま出勤していない状態でカードをかざすと、
+     * 以前は intent が無視されて出勤打刻として記録されてしまい、
+     * 「休憩の打刻がどうしても入らない」（実際は毎回出勤扱いになっていた）
+     * という混乱の原因になっていた。出勤していないことを明確にエラーで
+     * 知らせる。
+     */
+    public function 出勤していない状態で休憩開始モードでかざすとエラーになる(): void
+    {
+        // Act: 出勤していない状態で休憩開始モードのままかざす
+        $response = $this->tap(['idm' => self::IDM, 'intent' => 'break-start']);
+
+        // Assert: 出勤打刻にフォールバックせず、エラーで知らせる
+        $response->assertStatus(422)->assertJson([
+            'success' => false,
+            'message' => '出勤していません。先に出勤打刻を行ってください。',
+        ]);
+        $this->assertSame(0, TimeRecord::query()->count());
+    }
+
+    /**
+     * @test
      */
     public function 休憩中にカードをかざすと休憩終了が記録される(): void
     {

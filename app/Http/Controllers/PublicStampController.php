@@ -272,14 +272,19 @@ class PublicStampController extends Controller
                     $wait = $this->publicStampService->secondsUntilStampAllowed($company->id, $user->id);
 
                     if ($wait !== null) {
-                        $this->publicStampService->logFelicaAttempt(
-                            $company->id,
-                            $user->id,
-                            $idm,
-                            'cooldown',
-                            '重複打刻防止のため受け付けませんでした',
-                            sprintf('%d秒後にもう一度カードをかざしてください', $wait)
-                        );
+                        // クールダウン中の重複リクエストは、最初の1回だけ警告を記録する。
+                        // 毎回記録すると、読み取り機が同一タップで複数回発火した分だけ
+                        // 警告トーストが積み重なって表示されてしまう。
+                        if ($this->publicStampService->shouldNotifyCooldown($user->id, $wait)) {
+                            $this->publicStampService->logFelicaAttempt(
+                                $company->id,
+                                $user->id,
+                                $idm,
+                                'cooldown',
+                                '重複打刻防止のため受け付けませんでした',
+                                sprintf('%d秒後にもう一度カードをかざしてください', $wait)
+                            );
+                        }
 
                         return response()->json([
                             'success' => false,

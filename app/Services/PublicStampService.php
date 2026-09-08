@@ -142,6 +142,37 @@ class PublicStampService
     }
 
     /**
+     * 重複打刻防止のトースト表示を、クールダウン中は1回だけに抑える
+     *
+     * NFCリーダー（特にRC-S300）は1回の物理タップでも card イベントを
+     * 数秒間にわたり複数回発火することがある常駐アプリ側の既知の癖で、
+     * その重複イベントはサーバーへ複数回POSTされてくる。データとしては
+     * withFelicaStampLock()により二重登録されないが、届いたリクエストの
+     * 数だけ「重複打刻防止」の試行ログが作られ、打刻専用画面にその数だけ
+     * 警告トーストが積み重なって表示されてしまっていた。
+     *
+     * 同一ユーザーについて、クールダウンが明けるまでの間は最初の1回だけ
+     * 試行ログを記録し、以降の重複リクエストは打刻自体は同様に拒否しつつ
+     * ログには残さない（画面に警告を増やさない）ようにする。
+     *
+     * @param  int  $userId  ユーザーID
+     * @param  int  $waitSeconds  クールダウンの残り秒数
+     * @return bool 今回のログを記録してよい場合はtrue（既に通知済みならfalse）
+     */
+    public function shouldNotifyCooldown(int $userId, int $waitSeconds): bool
+    {
+        $key = "felica-cooldown-notified:{$userId}";
+
+        if (Cache::has($key)) {
+            return false;
+        }
+
+        Cache::put($key, true, $waitSeconds);
+
+        return true;
+    }
+
+    /**
      * ユーザーが指定した会社に所属しているか確認
      *
      * @param  int  $userId  ユーザーID

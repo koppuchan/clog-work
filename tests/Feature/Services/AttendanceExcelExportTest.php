@@ -158,6 +158,41 @@ class AttendanceExcelExportTest extends TestCase
         $sheet = $this->generatedSheet();
 
         $this->assertSame('残業申請', (string) $sheet->getCell('R10')->getValue());
-        $this->assertSame('2H', (string) $sheet->getCell('S10')->getValue());
+        $this->assertSame('2.0', (string) $sheet->getCell('S10')->getValue());
+    }
+
+    /**
+     * @test
+     *
+     * 端数のある残業時間は「2H」のように整数へ丸めず、1時間45分なら
+     * 「1.75」のように小数の時間数で出力する。
+     */
+    public function 端数のある残業申請の時間数は小数で出力される(): void
+    {
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-24',
+            'work_start' => '2026-06-24 09:00:00',
+            'work_end' => '2026-06-24 18:00:00',
+            'net_work_minutes' => 480,
+            'overtime_minutes' => 0,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        Request::query()->create([
+            'company_id' => $this->company->id,
+            'requested_by' => $this->user->id,
+            'type' => 7, // 残業申請
+            'target_date' => '2026-06-24',
+            'start_time' => '18:00',
+            'end_time' => '19:45',
+            'reason' => '月次締め作業のため',
+            'status' => RequestStatusEnum::APPROVED,
+        ]);
+
+        $sheet = $this->generatedSheet();
+
+        $this->assertSame('1.75', (string) $sheet->getCell('S10')->getValue());
     }
 }

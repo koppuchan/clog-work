@@ -210,6 +210,6 @@ class DailyWorkSummaryCsvExportColumnsTest extends TestCase
             fn ($line) => str_contains($line, '6/24(水)')
         ))[0]);
 
-        $this->assertSame('残業申請 2H', $row[19]); // 備考/申請
+        $this->assertSame('残業申請 2.0', $row[19]); // 備考/申請
     }
 }

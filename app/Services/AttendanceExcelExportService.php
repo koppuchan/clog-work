@@ -333,7 +333,7 @@ class AttendanceExcelExportService
     /**
      * 備考/申請列（O列: 種別ラベル, P列: 数値）を生成
      *
-     * - 時間系申請（遅刻・早退・残業）: {N}H 形式
+     * - 時間系申請（遅刻・早退・残業）: 小数の時間数（例: "1.75"）
      * - 日数系申請（有給・特別休暇・欠勤等）: leave_minutes ÷ 1日所定分 で小数表示
      * - 1日に複数申請がある場合は改行区切りで表示
      *
@@ -378,11 +378,18 @@ class AttendanceExcelExportService
      * 時間系申請（遅刻・早退・残業）の表示値を生成する
      *
      * @param  int  $minutes  時間（分）
-     * @return string 「{N}H」形式、0以下の場合は空文字
+     * @return string 小数の時間数（例: 1時間45分 → "1.75"）、0以下の場合は空文字
      */
     private function formatHourlyRequestValue(int $minutes): string
     {
-        return $minutes > 0 ? ((int) round($minutes / 60)).'H' : '';
+        if ($minutes <= 0) {
+            return '';
+        }
+
+        $hours = round($minutes / 60, 2);
+        $formatted = rtrim(rtrim(number_format($hours, 2, '.', ''), '0'), '.');
+
+        return str_contains($formatted, '.') ? $formatted : $formatted.'.0';
     }
 
     /**

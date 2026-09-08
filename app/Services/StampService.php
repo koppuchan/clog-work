@@ -98,8 +98,8 @@ class StampService
                 throw new BusinessException('休憩中は退勤できません。先に休憩終了打刻を行ってください。');
             }
 
-            // ビジネスルールチェック: 本日既に退勤打刻済みでないか
-            if ($this->hasClockOutToday($companyId, $userId, $recordTime)) {
+            // ビジネスルールチェック: 今の出勤セッションが既に退勤打刻済みでないか
+            if ($this->hasClockOutToday($companyId, $userId, $recordTime, $session['sessionStart'])) {
                 throw new BusinessException('本日は既に退勤打刻済みです。打刻時間を変更する場合は申請してください。');
             }
 
@@ -239,6 +239,13 @@ class StampService
      * （日跨ぎ退勤忘れを後追い追加されたケースに対応するため）。
      * hasClockInToday/hasClockOutToday は「当日の」UI制限用なので当日基準のまま。
      *
+     * ただしhasClockOutTodayは「当日の日付に退勤打刻があるか」だけで判定すると、
+     * 日付越え退勤の翌日に新しく出勤打刻をした場合、前夜の退勤
+     * （WORK_END_NEXT_DAY）が同じ日付に記録されているために、現在出勤中
+     * （isWorking=true）にもかかわらず「退勤済み」と表示され、退勤ボタンが
+     * 押せなくなってしまう。そのため、現在出勤中でないときに限り
+     * 「当日の退勤打刻」ありとする。
+     *
      * @param  int  $companyId  会社ID
      * @param  int  $userId  ユーザーID
      * @return array{isWorking: bool, isOnBreak: bool, clockInTime: string|null, breakCount: int, hasClockInToday: bool, hasClockOutToday: bool}
@@ -259,7 +266,7 @@ class StampService
         $hasClockInToday = $todayRecords->contains(
             fn (TimeRecord $record) => $record->record_type === TimeRecordTypeEnum::WORK_START
         );
-        $hasClockOutToday = $todayRecords->contains(
+        $hasClockOutToday = ! $isWorking && $todayRecords->contains(
             fn (TimeRecord $record) => $record->record_type === TimeRecordTypeEnum::WORK_END
                 || $record->record_type === TimeRecordTypeEnum::WORK_END_NEXT_DAY
         );
@@ -437,13 +444,20 @@ class StampService
     }
 
     /**
-     * 本日既に退勤打刻済みかどうかを判定
+     * 今の出勤セッションが既に退勤打刻済みかどうかを判定
+     *
+     * 単純に「当日の日付に退勤打刻があるか」で判定すると、日付越え退勤の
+     * 翌日に新しく出勤打刻をした場合、前夜の退勤（WORK_END_NEXT_DAY）が
+     * 同じ日付に記録されているために「既に退勤済み」と誤判定し、
+     * 新しいセッションの退勤打刻を拒否してしまう。そのため、今のセッション
+     * の出勤（$sessionStart）以降に記録された退勤のみを対象にする。
      *
      * @param  int  $companyId  会社ID
      * @param  int  $userId  ユーザーID
      * @param  CarbonImmutable  $recordTime  打刻時刻
+     * @param  TimeRecord  $sessionStart  今の出勤セッションの出勤打刻
      */
-    private function hasClockOutToday(int $companyId, int $userId, CarbonImmutable $recordTime): bool
+    private function hasClockOutToday(int $companyId, int $userId, CarbonImmutable $recordTime, TimeRecord $sessionStart): bool
     {
         $todayRecords = $this->timeRecordRepository->findByUserIdAndDate(
             $companyId,
@@ -452,8 +466,9 @@ class StampService
         );
 
         return $todayRecords->contains(
-            fn (TimeRecord $record) => $record->record_type === TimeRecordTypeEnum::WORK_END
-                || $record->record_type === TimeRecordTypeEnum::WORK_END_NEXT_DAY
+            fn (TimeRecord $record) => ($record->record_type === TimeRecordTypeEnum::WORK_END
+                || $record->record_type === TimeRecordTypeEnum::WORK_END_NEXT_DAY)
+                && $record->record_time->greaterThanOrEqualTo($sessionStart->record_time)
         );
     }
 }

@@ -325,4 +325,49 @@ class StampServiceTest extends TestCase
 
         CarbonImmutable::setTestNow();
     }
+
+    /**
+     * @test
+     *
+     * 日付越え退勤の翌日に新しく出勤した場合、前夜の退勤
+     * （WORK_END_NEXT_DAY）が同じ日付に記録されているために、今日の
+     * セッションが「既に退勤済み」と誤判定され、退勤打刻ができなくなる
+     * 不具合の回帰テスト。
+     */
+    public function 日付越え退勤の翌日に出勤すると通常どおり退勤できる(): void
+    {
+        // Arrange: 1/15 22:00 出勤 → 1/16 06:00 退勤（日付越え）
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => '2025-01-15 22:00:00',
+            'rounded_time' => '2025-01-15 22:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END_NEXT_DAY,
+            'record_time' => '2025-01-16 06:00:00',
+            'rounded_time' => '2025-01-16 06:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        // Act: 同じ1/16に新しく出勤
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2025-01-16 09:00:00'));
+        $this->service->clockIn($this->company->id, $this->user->id);
+
+        // Assert: 出勤中で、退勤打刻済み扱いになっていない（ボタンが押せる状態）
+        $status = $this->service->getCurrentStatus($this->company->id, $this->user->id);
+        $this->assertTrue($status['isWorking']);
+        $this->assertFalse($status['hasClockOutToday'], '新しいセッションなので退勤済み扱いにならない');
+
+        // Act & Assert: 通常どおり退勤できる
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2025-01-16 18:00:00'));
+        $record = $this->service->clockOut($this->company->id, $this->user->id);
+        $this->assertEquals(TimeRecordTypeEnum::WORK_END, $record->record_type);
+
+        CarbonImmutable::setTestNow();
+    }
 }

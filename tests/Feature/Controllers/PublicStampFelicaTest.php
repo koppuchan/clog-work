@@ -181,6 +181,37 @@ class PublicStampFelicaTest extends TestCase
 
     /**
      * @test
+     *
+     * 休憩開始モードを有効にした状態で出勤していないままかざすとエラーに
+     * なる（別テストで担保）が、そのエラーで休憩開始モードのフラグを
+     * 消費してしまうと、読み取り機の多重発火で直後に届く2回目のタップが
+     * フラグを見つけられず、意図せず出勤打刻にフォールバックしてしまう
+     * （「エラーが出るが出勤打刻されてしまう」というクライアント報告の
+     * 原因）。フラグは休憩開始が実際に成立したときだけ消費されるべき。
+     */
+    public function 休憩開始モードで出勤せずにかざしてエラーになっても2回目が出勤打刻にならない(): void
+    {
+        // Arrange: 出勤していない状態で休憩開始モードを有効化
+        $this->postJson("/stamp/{$this->company->uuid}/felica-break-mode", ['armed' => true])->assertOk();
+
+        // Act: 読み取り機の多重発火を模して、出勤していないまま2回連続でかざす
+        $first = $this->tap();
+        $second = $this->tap();
+
+        // Assert: どちらもエラーのままで、出勤打刻にフォールバックしない
+        $first->assertStatus(422)->assertJson([
+            'success' => false,
+            'message' => '出勤していません。先に出勤打刻を行ってください。',
+        ]);
+        $second->assertStatus(422)->assertJson([
+            'success' => false,
+            'message' => '出勤していません。先に出勤打刻を行ってください。',
+        ]);
+        $this->assertSame(0, TimeRecord::query()->count());
+    }
+
+    /**
+     * @test
      */
     public function 打刻専用画面のトグルを_of_fにすると休憩開始モードが解除される(): void
     {

@@ -321,12 +321,12 @@ class PublicStampController extends Controller
                     }
 
                     $status = $this->publicStampService->getCurrentStatus($company->id, $user->id);
+                    $kioskBreakArmed = $this->publicStampService->isFelicaBreakModeArmed($company->id);
 
                     // 休憩中は常に休憩終了として扱う（intentに関わらず）
                     if ($status['isOnBreak']) {
                         $method = 'breakEnd';
-                    } elseif (($validated['intent'] ?? null) === 'break-start'
-                        || $this->publicStampService->consumeFelicaBreakMode($company->id)) {
+                    } elseif (($validated['intent'] ?? null) === 'break-start' || $kioskBreakArmed) {
                         // 休憩開始はintent（常駐アプリ自身のショートカット）または、
                         // 打刻専用画面のトグルから有効化されたサーバー側フラグの
                         // どちらでも成立する。タップは常にbreakStart()に委ね、出勤して
@@ -356,6 +356,15 @@ class PublicStampController extends Controller
                             'success' => false,
                             'message' => $e->getMessage(),
                         ], 422);
+                    }
+
+                    // 休憩開始モードのフラグは、実際に休憩開始が成立したときだけ
+                    // 消費する。判定した時点で先に消費してしまうと、読み取り機の
+                    // 多重発火で1回目が出勤していないエラーになった際、2回目が
+                    // フラグを見つけられず出勤打刻にフォールバックしてしまう
+                    // （エラーが出たのに出勤が記録される不具合の原因だった）。
+                    if ($method === 'breakStart' && $kioskBreakArmed) {
+                        $this->publicStampService->consumeFelicaBreakMode($company->id);
                     }
 
                     $this->publicStampService->logFelicaAttempt(

@@ -367,22 +367,29 @@ class PublicStampService
     }
 
     /**
-     * 打刻専用画面から有効化された休憩開始モードを、1回分だけ消費して判定する
+     * 打刻専用画面から休憩開始モードが有効化されているか確認する（消費しない）
+     *
+     * 打刻の可否が確定する前に消費してしまうと、読み取り機がタップ1回で
+     * 複数回リクエストを発火した際、1回目が出勤していないエラーで失敗した
+     * 直後に2回目がこのフラグを見つけられず、意図せず出勤打刻にフォール
+     * バックしてしまう（エラーが出たのに出勤が記録される不具合）。
+     * 実際に休憩開始が成立したときだけconsumeFelicaBreakMode()で消費する。
      *
      * @param  int  $companyId  会社ID
-     * @return bool 休憩開始モードが有効だった場合はtrue（消費済みにする）
      */
-    public function consumeFelicaBreakMode(int $companyId): bool
+    public function isFelicaBreakModeArmed(int $companyId): bool
     {
-        $key = $this->felicaBreakModeCacheKey($companyId);
+        return Cache::has($this->felicaBreakModeCacheKey($companyId));
+    }
 
-        if (! Cache::has($key)) {
-            return false;
-        }
-
-        Cache::forget($key);
-
-        return true;
+    /**
+     * 打刻専用画面から有効化された休憩開始モードを消費する（1回限り）
+     *
+     * @param  int  $companyId  会社ID
+     */
+    public function consumeFelicaBreakMode(int $companyId): void
+    {
+        Cache::forget($this->felicaBreakModeCacheKey($companyId));
     }
 
     private function felicaBreakModeCacheKey(int $companyId): string

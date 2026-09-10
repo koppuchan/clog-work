@@ -29,8 +29,13 @@ class PublicStampService
      * 操作フローを想定した猶予時間。bcryptのHash::checkは意図的に重い
      * （数百ms）ため、直前に確認済みであれば打刻API側では再検証せず
      * このトークンで済ませ、体感速度を改善する。
+     *
+     * 30秒だと、パスワード確認後に出勤・退勤・休憩のどれを押すか迷った
+     * だけでトークンが失効し、打刻のたびにbcrypt再検証が走って体感速度が
+     * 不安定になる（「早いときと時間がかかるときがある」という報告の
+     * 原因）。60秒に伸ばして再検証が走る頻度を下げる。
      */
-    private const VERIFY_TOKEN_TTL_SECONDS = 30;
+    private const VERIFY_TOKEN_TTL_SECONDS = 60;
 
     /**
      * FeliCa打刻の排他ロックの保持時間（秒）

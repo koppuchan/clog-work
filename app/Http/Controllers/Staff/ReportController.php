@@ -14,6 +14,7 @@ use App\Services\DailyWorkSummaryService;
 use App\Services\LaborAlertService;
 use App\Services\RequestService;
 use App\Services\ShiftService;
+use App\Services\TimeRecordCorrectionRequestService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -31,7 +32,8 @@ class ReportController extends Controller
         private readonly ShiftService $shiftService,
         private readonly CompanySettingService $companySettingService,
         private readonly LaborAlertService $laborAlertService,
-        private readonly AttendanceIssueService $attendanceIssueService
+        private readonly AttendanceIssueService $attendanceIssueService,
+        private readonly TimeRecordCorrectionRequestService $correctionRequestService
     ) {}
 
     /**
@@ -98,6 +100,19 @@ class ReportController extends Controller
             $endDate->format('Y-m-d')
         );
 
+        // ユーザーの打刻修正申請（打刻間違い）を取得。管理者の申請管理画面と
+        // 同様に通常申請とマージして「申請中」等のステータスを表示する。
+        // 以前はここで取得しておらず、スタッフ自身の画面には打刻修正申請の
+        // 状態が一切表示されなかった（「申請中」表示が出ない、休憩の修正
+        // 申請が承認待ちのまま反映されず気づけない、という問い合わせの原因）。
+        $correctionRequests = $this->correctionRequestService
+            ->getCorrectionRequestsByUserId($companyId, $userId)
+            ->filter(function ($request) use ($startDate, $endDate) {
+                $targetDate = $request->target_date->format('Y-m-d');
+
+                return $targetDate >= $startDate->format('Y-m-d') && $targetDate <= $endDate->format('Y-m-d');
+            });
+
         // 勤務実績データを整形
         $workSummariesData = $workSummaries->map(function ($summary) {
             return [
@@ -146,6 +161,32 @@ class ReportController extends Controller
                 ],
                 'created_at' => $req->created_at->format('Y-m-d H:i'),
             ])->values());
+
+        // 打刻修正申請を通常申請と同じ形に整形し、日付ごとにマージする
+        $correctionRequestsData = $correctionRequests->groupBy(fn ($req) => $req->target_date->format('Y-m-d'))
+            ->map(fn ($group) => $group->map(fn ($req) => [
+                'id' => $req->id,
+                'type' => [
+                    'value' => 0,
+                    'code' => 'clock-error',
+                    'label' => '打刻間違い',
+                ],
+                'start_time' => null,
+                'end_time' => null,
+                'reason' => $req->reason,
+                'status' => [
+                    'value' => $req->status->value,
+                    'label' => $req->status->label(),
+                    'css_class' => $req->status->cssClass(),
+                ],
+                'created_at' => $req->created_at->format('Y-m-d H:i'),
+            ])->values());
+
+        foreach ($correctionRequestsData as $date => $items) {
+            $requestsData[$date] = $requestsData->has($date)
+                ? $requestsData[$date]->concat($items)->values()
+                : $items;
+        }
 
         // 本日の打刻レコードから出勤時刻を取得（表示期間内の場合のみ）
         $todayWorkStart = null;

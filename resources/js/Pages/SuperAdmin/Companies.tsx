@@ -29,10 +29,14 @@ export default function SuperAdminCompanies({ companies }: Props) {
   const [processing, setProcessing] = useState(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
-  // 打刻URLは端末設定と従業員への共有の両方で使う
+  // FeliCa打刻アプリの会社UUID設定欄に貼り付けるため、表示どおりUUID単体を
+  // コピーする。打刻URLの共有は管理者画面の設定カードで別途対応している。
+  // 以前はここでpublic_stamp_url（http〜から始まるURL全体）をコピーして
+  // いたため、見た目はUUIDなのに実際はURL全体がコピーされてしまい、
+  // FeliCa打刻アプリのUUID欄にそのまま貼り付けると設定が壊れていた。
   const handleCopy = async (company: CompanySummary) => {
     try {
-      await navigator.clipboard.writeText(company.public_stamp_url);
+      await navigator.clipboard.writeText(company.uuid);
       setCopiedId(company.id);
       setTimeout(() => setCopiedId(null), 2000);
     } catch {
@@ -107,13 +111,13 @@ export default function SuperAdminCompanies({ companies }: Props) {
                   <td className="px-5 py-3 text-gray-700">{company.owner_name ?? '—'}</td>
                   <td className="px-5 py-3 text-gray-700">{company.owner_email ?? '—'}</td>
                   <td className="px-5 py-3 text-right text-gray-700">{company.user_count}</td>
-                  {/* FeliCa端末の設定と打刻URLに使うため、控えられるようにする */}
+                  {/* FeliCa打刻アプリの会社UUID設定欄に貼り付けるため、控えられるようにする */}
                   <td className="px-5 py-3">
                     <button
                       type="button"
                       onClick={() => handleCopy(company)}
                       className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline text-left"
-                      title="クリックで打刻URLをコピーします"
+                      title="クリックでUUIDをコピーします"
                     >
                       {copiedId === company.id ? 'コピーしました' : company.uuid}
                     </button>

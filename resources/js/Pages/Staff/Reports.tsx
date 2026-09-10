@@ -205,23 +205,27 @@ function StaffReportsPage() {
                   {req.type.label}
                 </button>
                 {req.status.value === 1 && (
-                  <span title="申請中" className="cursor-default">
+                  <span title="申請中" className="inline-flex items-center gap-0.5 text-xs text-yellow-600 cursor-default">
                     <Clock className="h-4 w-4 text-yellow-500" />
+                    申請中
                   </span>
                 )}
                 {req.status.value === 2 && (
-                  <span title="承認済み" className="cursor-default">
+                  <span title="承認済み" className="inline-flex items-center gap-0.5 text-xs text-green-600 cursor-default">
                     <CheckCircle className="h-4 w-4 text-green-500" />
+                    承認済み
                   </span>
                 )}
                 {req.status.value === 3 && (
-                  <span title="却下" className="cursor-default">
+                  <span title="却下" className="inline-flex items-center gap-0.5 text-xs text-red-600 cursor-default">
                     <XCircle className="h-4 w-4 text-red-500" />
+                    却下
                   </span>
                 )}
                 {req.status.value === 4 && (
-                  <span title="取消" className="cursor-default">
+                  <span title="取消" className="inline-flex items-center gap-0.5 text-xs text-gray-500 cursor-default">
                     <XCircle className="h-4 w-4 text-gray-400" />
+                    取消
                   </span>
                 )}
               </React.Fragment>

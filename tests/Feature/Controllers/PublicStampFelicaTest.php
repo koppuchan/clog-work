@@ -159,23 +159,43 @@ class PublicStampFelicaTest extends TestCase
     /**
      * @test
      *
-     * 休憩開始モードは1回タップしたら消費される（次のタップには影響しない）。
+     * 常駐アプリ自身の休憩開始モードは「複数ユーザーが連続して休憩入り
+     * できるよう」1回使っても自動解除しない設計になっている
+     * （2026-06-24仕様変更）。打刻専用画面のトグルによるモードも同じ挙動に
+     * 揃え、有効時間内は複数の従業員が続けてかざしても全員が休憩開始に
+     * なることを確認する。
+     *
+     * 以前は1回のタップで消費してしまい、2人目以降が休憩開始にならず
+     * 「本日は出勤と退勤の打刻ができております」等の別の結果になってしまう
+     * 不具合があった（クライアント報告: テスト五郎さんの打刻）。
      */
-    public function 打刻専用画面のトグルによる休憩開始モードは1回で消費される(): void
+    public function 打刻専用画面のトグルによる休憩開始モードは複数人のタップに使える(): void
     {
-        // Arrange
+        // Arrange: 出勤中のユーザーを2人用意
+        $secondUser = User::factory()->create([
+            'name' => '打刻 次郎',
+            'employee_code' => '000102',
+            'felica_idm' => '1111222233334444',
+        ]);
+        $secondUser->companies()->attach($this->company->id, ['is_primary' => true]);
+
         app(PublicStampService::class)->clockIn($this->company->id, $this->user->id);
+        app(PublicStampService::class)->clockIn($this->company->id, $secondUser->id);
+
         $this->postJson("/stamp/{$this->company->uuid}/felica-break-mode", ['armed' => true])->assertOk();
-        $this->tap()->assertOk();
 
-        // Act: 休憩終了してから、休憩開始モードを有効化しないままもう一度かざす
-        app(PublicStampService::class)->breakEnd($this->company->id, $this->user->id);
-        $response = $this->tap();
+        // Act: 2人続けてかざす
+        $first = $this->tap(['idm' => self::IDM]);
+        $second = $this->tap(['idm' => '1111222233334444']);
 
-        // Assert: 通常どおり退勤になる（休憩開始モードは残っていない）
-        $response->assertOk()->assertJson([
+        // Assert: どちらも休憩開始として記録される
+        $first->assertOk()->assertJson([
             'success' => true,
-            'message' => '退勤を記録しました。',
+            'message' => '休憩開始を記録しました。',
+        ]);
+        $second->assertOk()->assertJson([
+            'success' => true,
+            'message' => '休憩開始を記録しました。',
         ]);
     }
 

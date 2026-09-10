@@ -349,8 +349,15 @@ class PublicStampService
      * 自身のショートカット（B/Esc）で休憩開始モードを管理しており、
      * 画面のトグルを押してもカードをかざした結果には何も反映されず、
      * 「休憩がどうしても入らない」という問い合わせの原因になっていた。
-     * サーバー側にも同じ意図のフラグ（会社単位、1回だけ有効）を持たせ、
+     * サーバー側にも同じ意図のフラグ（会社単位）を持たせ、
      * felica()での打刻種別判定にも使う。
+     *
+     * 常駐アプリ自身の休憩開始モードは「複数ユーザーが連続して休憩入り
+     * できるよう」タップのたびに自動解除しない設計（2026-06-24仕様変更）
+     * になっている。このフラグも同じ挙動に揃え、有効時間内は何度でも
+     * 休憩開始として使えるようにする（打刻のたびに消費すると、複数の
+     * 従業員を続けてかざしたとき2人目以降が休憩開始にならない）。
+     * OFFにするのは、トグルを再度押す・タイムアウト・Escのみ。
      *
      * @param  int  $companyId  会社ID
      * @param  bool  $armed  休憩開始モードを有効にするか
@@ -367,29 +374,13 @@ class PublicStampService
     }
 
     /**
-     * 打刻専用画面から休憩開始モードが有効化されているか確認する（消費しない）
-     *
-     * 打刻の可否が確定する前に消費してしまうと、読み取り機がタップ1回で
-     * 複数回リクエストを発火した際、1回目が出勤していないエラーで失敗した
-     * 直後に2回目がこのフラグを見つけられず、意図せず出勤打刻にフォール
-     * バックしてしまう（エラーが出たのに出勤が記録される不具合）。
-     * 実際に休憩開始が成立したときだけconsumeFelicaBreakMode()で消費する。
+     * 打刻専用画面から休憩開始モードが有効化されているか確認する
      *
      * @param  int  $companyId  会社ID
      */
     public function isFelicaBreakModeArmed(int $companyId): bool
     {
         return Cache::has($this->felicaBreakModeCacheKey($companyId));
-    }
-
-    /**
-     * 打刻専用画面から有効化された休憩開始モードを消費する（1回限り）
-     *
-     * @param  int  $companyId  会社ID
-     */
-    public function consumeFelicaBreakMode(int $companyId): void
-    {
-        Cache::forget($this->felicaBreakModeCacheKey($companyId));
     }
 
     private function felicaBreakModeCacheKey(int $companyId): string

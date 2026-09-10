@@ -321,19 +321,22 @@ class PublicStampController extends Controller
                     }
 
                     $status = $this->publicStampService->getCurrentStatus($company->id, $user->id);
-                    $kioskBreakArmed = $this->publicStampService->isFelicaBreakModeArmed($company->id);
 
                     // 休憩中は常に休憩終了として扱う（intentに関わらず）
                     if ($status['isOnBreak']) {
                         $method = 'breakEnd';
-                    } elseif (($validated['intent'] ?? null) === 'break-start' || $kioskBreakArmed) {
+                    } elseif (($validated['intent'] ?? null) === 'break-start'
+                        || $this->publicStampService->isFelicaBreakModeArmed($company->id)) {
                         // 休憩開始はintent（常駐アプリ自身のショートカット）または、
                         // 打刻専用画面のトグルから有効化されたサーバー側フラグの
-                        // どちらでも成立する。タップは常にbreakStart()に委ね、出勤して
-                        // いない場合はそちらのビジネスルールでエラーにする。ここで
-                        // isWorkingがfalseだからと出勤打刻にフォールバックすると、
-                        // 休憩開始モードを選んだのに何も知らせずに出勤が記録されて
-                        // しまい、「休憩の打刻が入らない」という混乱の原因になる。
+                        // どちらでも成立する。フラグは有効時間内なら消費せず、
+                        // 複数の従業員を続けてかざしても全員が休憩開始として扱われる
+                        // （常駐アプリ自身の休憩開始モードと同じ挙動）。タップは常に
+                        // breakStart()に委ね、出勤していない場合はそちらのビジネス
+                        // ルールでエラーにする。ここでisWorkingがfalseだからと出勤
+                        // 打刻にフォールバックすると、休憩開始モードを選んだのに
+                        // 何も知らせずに出勤が記録されてしまい、「休憩の打刻が
+                        // 入らない」という混乱の原因になる。
                         $method = 'breakStart';
                     } elseif ($status['isWorking']) {
                         $method = 'clockOut';
@@ -356,15 +359,6 @@ class PublicStampController extends Controller
                             'success' => false,
                             'message' => $e->getMessage(),
                         ], 422);
-                    }
-
-                    // 休憩開始モードのフラグは、実際に休憩開始が成立したときだけ
-                    // 消費する。判定した時点で先に消費してしまうと、読み取り機の
-                    // 多重発火で1回目が出勤していないエラーになった際、2回目が
-                    // フラグを見つけられず出勤打刻にフォールバックしてしまう
-                    // （エラーが出たのに出勤が記録される不具合の原因だった）。
-                    if ($method === 'breakStart' && $kioskBreakArmed) {
-                        $this->publicStampService->consumeFelicaBreakMode($company->id);
                     }
 
                     $this->publicStampService->logFelicaAttempt(

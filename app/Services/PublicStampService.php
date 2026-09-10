@@ -51,6 +51,15 @@ class PublicStampService
     private const FELICA_STAMP_LOCK_WAIT_SECONDS = 5;
 
     /**
+     * 同一エラーの重複通知を抑える時間（秒）
+     *
+     * 重複打刻防止（クールダウン）と同じく、読み取り機の多重発火で
+     * 「本日は出勤と退勤の打刻ができております」等のエラーが複数回
+     * 届いた場合に、警告トーストが積み重なって表示されるのを防ぐ。
+     */
+    private const FELICA_ERROR_NOTIFIED_TTL_SECONDS = 10;
+
+    /**
      * リクエスト内で取得済みのユーザー
      *
      * 打刻処理は所属確認・退職確認・パスワード照合で同じユーザーを引くため、
@@ -178,6 +187,32 @@ class PublicStampService
     }
 
     /**
+     * 打刻失敗（BusinessException）の重複通知を、短時間は1回だけに抑える
+     *
+     * 読み取り機が1回のタップで複数回イベントを発火すると、「本日は出勤と
+     * 退勤の打刻ができております」等の同じエラーが複数回サーバーに届く。
+     * クールダウン拒否と同様、届いたリクエストの数だけ試行ログが作られ、
+     * 警告トーストが積み重なって表示されてしまっていた
+     * （クライアント報告: 出退勤済みの表示が3つ表示される）。
+     *
+     * @param  int  $userId  ユーザーID
+     * @param  string  $message  エラーメッセージ（メッセージ単位で抑制する）
+     * @return bool 今回のログを記録してよい場合はtrue（既に通知済みならfalse）
+     */
+    public function shouldNotifyError(int $userId, string $message): bool
+    {
+        $key = $this->errorNotifiedCacheKey($userId, $message);
+
+        if (Cache::has($key)) {
+            return false;
+        }
+
+        Cache::put($key, true, self::FELICA_ERROR_NOTIFIED_TTL_SECONDS);
+
+        return true;
+    }
+
+    /**
      * 打刻成功の直後に、クールダウン期間中の重複防止警告を先回りで抑制する
      *
      * NFCリーダーが1回のタップで複数回イベントを発火すると、成功の直後に
@@ -202,6 +237,11 @@ class PublicStampService
     private function cooldownNotifiedCacheKey(int $userId): string
     {
         return "felica-cooldown-notified:{$userId}";
+    }
+
+    private function errorNotifiedCacheKey(int $userId, string $message): string
+    {
+        return "felica-error-notified:{$userId}:".md5($message);
     }
 
     /**

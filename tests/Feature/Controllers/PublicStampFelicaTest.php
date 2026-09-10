@@ -401,6 +401,33 @@ class PublicStampFelicaTest extends TestCase
 
     /**
      * @test
+     *
+     * 読み取り機がタップ1回で複数回イベントを発火すると、既に出退勤済みの
+     * ユーザーに対する「本日は出勤と退勤の打刻ができております」等の
+     * エラーがリクエストの数だけログされ、打刻専用画面に警告トーストが
+     * 積み重なって表示されてしまっていた
+     * （クライアント報告: 出退勤済みの表示が3つ表示される）。
+     */
+    public function 出退勤済みのエラーが読み取り機の多重発火で3回届いても警告ログは1件だけ記録される(): void
+    {
+        // Arrange: 本日すでに出勤・退勤済み
+        app(PublicStampService::class)->clockIn($this->company->id, $this->user->id);
+        app(PublicStampService::class)->clockOut($this->company->id, $this->user->id);
+
+        // Act: 読み取り機の多重発火を模して、続けて3回かざす
+        $this->tap()->assertStatus(422);
+        $this->tap()->assertStatus(422);
+        $this->tap()->assertStatus(422);
+
+        // Assert: エラーの警告ログは1件だけ記録される
+        $this->assertSame(
+            1,
+            \App\Models\FelicaStampAttempt::query()->where('status', 'error')->count()
+        );
+    }
+
+    /**
+     * @test
      */
     public function クールダウンを過ぎればもう一度打刻できる(): void
     {

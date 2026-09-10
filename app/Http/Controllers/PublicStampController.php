@@ -347,13 +347,17 @@ class PublicStampController extends Controller
                     try {
                         $record = $this->publicStampService->$method($company->id, $user->id);
                     } catch (BusinessException $e) {
-                        $this->publicStampService->logFelicaAttempt(
-                            $company->id,
-                            $user->id,
-                            $idm,
-                            'error',
-                            $e->getMessage()
-                        );
+                        // 読み取り機の多重発火で同じエラーが短時間に何度も届いても、
+                        // 最初の1回だけ試行ログを記録する（警告トーストの積み重ね防止）
+                        if ($this->publicStampService->shouldNotifyError($user->id, $e->getMessage())) {
+                            $this->publicStampService->logFelicaAttempt(
+                                $company->id,
+                                $user->id,
+                                $idm,
+                                'error',
+                                $e->getMessage()
+                            );
+                        }
 
                         return response()->json([
                             'success' => false,

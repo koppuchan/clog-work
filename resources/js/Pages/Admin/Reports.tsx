@@ -117,6 +117,7 @@ function ReportsPage() {
   const { dialogProps, openDialog } = useConfirmDialog();
 
   const handleRevert = useCallback((requestId: number) => {
+    const requestType = selectedRequest?.type.code === 'clock-error' ? 'correction' : 'normal';
     setSelectedRequest(null);
     openDialog({
       title: '申請の修正',
@@ -126,10 +127,10 @@ function ReportsPage() {
       confirmLabel: '申請中に戻す',
       confirmButtonClass: 'bg-yellow-500 hover:bg-yellow-600',
       onConfirm: () => {
-        router.post(`/admin/applications/${requestId}/revert`, { request_type: 'normal' }, { preserveScroll: true });
+        router.post(`/admin/applications/${requestId}/revert`, { request_type: requestType }, { preserveScroll: true });
       },
     });
-  }, [openDialog]);
+  }, [openDialog, selectedRequest]);
 
   const handleDeleteSummary = useCallback(() => {
     openDialog({
@@ -147,6 +148,7 @@ function ReportsPage() {
   }, [openDialog, deleteEdit]);
 
   const handleCancel = useCallback((requestId: number) => {
+    const requestType = selectedRequest?.type.code === 'clock-error' ? 'correction' : 'normal';
     setSelectedRequest(null);
     openDialog({
       title: '申請の取消',
@@ -157,10 +159,10 @@ function ReportsPage() {
       confirmLabel: '取り消す',
       confirmButtonClass: 'bg-gray-500 hover:bg-gray-600',
       onConfirm: () => {
-        router.post(`/admin/applications/${requestId}/cancel`, { request_type: 'normal' }, { preserveScroll: true });
+        router.post(`/admin/applications/${requestId}/cancel`, { request_type: requestType }, { preserveScroll: true });
       },
     });
-  }, [openDialog]);
+  }, [openDialog, selectedRequest]);
 
   const renderLastColumn = useCallback(
     (date: Date, summary: WorkSummary | undefined) => {

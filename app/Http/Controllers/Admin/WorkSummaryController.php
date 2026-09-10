@@ -15,6 +15,7 @@ use App\Services\DailyWorkSummaryService;
 use App\Services\PermissionService;
 use App\Services\RequestService;
 use App\Services\ShiftService;
+use App\Services\TimeRecordCorrectionRequestService;
 use App\Services\TimeRecordService;
 use App\Services\UserService;
 use Carbon\CarbonImmutable;
@@ -39,7 +40,8 @@ class WorkSummaryController extends Controller
         private readonly PermissionService $permissionService,
         private readonly ShiftService $shiftService,
         private readonly CompanySettingService $companySettingService,
-        private readonly AttendanceIssueService $attendanceIssueService
+        private readonly AttendanceIssueService $attendanceIssueService,
+        private readonly TimeRecordCorrectionRequestService $correctionRequestService
     ) {}
 
     /**
@@ -99,6 +101,7 @@ class WorkSummaryController extends Controller
         $workSummaries = collect();
         $timeRecords = collect();
         $approvedRequests = collect();
+        $approvedCorrectionRequests = collect();
         $shiftsMap = collect();
         $correctionsData = [];
         $monthlySummary = null;
@@ -128,6 +131,18 @@ class WorkSummaryController extends Controller
                 $endDate->format('Y-m-d'),
                 RequestStatusEnum::APPROVED->value
             );
+
+            // 承認済みの打刻修正申請（打刻間違い）を取得。休憩の新規追加など
+            // 既存打刻の「修正」にならないケースは打刻修正履歴（オレンジバッジ）
+            // に載らないため、これがないと管理者画面では承認しても何も
+            // 反映されたように見えない（問い合わせの原因）。
+            $approvedCorrectionRequests = $this->correctionRequestService
+                ->getCorrectionRequestsByUserId($companyId, $effectiveUserId, RequestStatusEnum::APPROVED->value)
+                ->filter(function ($request) use ($startDate, $endDate) {
+                    $targetDate = $request->target_date->format('Y-m-d');
+
+                    return $targetDate >= $startDate->format('Y-m-d') && $targetDate <= $endDate->format('Y-m-d');
+                });
 
             // 月間サマリーを計算
             $monthlySummary = $this->dailyWorkSummaryService->calculateMonthlySummary(
@@ -255,6 +270,27 @@ class WorkSummaryController extends Controller
                 ] : null,
             ];
         });
+
+        // 承認済みの打刻修正申請を通常申請と同じ形に整形し、一覧にマージする
+        $approvedCorrectionRequestsData = $approvedCorrectionRequests->map(fn ($request) => [
+            'id' => $request->id,
+            'target_date' => $request->target_date->format('Y-m-d'),
+            'type' => [
+                'value' => 0,
+                'code' => 'clock-error',
+                'label' => '打刻間違い',
+            ],
+            'start_time' => null,
+            'end_time' => null,
+            'reason' => $request->reason,
+            'decided_at' => $request->approved_at?->format('Y-m-d H:i'),
+            'approver' => $request->approver ? [
+                'id' => $request->approver->id,
+                'name' => $request->approver->name,
+            ] : null,
+        ]);
+
+        $approvedRequestsData = $approvedRequestsData->concat($approvedCorrectionRequestsData)->values();
 
         return Inertia::render('Admin/Reports', [
             'users' => $usersData,

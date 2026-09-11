@@ -23,7 +23,7 @@ interface FelicaEvent {
 }
 
 const FELICA_EVENTS_POLL_INTERVAL_MS = 3000;
-const FELICA_TOAST_DURATION_MS = { success: 8000, warning: 12000 } as const;
+const FELICA_TOAST_DURATION_MS = { success: 7000, warning: 12000 } as const;
 // 休憩開始モードをつけたまま名前を選ばずに放置された場合、自動で通常モードへ戻すまでの時間
 const BREAK_MODE_TIMEOUT_MS = 30000;
 

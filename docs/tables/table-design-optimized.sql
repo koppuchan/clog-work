@@ -520,7 +520,7 @@ CREATE TABLE role_permissions (
 
 -- 一般ユーザー (role_id=3)
 INSERT INTO role_permissions (role_id, resource_id, default_scope_id, is_fixed, created_at, updated_at) VALUES
-(3, 1, 2, FALSE, NOW(), NOW()), -- シフト閲覧: デフォルト部署、変更可能
+(3, 1, 1, FALSE, NOW(), NOW()), -- シフト閲覧: デフォルト本人のみ、変更可能（No.51: 元は部署がデフォルトだったが本人のみに変更）
 (3, 2, 1, TRUE, NOW(), NOW());  -- 勤務実績: 本人のみ固定
 
 -- 責任者 (role_id=2)

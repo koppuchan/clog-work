@@ -254,11 +254,20 @@ class ShiftPatternService
             $calcData['endTime'] = $calcData['endTime'] ?? (string) $existingPattern->end_time;
             $calcData['breakStart'] = $calcData['breakStart'] ?? ($existingPattern->break_start ? (string) $existingPattern->break_start : null);
             $calcData['breakEnd'] = $calcData['breakEnd'] ?? ($existingPattern->break_end ? (string) $existingPattern->break_end : null);
+        }
+
+        // 始業・終業や休憩の時刻から break_minutes/work_minutes を算出する。
+        // 既存パターンの値へフォールバックするのは、算出後もなお未確定
+        // （分数のみ指定のパターンで時間帯を持たない等）の場合のみに限る。
+        // 以前は始業/終業や休憩の時刻を先に既存値へフォールバックさせて
+        // いたため、時刻を変更して更新しても break_minutes/work_minutes が
+        // 古い値のまま再計算されず、一覧の「(休憩 45分)」等の表示が
+        // 変更後も変わらなかった（No.50報告）。
+        $this->autoCalculateMinutes($calcData, $breakMinutes, $workMinutes);
+        if ($existingPattern) {
             $breakMinutes = $breakMinutes ?? $existingPattern->break_minutes;
             $workMinutes = $workMinutes ?? $existingPattern->work_minutes;
         }
-
-        $this->autoCalculateMinutes($calcData, $breakMinutes, $workMinutes);
         $updateData['break_minutes'] = $breakMinutes;
         $updateData['work_minutes'] = $workMinutes;
 

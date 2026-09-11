@@ -7,6 +7,7 @@ namespace App\Services;
 use App\Enums\ErrorCodeEnum;
 use App\Exceptions\BusinessException;
 use App\Exceptions\NotFoundException;
+use App\Mail\WelcomeUserMail;
 use App\Models\Company;
 use App\Models\User;
 use App\Repositories\Contracts\CompanyRepositoryInterface;
@@ -33,7 +34,8 @@ class SuperAdminService
 
     public function __construct(
         private readonly CompanyRepositoryInterface $companyRepository,
-        private readonly UserRepositoryInterface $userRepository
+        private readonly UserRepositoryInterface $userRepository,
+        private readonly MailDispatcher $mailDispatcher
     ) {}
 
     /**
@@ -122,7 +124,7 @@ class SuperAdminService
         string $ownerEmail,
         string $ownerPassword,
     ): array {
-        return DB::transaction(function () use ($companyName, $ownerName, $ownerEmail, $ownerPassword): array {
+        $result = DB::transaction(function () use ($companyName, $ownerName, $ownerEmail, $ownerPassword): array {
             $company = $this->companyRepository->create([
                 'name' => $companyName,
                 'company_code' => $this->generateCompanyCode(),
@@ -149,6 +151,29 @@ class SuperAdminService
 
             return ['company' => $company, 'owner' => $owner->fresh()];
         }, 3);
+
+        // ウェルカムメールはコミット後に送信する。トランザクション内で送信すると、
+        // デッドロック等でリトライされた際に同じメールが複数回届いてしまう
+        // （このtransaction()は最大3回リトライする設定のため）。
+        //
+        // これまでこの一斉登録フロー（スーパー管理者による事業所作成）だけ
+        // 通常のユーザー作成（UserService::createUser）と異なりウェルカム
+        // メールが送られておらず、管理者に新しい事業所のログイン情報が
+        // 届かなかった（No.48: 通知メールが届かなかったという報告）。
+        $this->mailDispatcher->send(
+            $result['owner']->email,
+            new WelcomeUserMail(
+                $result['owner'],
+                $ownerPassword,
+                config('attendance.staff_login_url'),
+                $result['company']->company_code,
+                '',
+                config('attendance.admin_login_url'),
+            ),
+            ['user_id' => $result['owner']->id],
+        );
+
+        return $result;
     }
 
     /**

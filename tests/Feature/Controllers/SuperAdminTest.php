@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Controllers;
 
+use App\Mail\WelcomeUserMail;
 use App\Models\Company;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 /**
@@ -123,6 +125,40 @@ class SuperAdminTest extends TestCase
         $this->assertTrue((bool) $owner->is_owner);
         $this->assertSame('009999', $owner->employee_code);
         $this->assertTrue($owner->companies->contains($company->id));
+    }
+
+    /**
+     * @test
+     *
+     * これまでスーパー管理者による事業所作成だけ、通常のユーザー作成
+     * （UserService::createUser）と異なりウェルカムメールが送られて
+     * おらず、新しい管理者にログイン情報（会社コード・個人コード・
+     * 初期パスワード）が届かなかった
+     * （No.48: 新規事業所登録時の通知メールが届かなかったという報告）。
+     */
+    public function 事業所を作成すると管理者にウェルカムメールが送信される(): void
+    {
+        // Arrange
+        Mail::fake();
+
+        // Act
+        $this->actingAs($this->superAdmin, 'admin')
+            ->post('/super-admin/companies', [
+                'name' => 'メール確認 株式会社',
+                'owner_name' => 'メール 太郎',
+                'owner_email' => 'mail-check-owner@example.com',
+                'owner_password' => 'password1234',
+            ]);
+
+        // Assert
+        $company = Company::where('name', 'メール確認 株式会社')->first();
+        $this->assertNotNull($company);
+
+        Mail::assertSent(WelcomeUserMail::class, function ($mail) use ($company) {
+            return $mail->hasTo('mail-check-owner@example.com')
+                && $mail->plainPassword === 'password1234'
+                && $mail->companyCode === $company->company_code;
+        });
     }
 
     /**

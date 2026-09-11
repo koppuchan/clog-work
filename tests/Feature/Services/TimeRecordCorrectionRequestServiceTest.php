@@ -866,6 +866,131 @@ class TimeRecordCorrectionRequestServiceTest extends TestCase
 
     /**
      * @test
+     *
+     * 日跨ぎ夜勤で、既に翌日日付のWORK_END_NEXT_DAY・休憩終了が記録済みの
+     * 状態で退勤・休憩を修正申請すると、time_record_idが既存レコードに
+     * 正しく紐づく（＝「新規追加」ではなく「修正」として扱われる）べき。
+     *
+     * findByUserIdAndDate()は対象日のみを検索するため、翌日日付で
+     * 記録されているWORK_END_NEXT_DAY・休憩終了レコードが見つからず
+     * time_record_idがnullのまま新規追加扱いになると、承認しても
+     * 古い（未修正の）翌日レコードが残ったままになり、勤務実績の表示が
+     * 変わらないように見えてしまう（クライアント報告: 打刻修正を承認
+     * しても反映されなかった）。
+     */
+    public function create_clock_error_request_links_to_existing_next_day_records_for_cross_day_shift(): void
+    {
+        // Arrange: 日跨ぎ夜勤の打刻が既に記録済み（休憩終了と退勤が翌日日付）
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => '2025-01-15 09:39:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::BREAK_START,
+            'record_time' => '2025-01-15 20:53:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+        $existingBreakEnd = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::BREAK_END,
+            'record_time' => '2025-01-16 09:05:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+        $existingWorkEnd = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END_NEXT_DAY,
+            'record_time' => '2025-01-16 09:06:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        // Act: 退勤・休憩開始・休憩終了を修正申請
+        $result = $this->service->createClockErrorRequest($this->company->id, $this->user->id, [
+            'target_date' => '2025-01-15',
+            'reason' => '打刻間違い',
+            'start_time' => null,
+            'end_time' => '18:00',
+            'break_start_time' => '15:00',
+            'break_end_time' => '16:11',
+        ]);
+
+        // Assert: 既存の翌日レコードにtime_record_idが正しく紐づいている
+        $workEndDetail = $result->details->where('record_type', TimeRecordTypeEnum::WORK_END)->first()
+            ?? $result->details->where('record_type', TimeRecordTypeEnum::WORK_END_NEXT_DAY)->first();
+        $this->assertNotNull($workEndDetail);
+        $this->assertSame($existingWorkEnd->id, $workEndDetail->time_record_id, '翌日日付の既存WORK_END_NEXT_DAYに紐づくべき');
+
+        $breakEndDetail = $result->details->where('record_type', TimeRecordTypeEnum::BREAK_END)->first();
+        $this->assertNotNull($breakEndDetail);
+        $this->assertSame($existingBreakEnd->id, $breakEndDetail->time_record_id, '翌日日付の既存休憩終了に紐づくべき');
+    }
+
+    /**
+     * @test
+     *
+     * 上記の紐づけが承認時に正しく機能し、翌日日付の既存レコードが
+     * 新規追加ではなく更新されることのエンドツーエンド確認。
+     */
+    public function approve_correction_request_updates_existing_next_day_records_for_cross_day_shift(): void
+    {
+        // Arrange
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => '2025-01-15 09:39:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+        $existingBreakEnd = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::BREAK_END,
+            'record_time' => '2025-01-16 09:05:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+        $existingWorkEnd = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END_NEXT_DAY,
+            'record_time' => '2025-01-16 09:06:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $request = $this->service->createClockErrorRequest($this->company->id, $this->user->id, [
+            'target_date' => '2025-01-15',
+            'reason' => '打刻間違い',
+            'start_time' => null,
+            'end_time' => '18:00',
+            'break_start_time' => null,
+            'break_end_time' => '16:11',
+        ]);
+
+        // Act
+        $this->service->approveCorrectionRequest($request->id, $this->approver->id);
+
+        // Assert: 既存レコードが更新され、新しいレコードは追加されていない
+        $this->assertSame(
+            3,
+            TimeRecord::query()->where('user_id', $this->user->id)->count(),
+            '新規追加ではなく既存3件（出勤・休憩終了・退勤）が更新されるだけのはず'
+        );
+
+        $existingWorkEnd->refresh();
+        $this->assertEquals('2025-01-15 18:00:00', $existingWorkEnd->record_time->format('Y-m-d H:i:s'));
+        $this->assertEquals(TimeRecordTypeEnum::WORK_END, $existingWorkEnd->record_type);
+
+        $existingBreakEnd->refresh();
+        $this->assertEquals('2025-01-15 16:11:00', $existingBreakEnd->record_time->format('Y-m-d H:i:s'));
+    }
+
+    /**
+     * @test
      */
     public function create_clock_error_request_creates_request_with_break_end_detail(): void
     {

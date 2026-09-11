@@ -278,10 +278,16 @@ class TimeRecordCorrectionRequestService
         )->toArray();
 
         if ($updateRecords !== []) {
+            // record_typeも更新対象に含める。退勤の日跨ぎ判定(WORK_END/
+            // WORK_END_NEXT_DAY)は修正後の時刻から自動的に決まるため、
+            // 例えば日付越えだった退勤を同日中の時刻に修正した場合、
+            // 種別もWORK_ENDへ戻す必要がある。ここに含めないと時刻だけ
+            // 更新されて種別が古いまま残り、日跨ぎ判定に依存する表示
+            // （「(翌)」表示等）や集計が実際の時刻と食い違ってしまう。
             $this->timeRecordRepository->upsertMany(
                 $updateRecords,
                 ['id'],
-                ['record_time', 'rounded_time', 'record_source', 'note', 'updated_at']
+                ['record_type', 'record_time', 'rounded_time', 'record_source', 'note', 'updated_at']
             );
         }
 
@@ -488,6 +494,35 @@ class TimeRecordCorrectionRequestService
 
             // 既存の打刻データを検索
             $existingRecords = $this->timeRecordRepository->findByUserIdAndDate($companyId, $userId, $targetDate);
+
+            // 日跨ぎ夜勤の場合、退勤（WORK_END_NEXT_DAY）とその前の休憩は
+            // 翌日の日付でレコードされているため、対象日だけの検索では
+            // 見つからない。見つからないと time_record_id が null のまま
+            // 「新規追加」として扱われ、承認時に既存レコードを更新せず
+            // 別の新しいレコードを作成してしまう。結果、古い（未修正の）
+            // 翌日レコードが残ったままになり、承認しても勤務実績の表示が
+            // 変わらないように見えてしまう（クライアント報告: 打刻修正を
+            // 承認しても反映されなかった）。DailyWorkSummaryBatchService
+            // と同じ考え方で、翌日の日付越え退勤・休憩レコードをマージする。
+            $nextDateString = CarbonImmutable::parse($targetDate)->addDay()->format('Y-m-d');
+            $nextDayRecords = $this->timeRecordRepository->findByUserIdAndDate($companyId, $userId, $nextDateString);
+            $nextDayEndRecords = $nextDayRecords->filter(
+                fn ($r) => $r->record_type === TimeRecordTypeEnum::WORK_END_NEXT_DAY
+            );
+            if ($nextDayEndRecords->isNotEmpty()) {
+                $existingRecords = $existingRecords->merge($nextDayEndRecords);
+
+                // WORK_END_NEXT_DAY 以前の翌日休憩レコードのみマージ
+                $crossDayEndTime = $nextDayEndRecords->first()->record_time;
+                $nextDayBreakRecords = $nextDayRecords->filter(
+                    fn ($r) => ($r->record_type === TimeRecordTypeEnum::BREAK_START
+                            || $r->record_type === TimeRecordTypeEnum::BREAK_END)
+                        && $r->record_time->lte($crossDayEndTime)
+                );
+                if ($nextDayBreakRecords->isNotEmpty()) {
+                    $existingRecords = $existingRecords->merge($nextDayBreakRecords);
+                }
+            }
 
             // 打刻修正申請ヘッダーを作成
             $correctionRequest = $this->correctionRequestRepository->create([

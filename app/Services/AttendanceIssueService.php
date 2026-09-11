@@ -195,9 +195,15 @@ class AttendanceIssueService
     }
 
     /**
-     * 日付ごとに休憩打刻漏れ（休憩開始のみで終了がない）を検出する
+     * 休憩打刻漏れ（休憩開始のみで終了がない）を検出する
      *
      * 当日は休憩中である可能性が高いため対象外とする。
+     *
+     * 日付ごとにグループ化して開始・終了の数を比較すると、日跨ぎ勤務で
+     * 休憩終了が日付をまたいだ場合（例: 20:53休憩開始→翌09:05休憩終了）に、
+     * 開始側の日付では終了が0件に見えてしまい誤って休憩漏れと判定して
+     * しまう。detectMissingClockOut()と同様、打刻を時系列順に走査して
+     * 開始→終了を1組ずつ対応させることで、日付をまたぐ休憩も正しく判定する。
      *
      * @param  Collection<int, \App\Models\TimeRecord>  $timeRecords  打刻データ
      * @param  string|null  $today  当日（Y-m-d）。省略時は現在日
@@ -208,24 +214,49 @@ class AttendanceIssueService
         $today ??= CarbonImmutable::now()->format('Y-m-d');
         $issues = [];
 
-        $byDate = $timeRecords
+        $breakRecords = $timeRecords
             ->filter(fn ($record) => $record->record_type->isBreak())
-            ->groupBy(fn ($record) => $record->record_time->format('Y-m-d'));
+            ->sortBy(fn ($record) => $record->record_time->getTimestamp())
+            ->values();
 
-        foreach ($byDate as $date => $records) {
-            if ($date >= $today) {
+        $openBreakStart = null;
+
+        foreach ($breakRecords as $record) {
+            if ($record->record_type->isBreakStart()) {
+                if ($openBreakStart !== null) {
+                    $this->flagMissingBreakEnd($issues, $openBreakStart, $today);
+                }
+                $openBreakStart = $record;
+
                 continue;
             }
 
-            $starts = $records->filter(fn ($record) => $record->record_type->isBreakStart())->count();
-            $ends = $records->filter(fn ($record) => $record->record_type->isBreakEnd())->count();
+            // 休憩終了打刻。直前に開いていた休憩開始に対応するとみなして閉じる
+            $openBreakStart = null;
+        }
 
-            if ($starts > $ends) {
-                $issues[$date] = [self::MISSING_BREAK_END];
-            }
+        if ($openBreakStart !== null) {
+            $this->flagMissingBreakEnd($issues, $openBreakStart, $today);
         }
 
         return $issues;
+    }
+
+    /**
+     * 休憩開始の日付が当日より前であれば、休憩打刻漏れとして記録する
+     *
+     * @param  array<string, array<int, string>>  $issues
+     * @param  \App\Models\TimeRecord  $breakStart
+     */
+    private function flagMissingBreakEnd(array &$issues, $breakStart, string $today): void
+    {
+        $date = $breakStart->record_time->format('Y-m-d');
+
+        if ($date >= $today) {
+            return;
+        }
+
+        $issues[$date] = [self::MISSING_BREAK_END];
     }
 
     /**

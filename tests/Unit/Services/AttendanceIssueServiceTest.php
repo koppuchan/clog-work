@@ -202,6 +202,44 @@ class AttendanceIssueServiceTest extends TestCase
 
     /**
      * @test
+     *
+     * 休憩終了が日付をまたいだ場合、日付ごとの単純な件数比較では
+     * 休憩開始側の日付が終了0件に見えて誤検出してしまう
+     * （クライアント報告: 休憩打刻しているのに休憩漏れと表示される）。
+     */
+    public function 休憩終了が日付をまたいでいれば検出しない(): void
+    {
+        $issues = $this->service->detectMissingBreakEnd(collect([
+            $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-08 09:39:00'),
+            $this->timeRecord(TimeRecordTypeEnum::BREAK_START, '2026-09-08 20:53:00'),
+            $this->timeRecord(TimeRecordTypeEnum::BREAK_END, '2026-09-09 09:05:00'),
+            $this->timeRecord(TimeRecordTypeEnum::WORK_END, '2026-09-09 09:06:00'),
+        ]), self::TODAY);
+
+        $this->assertSame([], $issues);
+    }
+
+    /**
+     * @test
+     *
+     * 日付をまたぐ休憩でも、本当に終了打刻がなければ引き続き検出する。
+     */
+    public function 休憩終了が日付をまたいでいなくても本当に終了がなければ検出する(): void
+    {
+        $issues = $this->service->detectMissingBreakEnd(collect([
+            $this->timeRecord(TimeRecordTypeEnum::BREAK_START, '2026-09-08 20:53:00'),
+            $this->timeRecord(TimeRecordTypeEnum::BREAK_START, '2026-09-09 08:00:00'),
+            $this->timeRecord(TimeRecordTypeEnum::BREAK_END, '2026-09-09 08:30:00'),
+        ]), self::TODAY);
+
+        $this->assertSame(
+            ['2026-09-08' => [AttendanceIssueService::MISSING_BREAK_END]],
+            $issues,
+        );
+    }
+
+    /**
+     * @test
      */
     public function 退勤忘れと休憩打刻漏れをまとめて検出する(): void
     {

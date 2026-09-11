@@ -169,6 +169,45 @@ class UserControllerTest extends TestCase
 
     /**
      * @test
+     *
+     * FeliCaカードIDの重複はLaravelの既定バリデーションメッセージ
+     * （英語の"The felica idm has already been taken."）がそのまま
+     * 表示されており、日本語化されていなかった（No.54報告）。
+     */
+    public function update_with_duplicate_felica_idm_shows_japanese_error(): void
+    {
+        // Arrange
+        $existing = User::factory()
+            ->forCompany($this->company->id)
+            ->employee()
+            ->create(['name' => '既存スタッフ', 'felica_idm' => 'aaaabbbbccccdddd']);
+        $target = User::factory()
+            ->forCompany($this->company->id)
+            ->employee()
+            ->create(['name' => '対象スタッフ', 'email' => 'target@example.com']);
+
+        // Act
+        $response = $this->actingAs($this->admin, 'admin')
+            ->from('/admin/users/'.$target->id.'/edit')
+            ->put('/admin/users/'.$target->id, [
+                'name' => $target->name,
+                'email' => 'target@example.com',
+                'role_id' => 3,
+                'department_id' => null,
+                'felica_idm' => 'aaaabbbbccccdddd',
+            ]);
+
+        // Assert
+        $response->assertSessionHasErrors(['felica_idm']);
+        $errors = session('errors');
+        $this->assertSame(
+            'FeliCaカードのIDが他のスタッフに登録済みです。',
+            $errors->first('felica_idm')
+        );
+    }
+
+    /**
+     * @test
      */
     public function update_prevents_changing_owner_role(): void
     {

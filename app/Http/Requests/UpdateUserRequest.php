@@ -229,6 +229,8 @@ class UpdateUserRequest extends FormRequest
             'employee_code.regex' => '個人コードは6桁の数字で入力してください。',
             'email.email' => '有効なメールアドレスを入力してください。',
             'email.unique' => 'このメールアドレスは既に使用されています。',
+            'felica_idm.regex' => 'FeliCaカードのIDは16桁の英数字で入力してください。',
+            'felica_idm.unique' => 'FeliCaカードのIDが他のスタッフに登録済みです。',
             'password.min' => 'パスワードは8文字以上で入力してください。',
             'stamp_password.min' => '打刻パスワードは4文字以上で入力してください。',
             'role_id.integer' => 'ロールIDは整数で指定してください。',

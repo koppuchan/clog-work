@@ -29,6 +29,9 @@ class FelicaCardRegistrationService
     /** 保持する時間（分） */
     private const RETENTION_MINUTES = 10;
 
+    /** 登録モード中とみなす時間（秒）。管理者画面を閉じ忘れても自動的に解除される */
+    private const REGISTRATION_MODE_TTL_SECONDS = 300;
+
     public function __construct(
         private readonly UserRepositoryInterface $userRepository
     ) {}
@@ -85,6 +88,42 @@ class FelicaCardRegistrationService
     public function forget(int $companyId): void
     {
         Cache::forget($this->cacheKey($companyId));
+    }
+
+    /**
+     * スタッフ編集画面でのカード登録待ち状態をON/OFFする
+     *
+     * 常駐アプリ側にも同名の「カード登録モード」があり、ON時はIDmを
+     * 打刻APIへ送らず画面表示のみに留める設計になっているが、そちらの
+     * 切り替え漏れ・タイミングのずれがあっても、管理者がスタッフ編集
+     * 画面でカードを待ち受けている間は打刻専用画面に「登録されていない
+     * カードです」という警告を出さないようにする（No.52報告）。
+     *
+     * @param  int  $companyId  会社ID
+     * @param  bool  $armed  ONにするか
+     */
+    public function setRegistrationMode(int $companyId, bool $armed): void
+    {
+        if ($armed) {
+            Cache::put($this->registrationModeCacheKey($companyId), true, self::REGISTRATION_MODE_TTL_SECONDS);
+
+            return;
+        }
+
+        Cache::forget($this->registrationModeCacheKey($companyId));
+    }
+
+    /**
+     * カード登録待ち状態かどうか
+     */
+    public function isRegistrationModeArmed(int $companyId): bool
+    {
+        return Cache::has($this->registrationModeCacheKey($companyId));
+    }
+
+    private function registrationModeCacheKey(int $companyId): string
+    {
+        return "felica:registration-mode:{$companyId}";
     }
 
     /**

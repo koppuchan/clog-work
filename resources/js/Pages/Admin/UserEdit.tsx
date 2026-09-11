@@ -1,4 +1,5 @@
 import React from 'react';
+import axios from 'axios';
 import AdminLayout from '@/Layouts/AdminLayout';
 import { useForm, router } from '@inertiajs/react';
 import { ArrowLeft } from 'lucide-react';
@@ -60,6 +61,18 @@ export default function EditUserPage({
 }: Props) {
   const userId = id;
   const [localErrors, setLocalErrors] = React.useState<Record<string, string>>({});
+
+  // この画面を開いている間はFeliCaカードの登録待ちとみなし、打刻専用画面で
+  // 未登録カードをかざしても警告を出さないようにする（No.52対応）。
+  // 画面を離れたら明示的に解除し、閉じ忘れた場合もサーバー側のTTLで
+  // 自動的に解除される。
+  React.useEffect(() => {
+    axios.post('/admin/users/felica-registration-mode', { armed: true }).catch(() => {});
+
+    return () => {
+      axios.post('/admin/users/felica-registration-mode', { armed: false }).catch(() => {});
+    };
+  }, []);
 
   /**
    * スタッフのrolesから最初のrole_idを取得

@@ -70,4 +70,46 @@ class FelicaUnknownCardTest extends TestCase
 
         $this->assertSame([], app(FelicaCardRegistrationService::class)->recentUnregistered($this->company->id));
     }
+
+    /**
+     * @test
+     *
+     * 管理者がスタッフ編集画面でカード登録を待ち受けている間は、
+     * 未登録カードをかざしても打刻専用画面向けの警告ログを残さない
+     * （No.52: カード登録モード中でも未登録カードの表示が出るという報告）。
+     * ただし登録候補としては引き続き記録され、選べる状態は維持する。
+     */
+    public function 登録待ち状態の間は未登録カードの警告ログを残さない(): void
+    {
+        app(FelicaCardRegistrationService::class)->setRegistrationMode($this->company->id, true);
+
+        $response = $this->tap('0123456789abcdef');
+
+        $response->assertStatus(404);
+        $this->assertSame(
+            0,
+            \App\Models\FelicaStampAttempt::query()->where('status', 'unregistered')->count()
+        );
+
+        $cards = app(FelicaCardRegistrationService::class)->recentUnregistered($this->company->id);
+        $this->assertCount(1, $cards);
+        $this->assertSame('0123456789abcdef', $cards[0]['idm']);
+    }
+
+    /**
+     * @test
+     */
+    public function 登録待ち状態を解除すれば通常どおり警告ログが残る(): void
+    {
+        $service = app(FelicaCardRegistrationService::class);
+        $service->setRegistrationMode($this->company->id, true);
+        $service->setRegistrationMode($this->company->id, false);
+
+        $this->tap('0123456789abcdef')->assertStatus(404);
+
+        $this->assertSame(
+            1,
+            \App\Models\FelicaStampAttempt::query()->where('status', 'unregistered')->count()
+        );
+    }
 }

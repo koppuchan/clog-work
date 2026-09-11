@@ -193,4 +193,29 @@ class UserControllerTest extends TestCase
         $response->assertRedirect('/admin/users/'.$owner->id.'/edit');
         $response->assertSessionHas('error');
     }
+
+    // ========================================
+    // setFelicaRegistrationMode アクション テスト
+    // ========================================
+
+    /**
+     * @test
+     */
+    public function set_felica_registration_mode_arms_and_disarms(): void
+    {
+        $service = app(\App\Services\FelicaCardRegistrationService::class);
+        $this->assertFalse($service->isRegistrationModeArmed($this->company->id));
+
+        $this->actingAs($this->admin, 'admin')
+            ->postJson('/admin/users/felica-registration-mode', ['armed' => true])
+            ->assertOk();
+
+        $this->assertTrue($service->isRegistrationModeArmed($this->company->id));
+
+        $this->actingAs($this->admin, 'admin')
+            ->postJson('/admin/users/felica-registration-mode', ['armed' => false])
+            ->assertOk();
+
+        $this->assertFalse($service->isRegistrationModeArmed($this->company->id));
+    }
 }

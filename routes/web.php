@@ -76,6 +76,7 @@ Route::middleware(['auth:admin', 'verified', 'admin_or_manager'])->prefix('admin
     Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
     Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
     Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword'])->name('users.reset-password');
+    Route::post('/users/felica-registration-mode', [UserController::class, 'setFelicaRegistrationMode'])->name('users.felica-registration-mode');
 
     // 申請管理
     Route::get('/applications', [RequestController::class, 'index'])->name('applications');

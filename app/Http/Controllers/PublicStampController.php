@@ -260,13 +260,17 @@ class PublicStampController extends Controller
             // IDmはカードに印字されていないため、登録画面から選べるよう覚えておく
             $this->felicaCardRegistrationService->remember($company->id, $idm);
 
-            $this->publicStampService->logFelicaAttempt(
-                $company->id,
-                null,
-                $idm,
-                'unregistered',
-                '登録されていないカードです。管理者にカードの登録を依頼してください。'
-            );
+            // 管理者がスタッフ編集画面でカード登録を待ち受けている間は、
+            // 意図的に未登録カードをかざしている最中なので警告を出さない
+            if (! $this->felicaCardRegistrationService->isRegistrationModeArmed($company->id)) {
+                $this->publicStampService->logFelicaAttempt(
+                    $company->id,
+                    null,
+                    $idm,
+                    'unregistered',
+                    '登録されていないカードです。管理者にカードの登録を依頼してください。'
+                );
+            }
 
             return response()->json([
                 'success' => false,

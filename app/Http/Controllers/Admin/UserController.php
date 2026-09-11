@@ -15,7 +15,9 @@ use App\Services\PermissionService;
 use App\Services\RoleService;
 use App\Services\ShiftPatternService;
 use App\Services\UserService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -597,5 +599,25 @@ class UserController extends Controller
                 ->route('admin.users')
                 ->with('error', 'パスワードの初期化に失敗しました: '.$e->getMessage());
         }
+    }
+
+    /**
+     * スタッフ編集画面でのFeliCaカード登録待ち状態をON/OFFする
+     *
+     * ONの間は、打刻専用画面で未登録カードをかざしても
+     * 「登録されていないカードです」という警告を出さない（No.52対応）。
+     */
+    public function setFelicaRegistrationMode(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'armed' => ['required', 'boolean'],
+        ]);
+
+        $this->felicaCardRegistrationService->setRegistrationMode(
+            auth()->user()->company_id,
+            $validated['armed']
+        );
+
+        return response()->json(['success' => true]);
     }
 }

@@ -15,7 +15,7 @@ interface UserData {
   name: string;
   name_kana?: string;
   employee_code?: string;
-  email: string;
+  email: string | null;
   department: string;
   role: 'admin' | 'manager' | 'employee';
   is_retired?: boolean;
@@ -80,7 +80,7 @@ export default function UsersPage({ users, departments, canManageUsers, canReset
       user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (user.name_kana && user.name_kana.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (user.employee_code && user.employee_code.includes(searchQuery)) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (user.email && user.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
       user.department.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesRetirementStatus =
@@ -386,7 +386,7 @@ export default function UsersPage({ users, departments, canManageUsers, canReset
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center text-sm text-gray-900">
                       <Mail className="h-4 w-4 mr-2 text-gray-400" />
-                      {user.email}
+                      {user.email ?? '—'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

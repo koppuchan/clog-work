@@ -333,7 +333,9 @@ class DailyWorkSummaryBatchService
 
         // 早退時間の計算
         $earlyLeaveMinutes = $this->calculateEarlyLeaveMinutes(
+            $workStartTime,
             $workEndTime,
+            $scheduledStartTime,
             $scheduledEndTime
         );
 
@@ -751,25 +753,42 @@ class DailyWorkSummaryBatchService
     /**
      * 早退時間を計算
      *
-     * 日跨ぎ勤務の場合 $workEnd は WORK_END_NEXT_DAY の翌日日付を持っているため、
-     * copy()->setTimeFromTimeString() で生成される $scheduledEndCarbon も同じ翌日基準になる。
-     * したがって addDay 補正は不要。
+     * 予定終了時刻の基準日は退勤打刻の日付ではなく、出勤打刻の日付にする。
+     * シフト自体が日跨ぎ（終業予定 < 始業予定）の場合のみ、そこから
+     * 翌日に補正する。
      *
+     * 退勤打刻（$workEnd）の日付を基準にしてしまうと、通常の日勤シフト
+     * （例: 09:00-18:00）で退勤打刻し忘れ等により退勤が翌日日付
+     * （WORK_END_NEXT_DAY）で記録された場合に、予定終了時刻(18:00)まで
+     * 翌日基準になってしまい、実際は大幅に働きすぎている（例: 13時間
+     * 労働）だけなのに「翌日18:00より大幅に前＝大幅な早退」という
+     * 意味不明な値（例: 20時間早退）を算出してしまっていた
+     * （クライアント報告: 労働13時間・シフト8時間なのに遅早20Hになる）。
+     *
+     * @param  \DateTimeInterface|null  $workStart  実際の勤務開始時刻
      * @param  \DateTimeInterface|null  $workEnd  実際の勤務終了時刻
+     * @param  string|null  $scheduledStartTime  予定開始時刻（HH:MM形式）
      * @param  string|null  $scheduledEndTime  予定終了時刻（HH:MM形式）
      * @return int 早退時間（分）
      */
     private function calculateEarlyLeaveMinutes(
+        ?\DateTimeInterface $workStart,
         ?\DateTimeInterface $workEnd,
+        ?string $scheduledStartTime,
         ?string $scheduledEndTime
     ): int {
-        if (! $workEnd || ! $scheduledEndTime) {
+        if (! $workStart || ! $workEnd || ! $scheduledStartTime || ! $scheduledEndTime) {
             return 0;
         }
 
         $workEndCarbon = CarbonImmutable::parse($workEnd);
-        $scheduledEndCarbon = $workEndCarbon->copy()
+        $scheduledEndCarbon = CarbonImmutable::parse($workStart)
             ->setTimeFromTimeString($scheduledEndTime);
+
+        // シフト自体が日跨ぎ（終業予定が始業予定より前）の場合のみ翌日扱い
+        if ($scheduledEndTime < $scheduledStartTime) {
+            $scheduledEndCarbon = $scheduledEndCarbon->addDay();
+        }
 
         if ($workEndCarbon->lt($scheduledEndCarbon)) {
             return (int) $workEndCarbon->diffInMinutes($scheduledEndCarbon);

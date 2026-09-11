@@ -1322,6 +1322,73 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
 
     /**
      * @test
+     *
+     * 通常の日勤シフト（日跨ぎではない）で、退勤打刻し忘れ等により退勤が
+     * 翌日日付（WORK_END_NEXT_DAY）で記録された場合の回帰テスト。
+     *
+     * 予定終了時刻の基準日を退勤打刻の日付にしてしまうと、大幅に
+     * 働きすぎているだけなのに「予定終了(翌日18:00)より大幅に前＝
+     * 大幅な早退」という意味不明な値を算出してしまっていた
+     * （クライアント報告: 労働13時間・シフト8時間なのに遅早20Hになる）。
+     */
+    public function aggregate_by_user_returns_zero_early_leave_when_day_shift_overruns_into_next_day(): void
+    {
+        // Arrange: 日勤シフト 09:00-18:00（日跨ぎではない）、
+        // 出勤09:00・退勤打刻し忘れで翌日09:06にWORK_END_NEXT_DAYとして記録
+        $targetDate = CarbonImmutable::parse('2026-09-10');
+        $dateString = $targetDate->format('Y-m-d');
+        $nextDateString = $targetDate->addDay()->format('Y-m-d');
+
+        $shiftPattern = ShiftPattern::query()->create([
+            'company_id' => $this->company->id,
+            'name' => '日勤',
+            'start_time' => '09:00',
+            'end_time' => '18:00',
+            'work_minutes' => 480,
+            'break_mode' => 1,
+            'break_minutes' => 60,
+        ]);
+
+        Shift::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'shift_date' => $dateString,
+            'shift_pattern_id' => $shiftPattern->id,
+        ]);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => $dateString.' 09:39:00',
+            'rounded_time' => $dateString.' 09:39:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END_NEXT_DAY,
+            'record_time' => $nextDateString.' 09:06:00',
+            'rounded_time' => $nextDateString.' 09:06:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        // Act
+        $this->service->aggregateByUser($this->company, $this->user, $targetDate);
+
+        // Assert: 大幅に働きすぎているだけであり、早退はゼロのはず
+        $summary = DailyWorkSummary::query()
+            ->where('user_id', $this->user->id)
+            ->where('work_date', $dateString)
+            ->first();
+
+        $this->assertNotNull($summary);
+        $this->assertEquals(0, $summary->early_leave_minutes, '日跨ぎで働きすぎているだけなので早退0のはず');
+    }
+
+    /**
+     * @test
      */
     public function aggregate_by_user_keeps_late_and_overtime_when_net_work_meets_scheduled(): void
     {

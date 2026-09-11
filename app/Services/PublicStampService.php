@@ -213,7 +213,7 @@ class PublicStampService
     }
 
     /**
-     * 打刻成功の直後に、クールダウン期間中の重複防止警告を先回りで抑制する
+     * 打刻成功の直後に、読み取り機の癖による重複防止警告を先回りで抑制する
      *
      * NFCリーダーが1回のタップで複数回イベントを発火すると、成功の直後に
      * 同じユーザーのクールダウン拒否リクエストが届く。これは
@@ -221,17 +221,25 @@ class PublicStampService
      * shouldNotifyCooldown()が最初の1回として警告を出してしまう前に、
      * 成功時点で抑制フラグを立てておく。
      *
+     * 抑制するのはfelica_stamp_silent_seconds（読み取り機の多重発火が
+     * 収まるまでの短い時間）だけに留める。クールダウン期間全体
+     * （felica_stamp_cooldown_seconds）を抑制してしまうと、それを過ぎて
+     * からの意図的な再タップ（打刻できたか確認するための操作）まで
+     * 警告が一切出ず、確認したい本人には何も起きていないように見えて
+     * しまう（クライアント報告: 10秒以上経ってからの再タップでも
+     * 重複表示をしてほしい）。
+     *
      * @param  int  $userId  ユーザーID
      */
     public function suppressCooldownNotificationAfterSuccess(int $userId): void
     {
-        $cooldown = (int) config('attendance.felica_stamp_cooldown_seconds', 10);
+        $silentSeconds = (int) config('attendance.felica_stamp_silent_seconds', 10);
 
-        if ($cooldown <= 0) {
+        if ($silentSeconds <= 0) {
             return;
         }
 
-        Cache::put($this->cooldownNotifiedCacheKey($userId), true, $cooldown);
+        Cache::put($this->cooldownNotifiedCacheKey($userId), true, $silentSeconds);
     }
 
     private function cooldownNotifiedCacheKey(int $userId): string

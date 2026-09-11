@@ -71,7 +71,26 @@ return [
     |
     */
 
-    'felica_stamp_cooldown_seconds' => (int) env('FELICA_STAMP_COOLDOWN_SECONDS', 10),
+    'felica_stamp_cooldown_seconds' => (int) env('FELICA_STAMP_COOLDOWN_SECONDS', 30),
+
+    /*
+    |--------------------------------------------------------------------------
+    | FeliCa打刻の重複防止時間のうち、警告を出さない時間（秒）
+    |--------------------------------------------------------------------------
+    |
+    | NFCリーダーは1回の物理タップでも数秒間にわたり複数回イベントを
+    | 発火することがある。この秒数以内の重複は読み取り機の癖とみなし、
+    | 警告トーストを一切出さずに黙って無視する。
+    |
+    | 一方、この秒数を過ぎてからfelica_stamp_cooldown_secondsまでの間の
+    | 重複は、読み取り機の癖ではなく「打刻できたか確認するための
+    | 意図的な再タップ」とみなし、重複防止の警告を1回だけ表示する。
+    |
+    | felica_stamp_cooldown_seconds以下である必要がある。
+    |
+    */
+
+    'felica_stamp_silent_seconds' => (int) env('FELICA_STAMP_SILENT_SECONDS', 10),
 
     /*
     |--------------------------------------------------------------------------

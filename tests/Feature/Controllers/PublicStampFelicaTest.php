@@ -449,6 +449,62 @@ class PublicStampFelicaTest extends TestCase
     /**
      * @test
      *
+     * 読み取り機の多重発火が収まる短い時間（silent_seconds）以内の
+     * 重複は、これまで通り警告ログを残さず黙って無視する。
+     */
+    public function 無音時間内の重複は警告ログを残さない(): void
+    {
+        // Arrange
+        config([
+            'attendance.felica_stamp_cooldown_seconds' => 30,
+            'attendance.felica_stamp_silent_seconds' => 10,
+        ]);
+        $this->tap()->assertOk();
+
+        // Act: 無音時間(10秒)以内に再タップ
+        $this->travel(5)->seconds();
+        $response = $this->tap();
+
+        // Assert: 受け付けないが、警告ログは残らない
+        $response->assertStatus(429);
+        $this->assertSame(0, \App\Models\FelicaStampAttempt::query()->where('status', 'cooldown')->count());
+    }
+
+    /**
+     * @test
+     *
+     * 無音時間（silent_seconds）を過ぎてからクールダウン
+     * （cooldown_seconds）までの間の重複は、打刻できたか確認するための
+     * 意図的な再タップとみなし、重複防止の警告を1回だけ記録する
+     * （クライアント報告: 10秒以上30秒以内の再タップでも重複表示をしてほしい）。
+     */
+    public function 無音時間を過ぎてからクールダウンまでの重複は警告ログを1件残す(): void
+    {
+        // Arrange
+        config([
+            'attendance.felica_stamp_cooldown_seconds' => 30,
+            'attendance.felica_stamp_silent_seconds' => 10,
+        ]);
+        $this->tap()->assertOk();
+
+        // Act: 無音時間(10秒)を過ぎてから再タップ
+        $this->travel(15)->seconds();
+        $response = $this->tap();
+
+        // Assert: 受け付けず、重複防止の警告ログが1件残る
+        $response->assertStatus(429);
+        $this->assertSame(1, \App\Models\FelicaStampAttempt::query()->where('status', 'cooldown')->count());
+
+        // Act: さらに同じクールダウン期間内に重ねて再タップしても、
+        // 追加の警告ログは残らない（1回だけ通知する設計を維持）
+        $this->travel(2)->seconds();
+        $this->tap()->assertStatus(429);
+        $this->assertSame(1, \App\Models\FelicaStampAttempt::query()->where('status', 'cooldown')->count());
+    }
+
+    /**
+     * @test
+     *
      * カードリーダーの多重起動やドライバの重複イベントで、同一ユーザーの
      * 打刻リクエストがほぼ同時に届くことがある。排他ロックがないと、
      * クールダウン判定(SELECT)から打刻登録(INSERT)までの間に競合し、

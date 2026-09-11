@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
 import { X } from 'lucide-react';
 
@@ -7,6 +7,13 @@ interface ClockErrorData {
   endTime?: string;
   breakStartTime?: string;
   breakEndTime?: string;
+}
+
+interface ExistingClockTimes {
+  startTime?: string | null;
+  endTime?: string | null;
+  breakStartTime?: string | null;
+  breakEndTime?: string | null;
 }
 
 interface LeaveSettings {
@@ -21,6 +28,7 @@ interface ApplicationDialogProps {
   date: Date | null;
   leaveSettings?: LeaveSettings;
   existingTypes?: string[];
+  existingTimes?: ExistingClockTimes;
 }
 
 const baseApplicationTypes = [
@@ -52,7 +60,7 @@ function isWholeHourRange(startTime: string, endTime: string): boolean {
   return durationMinutes > 0 && durationMinutes % 60 === 0;
 }
 
-export function ApplicationDialog({ isOpen, onClose, onSubmit, date, leaveSettings, existingTypes = [] }: ApplicationDialogProps) {
+export function ApplicationDialog({ isOpen, onClose, onSubmit, date, leaveSettings, existingTypes = [], existingTimes }: ApplicationDialogProps) {
   const [applicationType, setApplicationType] = useState('');
   const [reason, setReason] = useState('');
   const [correctClockIn, setCorrectClockIn] = useState('');
@@ -64,6 +72,20 @@ export function ApplicationDialog({ isOpen, onClose, onSubmit, date, leaveSettin
   const [leaveEndTime, setLeaveEndTime] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 開いた瞬間の対象日の現在の打刻時刻で初期値を埋める。開いている間の
+  // 再レンダリングで existingTimes の参照が変わっても、入力中の値を
+  // 上書きしないよう isOpen の変化時のみ実行する（date/existingTimesは
+  // 意図的に依存配列から外している）。
+  useEffect(() => {
+    if (isOpen) {
+      setCorrectClockIn(existingTimes?.startTime ?? '');
+      setCorrectClockOut(existingTimes?.endTime ?? '');
+      setCorrectBreakStart(existingTimes?.breakStartTime ?? '');
+      setCorrectBreakEnd(existingTimes?.breakEndTime ?? '');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   const applicationTypes = useMemo(() => {
     return baseApplicationTypes.filter((type) => {
@@ -270,7 +292,7 @@ export function ApplicationDialog({ isOpen, onClose, onSubmit, date, leaveSettin
                   </div>
 
                   <p className="text-xs text-gray-600">
-                    ※ 間違えた項目のみ入力してください。変更のない項目は空欄で構いません。
+                    ※ 現在の打刻時刻が表示されています。間違っている項目のみ修正してください。
                   </p>
                 </div>
               )}

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import StaffLayout from '@/Layouts/StaffLayout';
 import { format, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { router, usePage } from '@inertiajs/react';
@@ -11,6 +11,7 @@ import WorkReportTable, { type AttendanceIssueMap } from '@/Components/Reports/W
 import MonthSelector from '@/Components/MonthSelector';
 import { Clock, CheckCircle, XCircle } from 'lucide-react';
 import { getRequestBadgeStyle } from '@/utils/requestStyles';
+import { getBreakPeriodsForDate, getRawWorkTimesForDate } from '@/utils/attendanceRecords';
 import type { WorkSummary, MonthlySummary, TimeRecord, TimeRecordCorrectionItem, ShiftInfo } from '@/types/reports';
 
 interface RequestData {
@@ -124,6 +125,21 @@ function StaffReportsPage() {
     },
     [getRequestsForDate]
   );
+
+  // 打刻修正申請ダイアログを開いたときに、対象日の現在の打刻時刻を
+  // 初期値として表示する（ブラウザによっては打刻時刻が読み込まれず、
+  // 何も表示されない状態から手探りで入力する必要があった問い合わせの原因）
+  const selectedDateClockTimes = useMemo(() => {
+    if (!selectedDate) return undefined;
+    const { rawStart, rawEnd } = getRawWorkTimesForDate(timeRecords, selectedDate);
+    const [firstBreak] = getBreakPeriodsForDate(timeRecords, selectedDate);
+    return {
+      startTime: rawStart,
+      endTime: rawEnd,
+      breakStartTime: firstBreak?.start ?? null,
+      breakEndTime: firstBreak?.end ?? null,
+    };
+  }, [selectedDate, timeRecords]);
 
   const handlePeriodSelect = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     if (shiftDisplayPeriod === 'closing_day_based') {
@@ -277,6 +293,7 @@ function StaffReportsPage() {
         date={selectedDate}
         leaveSettings={leaveSettings}
         existingTypes={selectedDate ? getExistingTypesForDate(selectedDate) : []}
+        existingTimes={selectedDateClockTimes}
       />
 
       <div className="flex items-center justify-between">

@@ -55,7 +55,12 @@ export function useCompanySettings(
   const isStampHiddenInit = company?.is_stamp_hidden ?? false;
   const paidLeaveHalfDayInit = company?.paid_leave_half_day ?? false;
   const paidLeaveHourlyInit = company?.paid_leave_hourly ?? false;
-  const dailyWorkingHoursInit = String(company?.daily_working_hours ?? 8);
+  // daily_working_hoursはDBがDECIMAL(4,1)のため、DB保存後は"8.0"のような
+  // 文字列で返ってくる。そのままStringで表示すると、変更していないのに
+  // 小数点混じりに見えてしまう（No.49: デフォルトが8.0と表示される報告）。
+  // parseFloatを経由して余分な末尾ゼロを落とす。
+  const dailyWorkingHoursInit =
+    company?.daily_working_hours != null ? String(parseFloat(String(company.daily_working_hours))) : '8';
 
   const [companyCode] = useState(company?.company_code ?? '');
   const [companyName, setCompanyName] = useState(companyNameInit);

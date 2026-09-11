@@ -51,7 +51,19 @@ class UpdateCompanySettingsRequest extends FormRequest
             // 有給休暇設定
             'paidLeaveHalfDay' => ['boolean'],
             'paidLeaveHourly' => ['boolean'],
-            'dailyWorkingHours' => ['nullable', 'integer', 'min:0', 'max:24'],
+            // 所定労働時間は小数第1位まで入力可能（DBがDECIMAL(4,1)のため）。
+            // ただし時間単位有給を使う場合のみ、その計算の都合上1時間単位
+            // （整数）に制限する。以前はこの制限を常に適用していたため、
+            // 時間単位有給を使わない新規事業所でも7.5時間のような小数点の
+            // 入力ができなかった（No.49報告）。
+            'dailyWorkingHours' => [
+                'nullable', 'numeric', 'min:0', 'max:24', 'decimal:0,1',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ($value !== null && $this->boolean('paidLeaveHourly') && fmod((float) $value, 1.0) !== 0.0) {
+                        $fail('時間単位有給を利用する場合、所定労働時間は1時間単位（小数点以下は入力不可）で入力してください。');
+                    }
+                },
+            ],
 
             // 労務アラート設定
             'alertOvertimeNotification' => ['nullable', 'integer', 'min:0'],
@@ -96,9 +108,10 @@ class UpdateCompanySettingsRequest extends FormRequest
         return [
             'companyName.required' => '会社名は必須です。',
             'companyName.max' => '会社名は100文字以内で入力してください。',
-            'dailyWorkingHours.integer' => '所定労働時間は1時間単位（小数点以下は入力不可）で入力してください。',
+            'dailyWorkingHours.numeric' => '所定労働時間は数値で入力してください。',
             'dailyWorkingHours.min' => '所定労働時間は0以上で入力してください。',
             'dailyWorkingHours.max' => '所定労働時間は24時間以内で入力してください。',
+            'dailyWorkingHours.decimal' => '所定労働時間は小数点第1位まで（例: 7.5）で入力してください。',
             'alertOvertimeNotification.integer' => '残業時間アラートは整数で入力してください。',
             'alertOvertimeNotification.min' => '残業時間アラートは0以上で入力してください。',
             'alertOvertimeLimit.integer' => '残業時間上限は整数で入力してください。',

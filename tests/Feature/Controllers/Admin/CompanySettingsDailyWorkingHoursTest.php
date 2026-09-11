@@ -10,9 +10,15 @@ use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
 /**
- * 時間有給の計算に使う「1日あたりの所定労働時間」設定は、
- * 1時間単位（整数）のみ受け付ける。8.5時間のような小数点以下の
- * 入力はできないようにする。
+ * 「1日あたりの所定労働時間」設定は、時間単位有給を使う場合のみ
+ * 1時間単位（整数）を受け付ける。8.5時間のような小数点以下の入力は
+ * 時間単位有給を使う場合にはできないが、使わない場合はDBの精度
+ * （小数第1位まで）の範囲で受け付ける。
+ *
+ * 以前は時間単位有給の利用有無にかかわらず常に整数のみを要求して
+ * いたため、時間単位有給を使わない新規事業所でも7.5時間のような
+ * 一般的な所定労働時間を設定できなかった
+ * （No.49: 新規事業所で1時間単位でしか設定できないという報告）。
  */
 class CompanySettingsDailyWorkingHoursTest extends TestCase
 {
@@ -61,10 +67,36 @@ class CompanySettingsDailyWorkingHoursTest extends TestCase
     /**
      * @test
      */
-    public function 小数点以下の所定労働時間は保存できない(): void
+    public function 時間単位有給を使う場合は小数点以下の所定労働時間を保存できない(): void
     {
         $response = $this->actingAs($this->admin, 'admin')
-            ->put('/admin/settings', $this->payload(['dailyWorkingHours' => 8.5]));
+            ->put('/admin/settings', $this->payload(['paidLeaveHourly' => true, 'dailyWorkingHours' => 8.5]));
+
+        $response->assertSessionHasErrors(['dailyWorkingHours']);
+    }
+
+    /**
+     * @test
+     */
+    public function 時間単位有給を使わない場合は小数点以下の所定労働時間を保存できる(): void
+    {
+        $response = $this->actingAs($this->admin, 'admin')
+            ->put('/admin/settings', $this->payload(['paidLeaveHourly' => false, 'dailyWorkingHours' => 7.5]));
+
+        $response->assertSessionDoesntHaveErrors();
+        $this->assertEquals(7.5, $this->company->fresh()->daily_working_hours);
+    }
+
+    /**
+     * @test
+     *
+     * DBの精度（DECIMAL(4,1)）を超える小数第2位以下は、時間単位有給の
+     * 利用有無にかかわらず受け付けない。
+     */
+    public function 小数第2位以下の所定労働時間は保存できない(): void
+    {
+        $response = $this->actingAs($this->admin, 'admin')
+            ->put('/admin/settings', $this->payload(['paidLeaveHourly' => false, 'dailyWorkingHours' => 7.55]));
 
         $response->assertSessionHasErrors(['dailyWorkingHours']);
     }

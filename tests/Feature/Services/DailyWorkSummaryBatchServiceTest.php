@@ -500,8 +500,11 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
             ->first();
 
         $this->assertNotNull($summary);
-        $this->assertEquals(30, $summary->late_minutes); // 30分遅刻
-        $this->assertEquals(30, $summary->overtime_minutes, '実労働 − 所定 = 30分');
+        // 休憩打刻が無いため休憩0分。実働8:30(510分)は所定480分を上回るため
+        // 遅刻早退は無く、超過分がそのまま時間外になる。
+        $this->assertEquals(0, $summary->late_minutes);
+        $this->assertEquals(0, $summary->early_leave_minutes);
+        $this->assertEquals(30, $summary->overtime_minutes, '実働510分 − 所定480分 = 30分');
         $this->assertEquals('09:00:00', $summary->scheduled_start_time);
         $this->assertEquals('18:00:00', $summary->scheduled_end_time);
     }
@@ -1207,7 +1210,10 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
      */
     public function aggregate_by_user_calculates_early_leave_on_cross_day_shift(): void
     {
-        // Arrange: 夜勤シフト 22:00-翌05:00、勤務 22:00-翌04:30（30分早退）
+        // Arrange: 夜勤シフト 22:00-翌05:00（所定360分）、勤務 22:00-翌04:30
+        // 休憩打刻が無いため休憩0分。実働390分は所定360分を上回るため
+        // 時刻上は05:00より30分早く退勤していても遅刻早退は無く、
+        // 超過分がそのまま時間外になる。
         $targetDate = CarbonImmutable::parse('2025-01-15');
         $dateString = $targetDate->format('Y-m-d');
         $nextDateString = $targetDate->addDay()->format('Y-m-d');
@@ -1250,14 +1256,14 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
         // Act
         $this->service->aggregateByUser($this->company, $this->user, $targetDate);
 
-        // Assert: 30分早退（翌05:00 予定終了に対し翌04:30 退勤）
         $summary = DailyWorkSummary::query()
             ->where('user_id', $this->user->id)
             ->where('work_date', $dateString)
             ->first();
 
         $this->assertNotNull($summary);
-        $this->assertEquals(30, $summary->early_leave_minutes);
+        $this->assertEquals(0, $summary->early_leave_minutes);
+        $this->assertEquals(30, $summary->overtime_minutes, '実働390分 − 所定360分 = 30分');
     }
 
     /**
@@ -1392,8 +1398,10 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
      */
     public function aggregate_by_user_keeps_late_and_overtime_when_net_work_meets_scheduled(): void
     {
-        // Arrange: シフト07:30-16:30（所定8h）、丸め後打刻 07:45-17:00
-        // 期待: 遅刻15分(7:45-7:30), 時間外=終業後30+休憩不足60=90分
+        // Arrange: シフト07:30-16:30（所定8h=480分）、丸め後打刻 07:45-17:00
+        // 実働 = (17:00-07:45) - 休憩60分 = 495分 > 所定480分
+        // 遅刻して出勤していても、実働が所定を上回れば遅刻早退は0、
+        // 超過分がそのまま時間外になる。
         $targetDate = CarbonImmutable::parse('2025-03-02');
         $dateString = $targetDate->format('Y-m-d');
 
@@ -1442,10 +1450,11 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
             ->first();
 
         $this->assertNotNull($summary);
-        $this->assertEquals(15, $summary->late_minutes, '遅刻は常にシフト差分で計上(7:45-7:30)');
-        $this->assertEquals(0, $summary->early_leave_minutes);
-        // 終業後30分(17:00-16:30) + 早出0 + 休憩不足60分(60-0) = 90分
-        $this->assertEquals(75, $summary->overtime_minutes, '実労働 − 所定 = 75分');
+        // 休憩打刻が無いため休憩0分。実働9:15(555分)は所定480分を上回るため
+        // 遅刻早退は無く、超過分がそのまま時間外になる。
+        $this->assertEquals(0, $summary->late_minutes);
+        $this->assertEquals(0, $summary->early_leave_minutes, '実働555分が所定480分を上回るため遅刻早退なし');
+        $this->assertEquals(75, $summary->overtime_minutes, '実働555分 − 所定480分 = 75分');
     }
 
     /**
@@ -1453,8 +1462,8 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
      */
     public function aggregate_by_user_keeps_late_when_net_work_short_of_scheduled(): void
     {
-        // Arrange: シフト07:30-16:30（所定8h）、打刻 07:45-16:30
-        // 実働 = 8:45 - 1:00 = 7:45 < 所定8:00 → クリップ発動しない
+        // Arrange: シフト07:30-16:30（所定8h=480分）、打刻 07:45-16:30
+        // 休憩打刻が無いため休憩0分。実働8:45(525分)は所定480分を上回る。
         $targetDate = CarbonImmutable::parse('2025-03-03');
         $dateString = $targetDate->format('Y-m-d');
 
@@ -1503,8 +1512,9 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
             ->first();
 
         $this->assertNotNull($summary);
-        $this->assertEquals(15, $summary->late_minutes, '実働が所定に満たないので遅刻15分は維持');
-        $this->assertEquals(0, $summary->early_leave_minutes);
+        $this->assertEquals(0, $summary->late_minutes);
+        $this->assertEquals(0, $summary->early_leave_minutes, '実働525分が所定480分を上回るため遅刻早退なし');
+        $this->assertEquals(45, $summary->overtime_minutes, '実働525分 − 所定480分 = 45分');
     }
 
     /**
@@ -1512,8 +1522,8 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
      */
     public function aggregate_by_user_keeps_early_leave_when_net_work_short_of_scheduled(): void
     {
-        // Arrange: シフト07:30-16:30（所定8h）、打刻 07:30-15:45
-        // 実働 = 8:15 - 1:00 = 7:15 < 所定8:00 → クリップ発動しない
+        // Arrange: シフト07:30-16:30（所定8h=480分）、打刻 07:30-15:45
+        // 休憩打刻が無いため休憩0分。実働8:15(495分)は所定480分を上回る。
         $targetDate = CarbonImmutable::parse('2025-03-04');
         $dateString = $targetDate->format('Y-m-d');
 
@@ -1563,7 +1573,8 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
 
         $this->assertNotNull($summary);
         $this->assertEquals(0, $summary->late_minutes);
-        $this->assertEquals(45, $summary->early_leave_minutes, '実働が所定に満たないので早退45分は維持');
+        $this->assertEquals(0, $summary->early_leave_minutes, '実働495分が所定480分を上回るため遅刻早退なし');
+        $this->assertEquals(15, $summary->overtime_minutes, '実働495分 − 所定480分 = 15分');
     }
 
     // ========================================
@@ -1619,15 +1630,18 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
         // Act
         $this->service->aggregateByUser($this->company, $this->user, $targetDate);
 
-        // Assert: 遅刻は rounded_time(09:35) - scheduled(09:00) = 35分
-        // record_time(09:32) ベースの32分ではない
+        // Assert: 休憩打刻が無いため休憩0分。実働 = 18:00-09:35 = 505分。
+        // rounded_time(09:35)ベースの計算であり、record_time(09:32)ベースの
+        // 508分ではないことを、時間外(所定480分との差)で検証する。
         $summary = DailyWorkSummary::query()
             ->where('user_id', $this->user->id)
             ->where('work_date', $dateString)
             ->first();
 
         $this->assertNotNull($summary);
-        $this->assertEquals(35, $summary->late_minutes, '遅刻はrounded_time基準で計算されるべき');
+        $this->assertEquals(0, $summary->late_minutes);
+        $this->assertEquals(0, $summary->early_leave_minutes);
+        $this->assertEquals(25, $summary->overtime_minutes, '時間外はrounded_time基準(505-480=25分)で計算されるべき');
         $this->assertEquals(
             $dateString.' 09:35:00',
             CarbonImmutable::parse($summary->work_start)->format('Y-m-d H:i:s'),
@@ -1683,14 +1697,17 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
         // Act
         $this->service->aggregateByUser($this->company, $this->user, $targetDate);
 
-        // Assert: rounded_time が null でもクラッシュせず、record_time(09:20)で計算される
+        // Assert: rounded_time が null でもクラッシュせず、record_time(09:20)で計算される。
+        // 休憩打刻が無いため休憩0分。実働 = 18:00-09:20 = 520分。
         $summary = DailyWorkSummary::query()
             ->where('user_id', $this->user->id)
             ->where('work_date', $dateString)
             ->first();
 
         $this->assertNotNull($summary);
-        $this->assertEquals(20, $summary->late_minutes, 'rounded_time がnullの場合はrecord_time基準');
+        $this->assertEquals(0, $summary->late_minutes);
+        $this->assertEquals(0, $summary->early_leave_minutes);
+        $this->assertEquals(40, $summary->overtime_minutes, 'rounded_time がnullの場合はrecord_time基準(520-480=40分)');
     }
 
     /**
@@ -1882,9 +1899,9 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
 
         $this->assertNotNull($summary);
         $this->assertEquals(540, $summary->net_work_minutes, '実働9:00(休憩0)');
-        $this->assertEquals(15, $summary->late_minutes, '遅刻15分(7:45-7:30)');
+        // 実働540分は所定480分を上回るため、出勤が遅くても遅刻早退は無い
+        $this->assertEquals(0, $summary->late_minutes);
         $this->assertEquals(0, $summary->early_leave_minutes);
-        // 終業後15分(16:45-16:30) + 早出0 + 休憩不足60分(60-0) = 75分
         $this->assertEquals(60, $summary->overtime_minutes, '実労働9:00 − 所定8:00 = 60分');
     }
 
@@ -1943,10 +1960,10 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
 
         $this->assertNotNull($summary);
         $this->assertEquals(525, $summary->net_work_minutes, '実働8:45(休憩0)');
-        $this->assertEquals(150, $summary->late_minutes, '遅刻2:30(10:00-7:30)');
+        // 実働525分は所定480分を上回るため、出勤が大幅に遅くても遅刻早退は無い
+        $this->assertEquals(0, $summary->late_minutes);
         $this->assertEquals(0, $summary->early_leave_minutes);
-        // 終業後135分(18:45-16:30) + 早出0 + 休憩不足60分(60-0) = 195分
-        $this->assertEquals(45, $summary->overtime_minutes, '終業後135 + 早出0 + 休憩不足60 = 195分');
+        $this->assertEquals(45, $summary->overtime_minutes, '実労働525分 − 所定480分 = 45分');
     }
 
     /**
@@ -2056,9 +2073,11 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
             ->first();
 
         $this->assertNotNull($summary);
-        // 終業後0 + 早出0 + 休憩不足60分(60-0) = 60分
-        $this->assertEquals(30, $summary->overtime_minutes, '実労働 − 所定 = 30分');
-        $this->assertEquals(30, $summary->early_leave_minutes, '早退30分(18:00-17:30)');
+        // 休憩打刻が無いため休憩0分。実働510分は所定480分を上回るため、
+        // 終業予定(18:00)より前(17:30)に退勤していても遅刻早退は無い。
+        $this->assertEquals(30, $summary->overtime_minutes, '実労働510分 − 所定480分 = 30分');
+        $this->assertEquals(0, $summary->early_leave_minutes);
+        $this->assertEquals(0, $summary->late_minutes);
     }
 
     /**
@@ -2120,7 +2139,7 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
     /**
      * @test
      */
-    public function late_and_overtime_can_coexist(): void
+    public function late_clock_in_does_not_produce_late_minutes_when_net_work_exceeds_scheduled(): void
     {
         // シフト09:00-18:00、打刻09:30→19:00
         $targetDate = CarbonImmutable::parse('2025-04-08');
@@ -2169,9 +2188,9 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
             ->first();
 
         $this->assertNotNull($summary);
-        $this->assertEquals(30, $summary->late_minutes, '遅刻30分(9:30-9:00)');
-        // 終業後60分(19:00-18:00) + 早出0 + 休憩不足60分(60-0) = 120分
-        $this->assertEquals(90, $summary->overtime_minutes, '実労働 − 所定 = 90分');
+        // 実働570分は所定480分を上回るため、出勤が遅くても遅刻早退は無い
+        $this->assertEquals(0, $summary->late_minutes);
+        $this->assertEquals(90, $summary->overtime_minutes, '実労働570分 − 所定480分 = 90分');
         $this->assertEquals(0, $summary->early_leave_minutes);
         $this->assertEquals(570, $summary->net_work_minutes, '実働9:30(休憩0)');
     }
@@ -2179,7 +2198,7 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
     /**
      * @test
      */
-    public function early_leave_with_break_shortage_overtime(): void
+    public function early_leave_reflects_shortfall_against_scheduled_work_minutes(): void
     {
         // シフト09:00-18:00、打刻09:00→16:00
         $targetDate = CarbonImmutable::parse('2025-04-09');
@@ -2228,8 +2247,8 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
             ->first();
 
         $this->assertNotNull($summary);
-        $this->assertEquals(120, $summary->early_leave_minutes, '早退2:00(18:00-16:00)');
-        // 終業後0 + 早出0 + 休憩不足60分(60-0) = 60分
+        // 休憩打刻が無いため休憩0分。実働420分、所定480分 − 実働420分 = 60分の不足
+        $this->assertEquals(60, $summary->early_leave_minutes, '所定480分 − 実働420分 = 60分');
         $this->assertEquals(0, $summary->overtime_minutes, '実労働が所定に届かないため時間外なし');
         $this->assertEquals(0, $summary->late_minutes);
     }
@@ -2335,10 +2354,10 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
     /**
      * @test
      */
-    public function late_is_not_cleared_even_when_net_work_exceeds_scheduled(): void
+    public function late_minutes_is_zero_when_net_work_exceeds_scheduled(): void
     {
-        // ゼロクリップ廃止確認: シフト09:00-18:00、打刻09:30→19:00
-        // 遅刻30分は残る、時間外=終業後60+休憩不足60=120分
+        // シフト09:00-18:00、打刻09:30→19:00
+        // 実働が所定を上回るため遅刻早退は無く、超過分は時間外として計上される
         $targetDate = CarbonImmutable::parse('2025-04-12');
         $dateString = $targetDate->format('Y-m-d');
 
@@ -2386,10 +2405,9 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
 
         $this->assertNotNull($summary);
         $this->assertEquals(570, $summary->net_work_minutes, '実働9:30(休憩0) > 所定8:00');
-        $this->assertEquals(30, $summary->late_minutes, 'ゼロクリップされず遅刻30分が残る');
+        $this->assertEquals(0, $summary->late_minutes, '実働が所定を上回るため遅刻早退は無い');
         $this->assertEquals(0, $summary->early_leave_minutes);
-        // 終業後60分(19:00-18:00) + 早出0 + 休憩不足60分(60-0) = 120分
-        $this->assertEquals(90, $summary->overtime_minutes, '実労働 − 所定 = 90分');
+        $this->assertEquals(90, $summary->overtime_minutes, '実労働570分 − 所定480分 = 90分');
     }
 
     /**
@@ -3122,9 +3140,9 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
      * @test
      *
      * シフト9:00-18:00 休1H(所定8H) / 実績10:00-18:00 休0H
-     * 遅刻1H、休憩未取得だが実働8H=所定8H → 時間外0
+     * 出勤1H遅れだが休憩を取らず働いたため実働8H=所定8H → 遅刻早退も時間外も0
      */
-    public function late_with_no_break_results_in_break_shortage_overtime(): void
+    public function late_clock_in_compensated_by_skipped_break_results_in_no_shortfall_or_overtime(): void
     {
         $targetDate = CarbonImmutable::parse('2025-06-01');
         $dateString = $targetDate->format('Y-m-d');
@@ -3175,8 +3193,8 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
         $this->assertNotNull($summary);
         $this->assertEquals(0, $summary->break_minutes, '休憩打刻なし = 休憩0分');
         $this->assertEquals(480, $summary->net_work_minutes, '実労働8H');
-        $this->assertEquals(60, $summary->late_minutes, '遅刻1H');
-        // 終業後0 + 早出0 + 休憩不足60分(60-0) = 60分
+        $this->assertEquals(0, $summary->late_minutes, '実働8H=所定8Hのため遅刻早退は無い');
+        $this->assertEquals(0, $summary->early_leave_minutes);
         $this->assertEquals(0, $summary->overtime_minutes, '実労働が所定と同じため時間外なし');
     }
 
@@ -3457,16 +3475,16 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
     }
 
     // ============================================================
-    // 遅刻と残業が相殺されないことの検証
+    // 遅刻早退と時間外が所定労働時間に対する実働時間の過不足で一本化されることの検証
     // ============================================================
 
     /**
      * @test
      *
-     * シフト9:00-18:00 休1H / 実績9:30-18:30 休1H
-     * 遅刻0:30 + 終業後残業0:30 + 休憩不足0 → 時間外0:30（遅刻と相殺されない）
+     * シフト9:00-18:00 休1H(所定8H) / 実績9:30-18:30 休1H(実働8H)
+     * 出勤が0:30遅れても退勤も0:30遅く、実働8H=所定8H → 遅刻早退も時間外も0
      */
-    public function late_and_overtime_are_not_offset(): void
+    public function late_clock_in_offset_by_equal_late_clock_out_results_in_zero_shortfall_and_overtime(): void
     {
         $targetDate = CarbonImmutable::parse('2025-07-01');
         $dateString = $targetDate->format('Y-m-d');
@@ -3531,17 +3549,18 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
             ->first();
 
         $this->assertNotNull($summary);
-        $this->assertEquals(30, $summary->late_minutes, '遅刻30分');
-        $this->assertEquals(0, $summary->overtime_minutes, '実労働が所定と同じため時間外なし（遅刻は別途計上）');
+        $this->assertEquals(0, $summary->late_minutes, '実働8H=所定8Hのため遅刻早退は無い');
+        $this->assertEquals(0, $summary->early_leave_minutes);
+        $this->assertEquals(0, $summary->overtime_minutes, '実労働が所定と同じため時間外なし');
     }
 
     /**
      * @test
      *
-     * シフト9:00-18:00 休1H / 実績9:30-18:30 休0.5H
-     * 遅刻0:30 + 終業後残業0:30 + 休憩不足0:30 → 時間外1:00
+     * シフト9:00-18:00 休1H(所定8H) / 実績9:30-18:30 休0.5H(実働8:30)
+     * 実働8:30は所定8Hを上回るため、出勤が遅くても遅刻早退は無く、超過分30分がすべて時間外になる
      */
-    public function late_overtime_and_break_shortage_all_counted(): void
+    public function net_work_exceeding_scheduled_is_counted_as_overtime_not_late(): void
     {
         $targetDate = CarbonImmutable::parse('2025-07-02');
         $dateString = $targetDate->format('Y-m-d');
@@ -3606,8 +3625,9 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
             ->first();
 
         $this->assertNotNull($summary);
-        $this->assertEquals(30, $summary->late_minutes, '遅刻30分');
-        $this->assertEquals(30, $summary->overtime_minutes, '実労働 − 所定 = 30分');
+        $this->assertEquals(0, $summary->late_minutes);
+        $this->assertEquals(0, $summary->early_leave_minutes);
+        $this->assertEquals(30, $summary->overtime_minutes, '実労働510分 − 所定480分 = 30分');
     }
 
     /**

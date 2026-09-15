@@ -61,6 +61,10 @@ export default function EditUserPage({
 }: Props) {
   const userId = id;
   const [localErrors, setLocalErrors] = React.useState<Record<string, string>>({});
+  // 「最近かざされた未登録のカード」は会社内の全打刻端末が対象のため、
+  // 常に表示すると無関係なスタッフの編集中にも他で打刻したカードが
+  // 出てしまう。このスタッフのカードを登録したいときだけ表示する。
+  const [isCardPickerOpen, setIsCardPickerOpen] = React.useState(false);
 
   // この画面を開いている間はFeliCaカードの登録待ちとみなし、打刻専用画面で
   // 未登録カードをかざしても警告を出さないようにする（No.52対応）。
@@ -298,12 +302,22 @@ export default function EditUserPage({
                     登録解除
                   </button>
                 )}
+                {recentFelicaCards.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setIsCardPickerOpen((open) => !open)}
+                    className="px-3 py-2 text-sm text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 whitespace-nowrap"
+                    disabled={processing}
+                  >
+                    {isCardPickerOpen ? 'カード選択を閉じる' : 'カードから選ぶ'}
+                  </button>
+                )}
               </div>
               {errors.felica_idm && (
                 <p className="text-xs text-red-600 mt-1">{errors.felica_idm}</p>
               )}
 
-              {recentFelicaCards.length > 0 && (
+              {isCardPickerOpen && recentFelicaCards.length > 0 && (
                 <div className="mt-2 border border-gray-200 rounded-lg p-3 bg-gray-50">
                   <p className="text-xs font-medium text-gray-700 mb-2">
                     最近かざされた未登録のカード
@@ -313,7 +327,10 @@ export default function EditUserPage({
                       <button
                         key={card.idm}
                         type="button"
-                        onClick={() => setData('felica_idm', card.idm)}
+                        onClick={() => {
+                          setData('felica_idm', card.idm);
+                          setIsCardPickerOpen(false);
+                        }}
                         disabled={processing}
                         className={`flex items-center justify-between px-3 py-2 rounded border text-left text-sm ${
                           data.felica_idm === card.idm
@@ -327,7 +344,7 @@ export default function EditUserPage({
                     ))}
                   </div>
                   <p className="text-xs text-gray-500 mt-2">
-                    打刻端末でカードをかざしてからこの画面を開くと、そのカードを選べます。
+                    このスタッフのカードを登録する場合のみお使いください。他のスタッフの打刻でかざされたカードも含まれます。
                   </p>
                 </div>
               )}

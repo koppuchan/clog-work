@@ -216,8 +216,10 @@ export default function ShiftCalendar({
       )}
 
     <div className="flex" style={{ minHeight: '400px' }}>
-      {/* 固定スタッフ名 */}
-      <div className="w-32 flex-shrink-0 mr-4">
+      {/* 固定スタッフ名。OS/ブラウザによって同じフォントサイズでも
+          日本語文字の描画幅が異なる（Macは全角文字が広めに描画される）ため、
+          固定幅ではなく最小幅とし、名前が長ければ列ごと広がるようにする */}
+      <div className="min-w-32 flex-shrink-0 mr-4">
         <div className='p-1'>
           <div className="font-medium text-gray-900 p-2 bg-gray-50 rounded-lg text-center mb-2">
             スタッフ
@@ -241,7 +243,7 @@ export default function ShiftCalendar({
                     onClick={() => onUserNameClick(user.id)}
                     title={`クリックして${user.name}のシフトパターンを適用`}
                   >
-                    <div className="font-medium text-gray-900 text-xs truncate">{user.name}</div>
+                    <div className="font-medium text-gray-900 text-xs whitespace-nowrap">{user.name}</div>
                   </div>
                 ))}
                 {/* 部署ごとの人数を数えられるよう小計を置く */}

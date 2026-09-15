@@ -637,7 +637,7 @@ export default function PublicStampPage({ company, users }: Props) {
                   </div>
 
                   {/* 現在の状態 */}
-                  <div className={`text-lg font-semibold ${getStatusColor()}`}>
+                  <div className={`text-xl font-semibold ${getStatusColor()}`}>
                     現在の状態: {getStatusText()}
                     {currentStatus?.clockInTime && ` (出勤: ${currentStatus.clockInTime})`}
                   </div>
@@ -646,7 +646,7 @@ export default function PublicStampPage({ company, users }: Props) {
                     <button
                       onClick={() => handleStamp('clock-in')}
                       disabled={isLoading || (currentStatus?.isWorking ?? false) || (currentStatus?.hasClockInToday ?? false)}
-                      className={`font-semibold py-6 px-4 rounded-lg text-lg transition-colors ${
+                      className={`font-semibold py-6 px-4 rounded-lg text-2xl transition-colors ${
                         currentStatus?.isWorking || currentStatus?.hasClockInToday
                           ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                           : 'bg-blue-600 hover:bg-blue-700 text-white'
@@ -662,10 +662,10 @@ export default function PublicStampPage({ company, users }: Props) {
                         (currentStatus?.isOnBreak ?? false) ||
                         (currentStatus?.hasClockOutToday ?? false)
                       }
-                      className={`font-semibold py-6 px-4 rounded-lg text-lg transition-colors ${
+                      className={`font-semibold py-6 px-4 rounded-lg text-2xl transition-colors ${
                         !currentStatus?.isWorking || currentStatus?.isOnBreak || currentStatus?.hasClockOutToday
                           ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                          : 'bg-red-600 hover:bg-red-700 text-white'
+                          : 'bg-green-600 hover:bg-green-700 text-white'
                       }`}
                     >
                       退勤
@@ -678,7 +678,7 @@ export default function PublicStampPage({ company, users }: Props) {
                         (currentStatus?.isOnBreak ?? false) ||
                         (currentStatus?.breakCount ?? 0) >= 2
                       }
-                      className={`font-semibold py-6 px-4 rounded-lg text-lg transition-colors ${
+                      className={`font-semibold py-6 px-4 rounded-lg text-2xl transition-colors ${
                         !currentStatus?.isWorking || currentStatus?.isOnBreak || (currentStatus?.breakCount ?? 0) >= 2
                           ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                           : 'bg-yellow-600 hover:bg-yellow-700 text-white'
@@ -689,10 +689,10 @@ export default function PublicStampPage({ company, users }: Props) {
                     <button
                       onClick={() => handleStamp('break-end')}
                       disabled={isLoading || !(currentStatus?.isOnBreak ?? false)}
-                      className={`font-semibold py-6 px-4 rounded-lg text-lg transition-colors ${
+                      className={`font-semibold py-6 px-4 rounded-lg text-2xl transition-colors ${
                         !currentStatus?.isOnBreak
                           ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                          : 'bg-green-600 hover:bg-green-700 text-white'
+                          : 'bg-emerald-700 hover:bg-emerald-800 text-white'
                       }`}
                     >
                       休憩終了

@@ -69,11 +69,16 @@ export function useShiftStats(selectedDate: Date, shifts: Shift[], activeUsers: 
 
   // 日付ごとのシフト人数を集計
   const getShiftCountsByDate = useMemo(() => {
+    // シフト表に表示されないユーザー（非表示設定・対象期間外の退職者など）の
+    // シフトが残っていても合計に混ざらないよう、部署ごとの集計と同じ
+    // activeUsers に絞り込む（部署の人数と合計が食い違う報告への対応）
+    const activeUserIds = new Set(activeUsers.map(user => user.id));
+
     return (date: Date) => {
       const dateStr = format(date, 'yyyy-MM-dd');
       // 「休み」は出勤ではないため人数に数えない
       const dayShifts = shifts.filter(
-        shift => shift.date === dateStr && shift.shiftType !== 'rest'
+        shift => shift.date === dateStr && shift.shiftType !== 'rest' && activeUserIds.has(shift.userId)
       );
 
       const counts: { [key: string]: number } = {};
@@ -87,7 +92,7 @@ export function useShiftStats(selectedDate: Date, shifts: Shift[], activeUsers: 
 
       return counts;
     };
-  }, [shifts]);
+  }, [shifts, activeUsers]);
 
   return {
     getMonthlyStats,

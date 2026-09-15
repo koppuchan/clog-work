@@ -217,7 +217,7 @@ export default function ShiftCalendar({
 
     <div className="flex" style={{ minHeight: '400px' }}>
       {/* 固定スタッフ名 */}
-      <div className="w-24 flex-shrink-0 mr-4">
+      <div className="w-32 flex-shrink-0 mr-4">
         <div className='p-1'>
           <div className="font-medium text-gray-900 p-2 bg-gray-50 rounded-lg text-center mb-2">
             スタッフ

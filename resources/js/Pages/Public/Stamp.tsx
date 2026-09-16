@@ -22,7 +22,10 @@ interface FelicaEvent {
   maskedIdm: string;
 }
 
-const FELICA_EVENTS_POLL_INTERVAL_MS = 3000;
+// 常駐アプリ自身の表示に近づけるため、検知の体感速度を優先して短くしている。
+// 1回あたりの問い合わせはcompany_id+idの絞り込みで軽量なため、この間隔でも
+// 負荷上の問題はない。
+const FELICA_EVENTS_POLL_INTERVAL_MS = 1000;
 const FELICA_TOAST_DURATION_MS = { success: 7000, warning: 12000 } as const;
 // 休憩開始モードをつけたまま名前を選ばずに放置された場合、自動で通常モードへ戻すまでの時間
 const BREAK_MODE_TIMEOUT_MS = 30000;

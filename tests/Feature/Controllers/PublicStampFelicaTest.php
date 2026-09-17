@@ -296,6 +296,27 @@ class PublicStampFelicaTest extends TestCase
 
     /**
      * @test
+     *
+     * 読み取り機がタップ1回で複数回イベントを発火すると、未登録カードの
+     * 警告がリクエストの数だけログされ、打刻専用画面に同じ警告トーストが
+     * 積み重なって表示されてしまっていた
+     * （クライアント報告: 未登録カードの表示が2つ表示される）。
+     */
+    public function 未登録カードの警告が読み取り機の多重発火で2回届いても警告ログは1件だけ記録される(): void
+    {
+        // Act: 同じ未登録カードで立て続けに2回かざす（リーダーの多重発火を模す）
+        $this->tap(['idm' => 'ffffffffffffffff'])->assertNotFound();
+        $this->tap(['idm' => 'ffffffffffffffff'])->assertNotFound();
+
+        // Assert: 警告ログは1件だけ
+        $this->assertSame(
+            1,
+            \App\Models\FelicaStampAttempt::query()->where('status', 'unregistered')->count()
+        );
+    }
+
+    /**
+     * @test
      */
     public function 他社の打刻端末からは打刻できない(): void
     {

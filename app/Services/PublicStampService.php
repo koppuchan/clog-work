@@ -213,6 +213,32 @@ class PublicStampService
     }
 
     /**
+     * 未登録カードの重複通知を、短時間は1回だけに抑える
+     *
+     * 未登録カードにはユーザーIDが無いため、cooldown/errorと異なり
+     * company_id+idmの組で抑制する。読み取り機が1回のタップで複数回
+     * イベントを発火すると、未登録カードの警告が届いたリクエストの数だけ
+     * ログされ、打刻専用画面に同じ警告トーストが積み重なって表示されて
+     * しまっていた（クライアント報告: 未登録カードの表示が2つ表示される）。
+     *
+     * @param  int  $companyId  会社ID
+     * @param  string  $idm  カードのIDm
+     * @return bool 今回のログを記録してよい場合はtrue（既に通知済みならfalse）
+     */
+    public function shouldNotifyUnregistered(int $companyId, string $idm): bool
+    {
+        $key = $this->unregisteredNotifiedCacheKey($companyId, $idm);
+
+        if (Cache::has($key)) {
+            return false;
+        }
+
+        Cache::put($key, true, self::FELICA_ERROR_NOTIFIED_TTL_SECONDS);
+
+        return true;
+    }
+
+    /**
      * 打刻成功の直後に、読み取り機の癖による重複防止警告を先回りで抑制する
      *
      * NFCリーダーが1回のタップで複数回イベントを発火すると、成功の直後に
@@ -250,6 +276,11 @@ class PublicStampService
     private function errorNotifiedCacheKey(int $userId, string $message): string
     {
         return "felica-error-notified:{$userId}:".md5($message);
+    }
+
+    private function unregisteredNotifiedCacheKey(int $companyId, string $idm): string
+    {
+        return "felica-unregistered-notified:{$companyId}:{$idm}";
     }
 
     /**

@@ -263,13 +263,18 @@ class PublicStampController extends Controller
             // 管理者がスタッフ編集画面でカード登録を待ち受けている間は、
             // 意図的に未登録カードをかざしている最中なので警告を出さない
             if (! $this->felicaCardRegistrationService->isRegistrationModeArmed($company->id)) {
-                $this->publicStampService->logFelicaAttempt(
-                    $company->id,
-                    null,
-                    $idm,
-                    'unregistered',
-                    '登録されていないカードです。管理者にカードの登録を依頼してください。'
-                );
+                // 読み取り機の多重発火で同じ未登録カードの警告が短時間に何度も
+                // 届いても、最初の1回だけ試行ログを記録する（警告トーストの
+                // 積み重ね防止。ユーザーIDが無いためcompany_id+idmで抑制する）
+                if ($this->publicStampService->shouldNotifyUnregistered($company->id, $idm)) {
+                    $this->publicStampService->logFelicaAttempt(
+                        $company->id,
+                        null,
+                        $idm,
+                        'unregistered',
+                        '登録されていないカードです。管理者にカードの登録を依頼してください。'
+                    );
+                }
             }
 
             return response()->json([

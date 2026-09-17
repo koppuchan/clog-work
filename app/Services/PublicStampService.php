@@ -221,21 +221,26 @@ class PublicStampService
      * ログされ、打刻専用画面に同じ警告トーストが積み重なって表示されて
      * しまっていた（クライアント報告: 未登録カードの表示が2つ表示される）。
      *
+     * cooldown/errorはユーザー単位のwithFelicaStampLock()の中で呼ばれる
+     * ため、その中でのCache::has()+Cache::put()は事実上直列化されて
+     * 安全だが、未登録カードにはロックするユーザーIDが無くこの経路自体が
+     * ロックの外にある。読み取り機がほぼ同時に複数リクエストを送ると、
+     * has()判定の直後にput()するまでの間に競合し、両方が「未通知」と
+     * 判定されて結局2件ログされてしまう（実際にこの不具合で再発した）。
+     * 判定と記録を1つの操作にできるCache::add()（既存キーが無い場合のみ
+     * 値をセットしてtrueを返す、原子的な操作）を使うことでこの競合を防ぐ。
+     *
      * @param  int  $companyId  会社ID
      * @param  string  $idm  カードのIDm
      * @return bool 今回のログを記録してよい場合はtrue（既に通知済みならfalse）
      */
     public function shouldNotifyUnregistered(int $companyId, string $idm): bool
     {
-        $key = $this->unregisteredNotifiedCacheKey($companyId, $idm);
-
-        if (Cache::has($key)) {
-            return false;
-        }
-
-        Cache::put($key, true, self::FELICA_ERROR_NOTIFIED_TTL_SECONDS);
-
-        return true;
+        return Cache::add(
+            $this->unregisteredNotifiedCacheKey($companyId, $idm),
+            true,
+            self::FELICA_ERROR_NOTIFIED_TTL_SECONDS
+        );
     }
 
     /**

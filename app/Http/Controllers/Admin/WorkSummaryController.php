@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\RequestStatusEnum;
+use App\Exceptions\NotFoundException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreWorkSummaryRequest;
 use App\Http\Requests\UpdateWorkSummaryRequest;
@@ -541,13 +542,24 @@ class WorkSummaryController extends Controller
             abort(403, 'この勤務実績を編集する権限がありません。');
         }
 
-        $this->dailyWorkSummaryService->updateWorkTimes(
-            $id,
-            $request->validated('work_start'),
-            $request->validated('work_end'),
-            $request->validated('break_periods') ?? [],
-            auth()->user()->id
-        );
+        try {
+            $this->dailyWorkSummaryService->updateWorkTimes(
+                $id,
+                $request->validated('work_start'),
+                $request->validated('work_end'),
+                $request->validated('break_periods') ?? [],
+                auth()->user()->id
+            );
+        } catch (NotFoundException) {
+            // 出勤・退勤の一方を削除した結果、もう一方だけが残る組み合わせに
+            // なると、その日は勤務実績として集計できず削除される
+            // （例: 退勤だけが残り出勤がない状態は「出勤していない日」と
+            // 区別がつかない）。削除自体は完了しているため、その旨を伝える。
+            return back()->with(
+                'error',
+                '出勤・退勤の一方だけが残る状態にはできないため、両方削除しました。'
+            );
+        }
 
         return back()->with('success', '勤務実績を更新しました。');
     }

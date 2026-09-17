@@ -1102,6 +1102,133 @@ class DailyWorkSummaryServiceTest extends TestCase
     }
 
     // ========================================
+    // updateWorkTimes 出退勤の削除テスト
+    // ========================================
+
+    /**
+     * @test
+     *
+     * 出勤・退勤の両方が打刻済みの状態で、編集モーダルから退勤欄だけを
+     * 空にして保存すると、退勤打刻が削除できず何も起こらなかった
+     * （クライアント報告: 退勤打刻を削除しようとしたができなかった）。
+     */
+    public function update_work_times_deletes_work_end_record_when_cleared(): void
+    {
+        // Arrange
+        $workDate = '2025-04-01';
+
+        $workStartRecord = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => $workDate.' 09:00:00',
+            'rounded_time' => $workDate.' 09:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $workEndRecord = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END,
+            'record_time' => $workDate.' 18:00:00',
+            'rounded_time' => $workDate.' 18:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $summary = DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => $workDate,
+            'work_start' => '09:00:00',
+            'work_end' => '18:00:00',
+            'work_minutes' => 540,
+            'break_minutes' => 60,
+            'net_work_minutes' => 480,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $admin = User::factory()->forCompany($this->company->id)->create();
+
+        // Act: 退勤欄だけを空にして保存
+        $result = $this->service->updateWorkTimes(
+            $summary->id,
+            '09:00',
+            null,
+            [],
+            $admin->id
+        );
+
+        // Assert: 退勤の打刻自体が削除される（出勤は残る）
+        $this->assertDatabaseMissing('time_records', ['id' => $workEndRecord->id]);
+        $this->assertDatabaseHas('time_records', ['id' => $workStartRecord->id]);
+        $this->assertNull($result->work_end);
+    }
+
+    /**
+     * @test
+     *
+     * 出勤の無い日に退勤だけが残る状態は「出勤していない日」と区別が
+     * つかず集計上意味を持たないため、出勤欄を空にして保存すると、
+     * 退勤も合わせて削除される。その結果その日の勤務実績は消え、
+     * updateWorkTimesはNotFoundExceptionを投げる
+     * （呼び出し元のWorkSummaryControllerで案内メッセージに変換する）。
+     */
+    public function update_work_times_deletes_work_end_too_when_work_start_is_cleared(): void
+    {
+        // Arrange
+        $workDate = '2025-04-01';
+
+        $workStartRecord = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => $workDate.' 09:00:00',
+            'rounded_time' => $workDate.' 09:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $workEndRecord = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END,
+            'record_time' => $workDate.' 18:00:00',
+            'rounded_time' => $workDate.' 18:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $summary = DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => $workDate,
+            'work_start' => '09:00:00',
+            'work_end' => '18:00:00',
+            'work_minutes' => 540,
+            'break_minutes' => 60,
+            'net_work_minutes' => 480,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $admin = User::factory()->forCompany($this->company->id)->create();
+
+        // Act & Assert
+        $this->expectException(NotFoundException::class);
+
+        try {
+            $this->service->updateWorkTimes(
+                $summary->id,
+                null,
+                '18:00',
+                [],
+                $admin->id
+            );
+        } finally {
+            // 例外の有無に関わらず、出勤・退勤の両方が削除されていること
+            $this->assertDatabaseMissing('time_records', ['id' => $workStartRecord->id]);
+            $this->assertDatabaseMissing('time_records', ['id' => $workEndRecord->id]);
+        }
+    }
+
+    // ========================================
     // updateWorkTimes 空休憩フォールバック制御テスト
     // ========================================
 

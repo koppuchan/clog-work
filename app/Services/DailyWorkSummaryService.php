@@ -422,10 +422,30 @@ class DailyWorkSummaryService
                         ]);
                     }
                 }
+            } else {
+                // 空にして保存された場合は打刻を削除する。出勤の無い日に退勤だけが
+                // 残る状態は集計上意味を持たない（バッチ集計は出勤があることを
+                // 前提にするため）ため、退勤も合わせて削除する。休憩の削除処理と
+                // 同様、削除前に修正履歴を作ってもON DELETE CASCADEで一緒に
+                // 消えてしまうため、履歴は残さず削除のみ行う。
+                $workStartRecord = $todayRecords->first(
+                    fn ($r) => $r->record_type === TimeRecordTypeEnum::WORK_START
+                );
+                if ($workStartRecord) {
+                    $this->timeRecordRepository->delete($workStartRecord->id);
+                }
+
+                $orphanedWorkEndRecord = $todayRecords->first(
+                    fn ($r) => $r->record_type->isWorkEnd()
+                );
+                if ($orphanedWorkEndRecord) {
+                    $this->timeRecordRepository->delete($orphanedWorkEndRecord->id);
+                }
             }
 
-            // WORK_ENDレコードを更新または作成
-            if ($workEnd !== null) {
+            // WORK_ENDレコードを更新または作成（出勤が無い場合は上のブロックで
+            // 退勤も削除済みのため、ここでは出勤がある場合のみ処理する）
+            if ($workStart !== null && $workEnd !== null) {
                 $endDateTime = CarbonImmutable::parse($workDate.' '.$workEnd);
 
                 // 日跨ぎ判定: 終了時刻が開始時刻より前なら翌日
@@ -499,6 +519,16 @@ class DailyWorkSummaryService
                             'correction_note' => self::NOTE_ADMIN_ADDITION,
                         ]);
                     }
+                }
+            } elseif ($workStart !== null) {
+                // 空にして保存された場合は打刻を削除する（WORK_START側と同様）。
+                // $workStartがnullの場合は上のブロックで既に削除済みのため、
+                // ここでは出勤がある場合のみ処理する（二重に削除を試みない）。
+                $workEndRecord = $todayRecords->first(
+                    fn ($r) => $r->record_type->isWorkEnd()
+                );
+                if ($workEndRecord) {
+                    $this->timeRecordRepository->delete($workEndRecord->id);
                 }
             }
 

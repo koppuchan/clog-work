@@ -15,6 +15,81 @@ import type { ShiftDisplayPeriodType } from '@/types/shift';
 import { useReports } from '@/hooks/reports/useReports';
 import { getRequestBadgeStyle } from '@/utils/requestStyles';
 
+/**
+ * 従業員をコードまたは氏名で検索して選べるセレクター
+ *
+ * 従業員数が多いと単純なプルダウンでは目的の人を探しにくいため、
+ * 入力で絞り込めるようにする（クライアント報告: コードもしくは氏名で
+ * 検索できるようにしてほしい）。
+ */
+function EmployeeSearchSelect({
+  users,
+  selectedUserId,
+  selectedUserName,
+  onChange,
+}: {
+  users: ReportUser[];
+  selectedUserId: number | null;
+  selectedUserName: string;
+  onChange: (userId: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+
+  const filteredUsers = query.trim() === ''
+    ? users
+    : users.filter((user) =>
+        [user.name, user.employee_code].some((value) =>
+          (value ?? '').toLowerCase().includes(query.trim().toLowerCase())
+        )
+      );
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={isOpen ? query : selectedUserName}
+        onChange={(e) => setQuery(e.target.value)}
+        onFocus={() => {
+          setQuery('');
+          setIsOpen(true);
+        }}
+        onBlur={() => setIsOpen(false)}
+        placeholder="名前または個人コードで検索"
+        className="w-full border border-gray-300 rounded-md p-2"
+      />
+      {isOpen && (
+        <ul className="absolute z-10 mt-1 w-full max-h-60 overflow-auto bg-white border border-gray-300 rounded-md shadow-lg">
+          {filteredUsers.length === 0 ? (
+            <li className="px-3 py-2 text-sm text-gray-500">該当するスタッフがいません</li>
+          ) : (
+            filteredUsers.map((user) => (
+              <li
+                key={user.id}
+                // onClickだとinputのonBlurが先に発火してリストが閉じてしまうため、
+                // onBlurより先に発火するonMouseDownで選択する
+                onMouseDown={() => {
+                  onChange(String(user.id));
+                  setQuery('');
+                  setIsOpen(false);
+                }}
+                className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 ${
+                  user.id === selectedUserId ? 'bg-blue-50 font-medium' : ''
+                }`}
+              >
+                {user.name}
+                {user.employee_code && (
+                  <span className="text-xs text-gray-500 ml-2">{user.employee_code}</span>
+                )}
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function ReportsPage() {
   const { users, workSummaries, timeRecords, approvedRequests, timeRecordCorrections, monthlySummary, canExport, exportBatchSize, shifts, filters, attendanceIssues } = usePage<{
     props: ReportsPageProps;
@@ -255,17 +330,12 @@ function ReportsPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">従業員</label>
-            <select
-              value={selectedUserId || ''}
-              onChange={(e) => handleUserChange(e.target.value)}
-              className="w-full border border-gray-300 rounded-md p-2"
-            >
-              {users.map((user: ReportUser) => (
-                <option key={user.id} value={user.id}>
-                  {user.name}
-                </option>
-              ))}
-            </select>
+            <EmployeeSearchSelect
+              users={users}
+              selectedUserId={selectedUserId}
+              selectedUserName={selectedUserName}
+              onChange={handleUserChange}
+            />
           </div>
         </div>
       </div>

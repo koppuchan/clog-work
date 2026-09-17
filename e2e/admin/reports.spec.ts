@@ -31,16 +31,21 @@ test.describe('管理者勤務実績画面', () => {
   });
 
   test('9-003: 従業員選択', async ({ page }) => {
-    // 従業員セレクトボックスが表示される
+    // 従業員検索欄が表示される
     await expect(page.locator('text=従業員')).toBeVisible();
-    const userSelect = page.locator('select').nth(1);
-    if (await userSelect.isVisible()) {
-      const optionCount = await userSelect.locator('option').count();
-      if (optionCount > 1) {
-        await userSelect.selectOption({ index: 1 });
-        await page.waitForTimeout(1000);
-        await expect(page.locator('table').first()).toBeVisible();
-      }
+    const userSearch = page.getByPlaceholder('名前または個人コードで検索');
+    await expect(userSearch).toBeVisible();
+
+    // クリックすると候補が一覧表示される
+    await userSearch.click();
+    const options = page.locator('li');
+    const optionCount = await options.count();
+    if (optionCount > 0) {
+      await options.first().click();
+      await page.waitForTimeout(1000);
+      await expect(page.locator('table').first()).toBeVisible();
+      // 選択後は検索欄に選んだスタッフの名前が表示され、空のままにはならない
+      await expect(userSearch).not.toHaveValue('');
     }
   });
 

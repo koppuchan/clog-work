@@ -1,9 +1,10 @@
-import { format, addMonths } from 'date-fns';
+import { format, addMonths, parse } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface MonthSelectorProps {
   value: string;
-  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  onChange: (value: string) => void;
   className?: string;
   formatLabel?: (date: Date) => string;
   placeholder?: string;
@@ -46,14 +47,48 @@ export default function MonthSelector({
     return { value: format(date, 'yyyy-MM'), date };
   });
 
+  const minValue = options[options.length - 1]?.value;
+  const maxValue = options[0]?.value;
+
+  // 一覧をスクロールしなくても前後の期間へすぐ移動できるよう矢印ボタンを設ける
+  // （クライアント報告: 日付選択のUIを改善してほしい）
+  const goToAdjacentMonth = (offset: 1 | -1) => {
+    const currentDate = parse(value, 'yyyy-MM', new Date());
+    onChange(format(addMonths(currentDate, offset), 'yyyy-MM'));
+  };
+
   return (
-    <select value={value} onChange={onChange} className={className}>
-      {placeholder && <option value="">{placeholder}</option>}
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {formatLabel(option.date)}
-        </option>
-      ))}
-    </select>
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() => goToAdjacentMonth(-1)}
+        disabled={value <= minValue}
+        aria-label="前の期間"
+        className="p-2 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white shrink-0"
+      >
+        <ChevronLeft className="w-4 h-4" />
+      </button>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`flex-1 min-w-0 ${className}`}
+      >
+        {placeholder && <option value="">{placeholder}</option>}
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {formatLabel(option.date)}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        onClick={() => goToAdjacentMonth(1)}
+        disabled={value >= maxValue}
+        aria-label="次の期間"
+        className="p-2 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white shrink-0"
+      >
+        <ChevronRight className="w-4 h-4" />
+      </button>
+    </div>
   );
 }

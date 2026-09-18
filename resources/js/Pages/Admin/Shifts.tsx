@@ -177,8 +177,8 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
    * ドロップダウンから選択された期間に表示を切り替える
    * Inertia.jsのページ遷移を使用してバックエンドから新しいデータを取得
    */
-  const handlePeriodSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const [year, month] = e.target.value.split('-');
+  const handlePeriodSelect = (value: string) => {
+    const [year, month] = value.split('-');
     const baseDate = new Date(parseInt(year), parseInt(month) - 1, 1);
     const { start, end } = getDateRangeForPeriod(baseDate);
 

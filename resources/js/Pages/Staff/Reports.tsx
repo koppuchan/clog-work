@@ -141,9 +141,9 @@ function StaffReportsPage() {
     };
   }, [selectedDate, timeRecords]);
 
-  const handlePeriodSelect = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handlePeriodSelect = useCallback((value: string) => {
     if (shiftDisplayPeriod === 'closing_day_based') {
-      const [year, month] = e.target.value.split('-');
+      const [year, month] = value.split('-');
       const baseDate = new Date(parseInt(year), parseInt(month) - 1, 1);
       const { start, end } = getDateRangeForPeriod(baseDate);
       router.get(
@@ -152,7 +152,7 @@ function StaffReportsPage() {
         { preserveState: false }
       );
     } else {
-      router.get('/staff/reports', { month: e.target.value }, { preserveState: true });
+      router.get('/staff/reports', { month: value }, { preserveState: true });
     }
   }, [shiftDisplayPeriod, getDateRangeForPeriod]);
 

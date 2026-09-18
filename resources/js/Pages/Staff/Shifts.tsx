@@ -36,7 +36,7 @@ function StaffShiftsPage({ users, shifts, shiftPatterns, leaves, filters, shiftD
         <h1 className="text-2xl font-bold text-gray-900">シフト確認</h1>
         <MonthSelector
           value={format(periodMonth, 'yyyy-MM')}
-          onChange={(e) => handleMonthSelect(e.target.value)}
+          onChange={handleMonthSelect}
           formatLabel={getPeriodLabel}
         />
       </div>

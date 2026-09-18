@@ -22,12 +22,15 @@ test.describe('管理者シフト管理画面', () => {
   });
 
   test('5-003: 月の切り替え', async ({ page }) => {
-    // セレクトボックスで月を切り替える
-    const monthSelect = page.locator('select').first();
-    await expect(monthSelect).toBeVisible();
-    const optionCount = await monthSelect.locator('option').count();
-    if (optionCount > 1) {
-      await monthSelect.selectOption({ index: 0 });
+    // 期間選択ボタンをクリックして年月ポップオーバーを開く
+    const periodTrigger = page.locator('button', { hasText: /\d{4}年/ }).first();
+    await expect(periodTrigger).toBeVisible();
+    await periodTrigger.click();
+
+    // 月グリッドから1つ選ぶ
+    const monthButtons = page.locator('button', { hasText: /^\d{1,2}月$/ });
+    if (await monthButtons.count() > 0) {
+      await monthButtons.first().click();
       await page.waitForTimeout(1000);
       // ページが更新されることを確認
       await expect(page).toHaveURL(/\/admin\/shifts/);

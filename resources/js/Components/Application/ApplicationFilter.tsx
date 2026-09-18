@@ -40,8 +40,7 @@ export default function ApplicationFilter({
         onNameChange(nameInput.trim() || null);
     };
 
-    const handleTargetMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const value = e.target.value;
+    const handleTargetMonthChange = (value: string) => {
         onTargetMonthChange(value || null);
     };
 

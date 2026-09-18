@@ -427,21 +427,30 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
 
     if (editingSummary && editingSummary.id > 0) {
       // 既存レコードの更新
+      //
+      // preserveState: false（デフォルト）にすると、バリデーションエラーで
+      // 保存に失敗した場合もページコンポーネントが強制的に作り直され、
+      // onErrorで設定したeditErrorsやshowEditModalの状態が直後に初期値へ
+      // 巻き戻ってしまう。その結果、保存が失敗しているのにモーダルが
+      // 何事もなく閉じたように見え、エラーメッセージも表示されない
+      // （保存できているように見えて実は反映されていない不具合の原因）。
+      // preserveState: trueにしても、成功時はonSuccessで手動状態リセット
+      // しているため問題なく、失敗時はエラーを正しく表示し続けられる。
       router.put(`/admin/reports/${editingSummary.id}`, payload, {
-        preserveState: false,
+        preserveState: true,
         preserveScroll: true,
         onSuccess,
         onError,
         onFinish,
       });
     } else {
-      // 新規作成
+      // 新規作成（理由は上のupdateと同様）
       router.post('/admin/reports', {
         ...payload,
         user_id: selectedUserId,
         work_date: editingDate,
       }, {
-        preserveState: false,
+        preserveState: true,
         preserveScroll: true,
         onSuccess,
         onError,
@@ -459,7 +468,8 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     setIsDeleting(true);
 
     router.delete(`/admin/reports/${editingSummary.id}`, {
-      preserveState: false,
+      // 理由はsaveEditと同様（エラー時に状態が巻き戻ってエラー表示が消えるのを防ぐ）
+      preserveState: true,
       preserveScroll: true,
       onSuccess: () => {
         setShowEditModal(false);

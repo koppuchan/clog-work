@@ -11,6 +11,7 @@ use App\Enums\TimeRecordTypeEnum;
 use App\Exceptions\NotFoundException;
 use App\Models\DailyWorkSummary;
 use App\Models\Request as LeaveRequest;
+use App\Models\TimeRecord;
 use App\Models\TimeRecordCorrection;
 use App\Models\User;
 use App\Repositories\Contracts\CompanyRepositoryInterface;
@@ -355,6 +356,8 @@ class DailyWorkSummaryService
                 $todayRecords = $todayRecords->merge($carriedNextDayRecords);
             }
 
+            $ownWorkEndRecord = $this->findOwnWorkEndRecord($todayRecords, $workDate);
+
             // WORK_STARTレコードを更新または作成
             if ($workStart !== null) {
                 $startDateTime = CarbonImmutable::parse($workDate.' '.$workStart);
@@ -435,11 +438,8 @@ class DailyWorkSummaryService
                     $this->timeRecordRepository->delete($workStartRecord->id);
                 }
 
-                $orphanedWorkEndRecord = $todayRecords->first(
-                    fn ($r) => $r->record_type->isWorkEnd()
-                );
-                if ($orphanedWorkEndRecord) {
-                    $this->timeRecordRepository->delete($orphanedWorkEndRecord->id);
+                if ($ownWorkEndRecord) {
+                    $this->timeRecordRepository->delete($ownWorkEndRecord->id);
                 }
             }
 
@@ -461,9 +461,7 @@ class DailyWorkSummaryService
 
                 $roundedEnd = $this->timeRoundingService->roundTime($companyId, $endDateTime, $recordType);
 
-                $workEndRecord = $todayRecords->first(
-                    fn ($r) => $r->record_type->isWorkEnd()
-                );
+                $workEndRecord = $ownWorkEndRecord;
 
                 if ($workEndRecord) {
                     // 実際に変わった場合のみ修正扱いにする（理由はWORK_START側と同様）
@@ -524,11 +522,8 @@ class DailyWorkSummaryService
                 // 空にして保存された場合は打刻を削除する（WORK_START側と同様）。
                 // $workStartがnullの場合は上のブロックで既に削除済みのため、
                 // ここでは出勤がある場合のみ処理する（二重に削除を試みない）。
-                $workEndRecord = $todayRecords->first(
-                    fn ($r) => $r->record_type->isWorkEnd()
-                );
-                if ($workEndRecord) {
-                    $this->timeRecordRepository->delete($workEndRecord->id);
+                if ($ownWorkEndRecord) {
+                    $this->timeRecordRepository->delete($ownWorkEndRecord->id);
                 }
             }
 
@@ -731,6 +726,27 @@ class DailyWorkSummaryService
         }
 
         return $result;
+    }
+
+    /**
+     * 勤務日自身の退勤打刻を探す
+     *
+     * 日付越え退勤(WORK_END_NEXT_DAY)は出勤日の翌日の日付で保存されるため、
+     * 当日の日付のWORK_END_NEXT_DAYは前夜の退勤（前日の勤務のもの）を指す。
+     * これを当日の退勤として更新・削除すると、当日の退勤は変わらないまま
+     * 前日の退勤打刻だけが書き換わってしまう。前夜分を除き、複数ある場合は
+     * 集計・編集画面の表示と同じく最後のものを対象にする。
+     *
+     * @param  Collection<int, TimeRecord>  $records  当日と、翌日の日付越え分をマージした打刻
+     * @param  string  $workDate  勤務日（Y-m-d形式）
+     */
+    private function findOwnWorkEndRecord(Collection $records, string $workDate): ?TimeRecord
+    {
+        return $records
+            ->filter(fn (TimeRecord $r) => $r->record_type->isWorkEnd()
+                && ! ($r->record_type === TimeRecordTypeEnum::WORK_END_NEXT_DAY
+                    && $r->record_time->format('Y-m-d') === $workDate))
+            ->last();
     }
 
     /**

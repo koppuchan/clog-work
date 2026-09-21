@@ -1229,6 +1229,184 @@ class DailyWorkSummaryServiceTest extends TestCase
     }
 
     // ========================================
+    // updateWorkTimes 前夜の日付越え退勤が混在する日の編集テスト
+    // ========================================
+
+    /**
+     * @test
+     *
+     * 日付越え退勤(WORK_END_NEXT_DAY)は翌日の日付で保存されるため、前夜に退勤し忘れて
+     * 翌日の出勤が日付越え退勤として記録された日は、当日の日付に「前夜の退勤」が混在する。
+     * この日の退勤を編集すると、前夜の退勤を当日の退勤として書き換えてしまい、
+     * 「更新しました」と出るのに当日の退勤は日付越えのまま直らなかった
+     * （クライアント報告: 翌日越えの打刻を編集する場合が修正できていない）。
+     */
+    public function update_work_times_edits_own_cross_day_end_not_previous_nights_end(): void
+    {
+        // Arrange: 4/10の夜勤の退勤(4/11 09:06)と、4/11の出勤13:37・日付越え退勤(4/12 09:34)
+        $previousNightEnd = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END_NEXT_DAY,
+            'record_time' => '2025-04-11 09:06:00',
+            'rounded_time' => '2025-04-11 09:06:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => '2025-04-11 13:37:00',
+            'rounded_time' => '2025-04-11 13:37:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $ownCrossDayEnd = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END_NEXT_DAY,
+            'record_time' => '2025-04-12 09:34:00',
+            'rounded_time' => '2025-04-12 09:34:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $summary = DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2025-04-11',
+            'work_start' => '2025-04-11 13:37:00',
+            'work_end' => '2025-04-12 09:34:00',
+            'work_minutes' => 1197,
+            'break_minutes' => 0,
+            'net_work_minutes' => 1197,
+            'is_cross_day' => true,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $admin = User::factory()->forCompany($this->company->id)->create();
+
+        // Act: 退勤を同日の18:00に直す
+        $result = $this->service->updateWorkTimes($summary->id, '13:37', '18:00', [], $admin->id);
+
+        // Assert: 前夜の退勤（4/10の勤務のもの）には触れない
+        $previousNightEnd->refresh();
+        $this->assertSame(TimeRecordTypeEnum::WORK_END_NEXT_DAY, $previousNightEnd->record_type);
+        $this->assertSame('2025-04-11 09:06:00', $previousNightEnd->record_time->format('Y-m-d H:i:s'));
+
+        // Assert: 4/11自身の退勤（翌日側にあった打刻）が同日18:00の通常退勤になる
+        $ownCrossDayEnd->refresh();
+        $this->assertSame(TimeRecordTypeEnum::WORK_END, $ownCrossDayEnd->record_type);
+        $this->assertSame('2025-04-11 18:00:00', $ownCrossDayEnd->record_time->format('Y-m-d H:i:s'));
+
+        $this->assertSame('18:00', $result->work_end->format('H:i'));
+        $this->assertFalse($result->is_cross_day);
+    }
+
+    /**
+     * @test
+     *
+     * 前夜の退勤が混在する日で退勤欄を空にして保存しても、削除されるのは
+     * 当日自身の退勤だけで、前夜の退勤は残る。
+     */
+    public function update_work_times_clearing_work_end_keeps_previous_nights_end(): void
+    {
+        // Arrange: 前夜の退勤(4/11 09:06)と、4/11の出勤13:37・退勤18:00
+        $previousNightEnd = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END_NEXT_DAY,
+            'record_time' => '2025-04-11 09:06:00',
+            'rounded_time' => '2025-04-11 09:06:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => '2025-04-11 13:37:00',
+            'rounded_time' => '2025-04-11 13:37:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $ownWorkEnd = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END,
+            'record_time' => '2025-04-11 18:00:00',
+            'rounded_time' => '2025-04-11 18:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $summary = DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2025-04-11',
+            'work_start' => '2025-04-11 13:37:00',
+            'work_end' => '2025-04-11 18:00:00',
+            'work_minutes' => 263,
+            'break_minutes' => 0,
+            'net_work_minutes' => 263,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $admin = User::factory()->forCompany($this->company->id)->create();
+
+        // Act: 退勤欄だけを空にして保存
+        $result = $this->service->updateWorkTimes($summary->id, '13:37', null, [], $admin->id);
+
+        // Assert
+        $this->assertDatabaseMissing('time_records', ['id' => $ownWorkEnd->id]);
+        $this->assertDatabaseHas('time_records', ['id' => $previousNightEnd->id]);
+        $this->assertNull($result->work_end);
+    }
+
+    /**
+     * @test
+     *
+     * 打刻のない日（登録ボタン）でも、当日の日付にある前夜の退勤を
+     * 当日の退勤として書き換えず、新しく当日の退勤を作る。
+     */
+    public function create_or_update_work_times_creates_new_work_end_and_keeps_previous_nights_end(): void
+    {
+        // Arrange: 4/12には前夜(4/11)の退勤09:34だけがあり、出勤・退勤の打刻はない
+        $previousNightEnd = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END_NEXT_DAY,
+            'record_time' => '2025-04-12 09:34:00',
+            'rounded_time' => '2025-04-12 09:34:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $admin = User::factory()->forCompany($this->company->id)->create();
+
+        // Act: 4/12の勤務実績を09:00-18:00で登録
+        $result = $this->service->createOrUpdateWorkTimes(
+            $this->company->id,
+            $this->user->id,
+            '2025-04-12',
+            '09:00',
+            '18:00',
+            [],
+            $admin->id
+        );
+
+        // Assert: 前夜の退勤は書き換わらず、当日の退勤が新しく作られる
+        $previousNightEnd->refresh();
+        $this->assertSame(TimeRecordTypeEnum::WORK_END_NEXT_DAY, $previousNightEnd->record_type);
+        $this->assertSame('2025-04-12 09:34:00', $previousNightEnd->record_time->format('Y-m-d H:i:s'));
+
+        $this->assertDatabaseHas('time_records', [
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END->value,
+            'record_time' => '2025-04-12 18:00:00',
+        ]);
+        $this->assertSame('18:00', $result->work_end->format('H:i'));
+    }
+
+    // ========================================
     // updateWorkTimes 空休憩フォールバック制御テスト
     // ========================================
 

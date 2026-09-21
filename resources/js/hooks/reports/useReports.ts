@@ -3,6 +3,7 @@ import { format, parseISO, eachDayOfInterval, addDays } from 'date-fns';
 import { router } from '@inertiajs/react';
 import { getHolidayName } from '@/lib/holidays';
 import { formatMinutesToHM } from '@/utils/timeFormat';
+import { resolveAutoFillBreakPeriod } from '@/utils/autoBreakFill';
 import type { ReportUser, WorkSummary, ApprovedRequest, ExportFormats, TimeRecord, ShiftInfo } from '@/types/reports';
 import type { ExportScope } from '@/Components/Reports/ReportExportModal';
 
@@ -285,8 +286,13 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
   // 使われているシフトの休憩時間帯を編集フォームにも表示する。打刻が
   // 無いまま裏で計算だけ効いてしまい、編集画面では見えないという状態を
   // 避けるため。
+  //
+  // 補うのは、集計と同じく実労働時間と重なる範囲だけ。重なりがない休憩
+  // （例: 日跨ぎの退勤で勤務時間帯が変わり、シフトの休憩が範囲外になる場合）を
+  // そのまま入れると、集計では控除されていない休憩を実打刻として保存しようとして
+  // サーバー側の「休憩が勤務時間の範囲外」検証で保存できなくなる。
   const getBreakPeriodsFromRecords = useCallback(
-    (dateStr: string, hasWorkStartAndEnd: boolean): BreakPeriodForm[] => {
+    (dateStr: string, workStart: string, workEnd: string): BreakPeriodForm[] => {
       const records = getRecordsIncludingNextDayCarryOver(dateStr);
       const starts = records
         .filter((r) => String(r.record_type.value) === '4')
@@ -301,10 +307,18 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
         }
       }
 
-      if (periods.length === 0 && hasWorkStartAndEnd) {
+      if (periods.length === 0 && workStart && workEnd) {
         const shiftInfo = shifts[dateStr];
         if (shiftInfo?.auto_fill_break && shiftInfo.break_start && shiftInfo.break_end) {
-          periods.push({ start: shiftInfo.break_start, end: shiftInfo.break_end });
+          const autoFilled = resolveAutoFillBreakPeriod(
+            shiftInfo.break_start,
+            shiftInfo.break_end,
+            workStart,
+            workEnd
+          );
+          if (autoFilled) {
+            periods.push(autoFilled);
+          }
         }
       }
 
@@ -361,7 +375,7 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
       setEditForm({
         work_start: resolvedWorkStart,
         work_end: resolvedWorkEnd,
-        break_periods: getBreakPeriodsFromRecords(dateStr, Boolean(resolvedWorkStart && resolvedWorkEnd)),
+        break_periods: getBreakPeriodsFromRecords(dateStr, resolvedWorkStart, resolvedWorkEnd),
       });
       setEditErrors([]);
       setShowEditModal(true);

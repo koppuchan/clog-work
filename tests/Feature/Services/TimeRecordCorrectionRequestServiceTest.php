@@ -991,6 +991,57 @@ class TimeRecordCorrectionRequestServiceTest extends TestCase
 
     /**
      * @test
+     *
+     * 前夜の日付越え勤務の退勤・休憩は対象日の日付で保存されるが、前日の勤務のもの。
+     * 対象日の打刻を修正申請するとき、これを修正対象に紐づけない
+     * （紐づけると承認しても対象日の打刻は変わらず、前日の打刻だけが書き換わる）。
+     */
+    public function create_clock_error_request_does_not_link_to_previous_nights_end_and_break(): void
+    {
+        // Arrange: 前夜の分（退勤09:06・休憩03:00-03:30）と、対象日自身の勤務
+        $create = fn (TimeRecordTypeEnum $type, string $time): TimeRecord => TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => $type,
+            'record_time' => $time,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $create(TimeRecordTypeEnum::BREAK_START, '2025-01-15 03:00:00');
+        $create(TimeRecordTypeEnum::BREAK_END, '2025-01-15 03:30:00');
+        $create(TimeRecordTypeEnum::WORK_END_NEXT_DAY, '2025-01-15 09:06:00');
+        $create(TimeRecordTypeEnum::WORK_START, '2025-01-15 13:37:00');
+        $ownBreakStart = $create(TimeRecordTypeEnum::BREAK_START, '2025-01-15 15:00:00');
+        $ownBreakEnd = $create(TimeRecordTypeEnum::BREAK_END, '2025-01-15 15:30:00');
+        $ownWorkEnd = $create(TimeRecordTypeEnum::WORK_END, '2025-01-15 18:00:00');
+
+        // Act
+        $result = $this->service->createClockErrorRequest($this->company->id, $this->user->id, [
+            'target_date' => '2025-01-15',
+            'reason' => '打刻間違い',
+            'start_time' => null,
+            'end_time' => '18:30',
+            'break_start_time' => '15:00',
+            'break_end_time' => '15:40',
+        ]);
+
+        // Assert: 対象日自身の打刻に紐づく
+        $this->assertSame(
+            $ownWorkEnd->id,
+            $result->details->where('record_type', TimeRecordTypeEnum::WORK_END)->first()?->time_record_id
+        );
+        $this->assertSame(
+            $ownBreakStart->id,
+            $result->details->where('record_type', TimeRecordTypeEnum::BREAK_START)->first()?->time_record_id
+        );
+        $this->assertSame(
+            $ownBreakEnd->id,
+            $result->details->where('record_type', TimeRecordTypeEnum::BREAK_END)->first()?->time_record_id
+        );
+    }
+
+    /**
+     * @test
      */
     public function create_clock_error_request_creates_request_with_break_end_detail(): void
     {

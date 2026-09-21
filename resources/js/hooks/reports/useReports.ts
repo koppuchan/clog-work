@@ -255,10 +255,24 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
   }, [exportFormats.csv, exportFormats.excel, exportToCSV, exportToExcel, closeExportModal]);
 
   // 対象日の打刻 + 日跨ぎ夜勤の場合のみ翌日のレコード(WORK_END_NEXT_DAY と該当時刻以前の休憩)をマージ
+  //
+  // 対象日の日付には前夜の日跨ぎ勤務の分（WORK_END_NEXT_DAY と、その時刻以前の休憩）が
+  // 混在することがある。これは前日の勤務のものなので、対象日の編集対象からは除く。
+  // 含めたままだと、前夜の休憩が対象日の休憩として表示・保存されてしまう。
   const getRecordsIncludingNextDayCarryOver = useCallback(
     (dateStr: string): TimeRecord[] => {
       const nextDateStr = format(addDays(parseISO(dateStr), 1), 'yyyy-MM-dd');
-      const dayRecords = timeRecords.filter((r) => r.record_date === dateStr);
+      const allDayRecords = timeRecords.filter((r) => r.record_date === dateStr);
+      const previousNightEnd = allDayRecords.find((r) => String(r.record_type.value) === '3');
+      const dayRecords = previousNightEnd
+        ? allDayRecords.filter((r) => {
+            if (String(r.record_type.value) === '3') return false;
+            if (r.record_type.is_break) {
+              return r.record_time.localeCompare(previousNightEnd.record_time) > 0;
+            }
+            return true;
+          })
+        : allDayRecords;
       const nextDayRecords = timeRecords.filter((r) => r.record_date === nextDateStr);
 
       const nextDayCrossEnd = nextDayRecords.find((r) => String(r.record_type.value) === '3');

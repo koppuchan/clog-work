@@ -1406,6 +1406,126 @@ class DailyWorkSummaryServiceTest extends TestCase
         $this->assertSame('18:00', $result->work_end->format('H:i'));
     }
 
+    /**
+     * 前夜の日付越え勤務（4/10の夜勤: 退勤4/11 09:06、休憩4/11 03:00-03:30）と、
+     * 4/11自身の勤務（出勤13:37・退勤18:00）の打刻を作成する。
+     *
+     * @return array{previousEnd: TimeRecord, previousBreakStart: TimeRecord, previousBreakEnd: TimeRecord, ownIds: array<int, int>, summary: DailyWorkSummary}
+     */
+    private function createDayWithPreviousNightRecords(): array
+    {
+        $create = fn (TimeRecordTypeEnum $type, string $time): TimeRecord => TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => $type,
+            'record_time' => $time,
+            'rounded_time' => $time,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $previousBreakStart = $create(TimeRecordTypeEnum::BREAK_START, '2025-04-11 03:00:00');
+        $previousBreakEnd = $create(TimeRecordTypeEnum::BREAK_END, '2025-04-11 03:30:00');
+        $previousEnd = $create(TimeRecordTypeEnum::WORK_END_NEXT_DAY, '2025-04-11 09:06:00');
+        $ownIds = [
+            $create(TimeRecordTypeEnum::WORK_START, '2025-04-11 13:37:00')->id,
+            $create(TimeRecordTypeEnum::BREAK_START, '2025-04-11 15:00:00')->id,
+            $create(TimeRecordTypeEnum::BREAK_END, '2025-04-11 15:30:00')->id,
+            $create(TimeRecordTypeEnum::WORK_END, '2025-04-11 18:00:00')->id,
+        ];
+
+        $summary = DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2025-04-11',
+            'work_start' => '2025-04-11 13:37:00',
+            'work_end' => '2025-04-11 18:00:00',
+            'work_minutes' => 263,
+            'break_minutes' => 30,
+            'net_work_minutes' => 233,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        return compact('previousEnd', 'previousBreakStart', 'previousBreakEnd', 'ownIds', 'summary');
+    }
+
+    /**
+     * @test
+     *
+     * 前夜の日付越え勤務の休憩は当日の日付で保存されるが、前日の勤務のもの。
+     * 当日の休憩を保存しても、これを当日の休憩として書き換えない。
+     */
+    public function update_work_times_keeps_previous_nights_breaks_when_saving_breaks(): void
+    {
+        // Arrange
+        $day = $this->createDayWithPreviousNightRecords();
+        $admin = User::factory()->forCompany($this->company->id)->create();
+
+        // Act: 当日の休憩を15:00-15:40に直す
+        $this->service->updateWorkTimes(
+            $day['summary']->id,
+            '13:37',
+            '18:00',
+            [['start' => '15:00', 'end' => '15:40']],
+            $admin->id
+        );
+
+        // Assert: 前夜の休憩・退勤は変わらない
+        $this->assertSame('2025-04-11 03:00:00', $day['previousBreakStart']->refresh()->record_time->format('Y-m-d H:i:s'));
+        $this->assertSame('2025-04-11 03:30:00', $day['previousBreakEnd']->refresh()->record_time->format('Y-m-d H:i:s'));
+        $this->assertSame('2025-04-11 09:06:00', $day['previousEnd']->refresh()->record_time->format('Y-m-d H:i:s'));
+
+        // Assert: 当日自身の休憩が更新される
+        $this->assertDatabaseHas('time_records', [
+            'id' => $day['ownIds'][2],
+            'record_time' => '2025-04-11 15:40:00',
+        ]);
+    }
+
+    /**
+     * @test
+     *
+     * 当日の休憩をすべて消して保存しても、前夜の休憩は削除されない。
+     */
+    public function update_work_times_with_empty_break_periods_keeps_previous_nights_breaks(): void
+    {
+        // Arrange
+        $day = $this->createDayWithPreviousNightRecords();
+        $admin = User::factory()->forCompany($this->company->id)->create();
+
+        // Act
+        $this->service->updateWorkTimes($day['summary']->id, '13:37', '18:00', [], $admin->id);
+
+        // Assert: 当日自身の休憩だけが削除され、前夜の休憩は残る
+        $this->assertDatabaseMissing('time_records', ['id' => $day['ownIds'][1]]);
+        $this->assertDatabaseMissing('time_records', ['id' => $day['ownIds'][2]]);
+        $this->assertDatabaseHas('time_records', ['id' => $day['previousBreakStart']->id]);
+        $this->assertDatabaseHas('time_records', ['id' => $day['previousBreakEnd']->id]);
+        $this->assertDatabaseHas('time_records', ['id' => $day['previousEnd']->id]);
+    }
+
+    /**
+     * @test
+     *
+     * 勤務実績を削除しても、当日の日付にある前夜の勤務の退勤・休憩は
+     * 前日のものなので削除されない。
+     */
+    public function delete_work_times_keeps_previous_nights_end_and_breaks(): void
+    {
+        // Arrange
+        $day = $this->createDayWithPreviousNightRecords();
+
+        // Act
+        $this->service->deleteWorkTimes($day['summary']->id);
+
+        // Assert: 当日自身の打刻は削除され、前夜の打刻は残る
+        foreach ($day['ownIds'] as $ownId) {
+            $this->assertDatabaseMissing('time_records', ['id' => $ownId]);
+        }
+        $this->assertDatabaseHas('time_records', ['id' => $day['previousBreakStart']->id]);
+        $this->assertDatabaseHas('time_records', ['id' => $day['previousBreakEnd']->id]);
+        $this->assertDatabaseHas('time_records', ['id' => $day['previousEnd']->id]);
+    }
+
     // ========================================
     // updateWorkTimes 空休憩フォールバック制御テスト
     // ========================================

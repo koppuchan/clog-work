@@ -11,7 +11,6 @@ use App\Enums\TimeRecordTypeEnum;
 use App\Exceptions\NotFoundException;
 use App\Models\DailyWorkSummary;
 use App\Models\Request as LeaveRequest;
-use App\Models\TimeRecord;
 use App\Models\TimeRecordCorrection;
 use App\Models\User;
 use App\Repositories\Contracts\CompanyRepositoryInterface;
@@ -49,7 +48,8 @@ class DailyWorkSummaryService
         private readonly TimeRoundingService $timeRoundingService,
         private readonly RawStampTimeService $rawStampTimeService,
         private readonly LateEarlyLeaveDisplay $lateEarlyLeaveDisplay,
-        private readonly RequestRepositoryInterface $requestRepository
+        private readonly RequestRepositoryInterface $requestRepository,
+        private readonly PreviousNightTimeRecords $previousNightTimeRecords
     ) {}
 
     /**
@@ -272,8 +272,10 @@ class DailyWorkSummaryService
         $workDate = $summary->work_date->format('Y-m-d');
 
         DB::transaction(function () use ($companyId, $userId, $workDate, $summary) {
-            // 対象日の打刻レコード
-            $todayRecords = $this->timeRecordRepository->findByUserIdAndDate($companyId, $userId, $workDate);
+            // 対象日の打刻レコード（前夜の日付越え勤務の分は前日のものなので削除対象にしない）
+            $todayRecords = $this->previousNightTimeRecords->excludeFrom(
+                $this->timeRecordRepository->findByUserIdAndDate($companyId, $userId, $workDate)
+            );
 
             // 翌日の日跨ぎ退勤レコードと、日跨ぎ退勤時刻以前の翌日休憩レコードもマージして削除対象に含める
             // （夜勤の翌朝休憩や日跨ぎ休憩は翌日の日付に正規化されて保存されるため、
@@ -332,7 +334,12 @@ class DailyWorkSummaryService
         $workDate = $summary->work_date->format('Y-m-d');
 
         DB::transaction(function () use ($companyId, $userId, $workDate, $workStart, $workEnd, $breakPeriods, $summary, $correctedBy) {
-            $todayRecords = $this->timeRecordRepository->findByUserIdAndDate($companyId, $userId, $workDate);
+            // 当日の日付には前夜の日付越え勤務の退勤・休憩が混在することがある。
+            // これを当日の打刻として扱うと、当日の退勤は変わらないまま前日の
+            // 退勤・休憩だけが書き換わってしまうため、更新対象から除く。
+            $todayRecords = $this->previousNightTimeRecords->excludeFrom(
+                $this->timeRecordRepository->findByUserIdAndDate($companyId, $userId, $workDate)
+            );
 
             // 翌日の日付越え退勤レコードと、日跨ぎ退勤時刻以前の休憩レコードもマージ
             // （夜勤の翌朝休憩や日跨ぎ休憩は翌日の日付に正規化されて保存されるため）
@@ -356,7 +363,10 @@ class DailyWorkSummaryService
                 $todayRecords = $todayRecords->merge($carriedNextDayRecords);
             }
 
-            $ownWorkEndRecord = $this->findOwnWorkEndRecord($todayRecords, $workDate);
+            // 退勤が複数ある場合は、集計・編集画面の表示と同じく最後のものを対象にする
+            $ownWorkEndRecord = $todayRecords
+                ->filter(fn ($r) => $r->record_type->isWorkEnd())
+                ->last();
 
             // WORK_STARTレコードを更新または作成
             if ($workStart !== null) {
@@ -726,27 +736,6 @@ class DailyWorkSummaryService
         }
 
         return $result;
-    }
-
-    /**
-     * 勤務日自身の退勤打刻を探す
-     *
-     * 日付越え退勤(WORK_END_NEXT_DAY)は出勤日の翌日の日付で保存されるため、
-     * 当日の日付のWORK_END_NEXT_DAYは前夜の退勤（前日の勤務のもの）を指す。
-     * これを当日の退勤として更新・削除すると、当日の退勤は変わらないまま
-     * 前日の退勤打刻だけが書き換わってしまう。前夜分を除き、複数ある場合は
-     * 集計・編集画面の表示と同じく最後のものを対象にする。
-     *
-     * @param  Collection<int, TimeRecord>  $records  当日と、翌日の日付越え分をマージした打刻
-     * @param  string  $workDate  勤務日（Y-m-d形式）
-     */
-    private function findOwnWorkEndRecord(Collection $records, string $workDate): ?TimeRecord
-    {
-        return $records
-            ->filter(fn (TimeRecord $r) => $r->record_type->isWorkEnd()
-                && ! ($r->record_type === TimeRecordTypeEnum::WORK_END_NEXT_DAY
-                    && $r->record_time->format('Y-m-d') === $workDate))
-            ->last();
     }
 
     /**

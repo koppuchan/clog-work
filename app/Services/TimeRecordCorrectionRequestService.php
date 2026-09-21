@@ -37,7 +37,8 @@ class TimeRecordCorrectionRequestService
         private readonly DailyWorkSummaryRepositoryInterface $dailyWorkSummaryRepository,
         private readonly CompanyRepositoryInterface $companyRepository,
         private readonly UserRepositoryInterface $userRepository,
-        private readonly TimeRoundingService $timeRoundingService
+        private readonly TimeRoundingService $timeRoundingService,
+        private readonly PreviousNightTimeRecords $previousNightTimeRecords
     ) {}
 
     /**
@@ -493,7 +494,13 @@ class TimeRecordCorrectionRequestService
             $targetDate = $data['target_date'];
 
             // 既存の打刻データを検索
-            $existingRecords = $this->timeRecordRepository->findByUserIdAndDate($companyId, $userId, $targetDate);
+            //
+            // 対象日の日付には前夜の日付越え勤務の退勤・休憩が混在することがある。
+            // これを対象日の打刻として扱うと、修正対象に前日の打刻を選んでしまい、
+            // 承認しても対象日の退勤・休憩が変わらず前日のものだけが書き換わるため除く。
+            $existingRecords = $this->previousNightTimeRecords->excludeFrom(
+                $this->timeRecordRepository->findByUserIdAndDate($companyId, $userId, $targetDate)
+            );
 
             // 日跨ぎ夜勤の場合、退勤（WORK_END_NEXT_DAY）とその前の休憩は
             // 翌日の日付でレコードされているため、対象日だけの検索では
@@ -565,9 +572,10 @@ class TimeRecordCorrectionRequestService
             // 明細を作成（退勤時刻）
             if (! empty($data['end_time'])) {
                 // 既存の退勤打刻を検索（通常終了または日付越え終了）
-                $existingWorkEnd = $existingRecords->first(
-                    fn ($r) => $r->record_type === TimeRecordTypeEnum::WORK_END || $r->record_type === TimeRecordTypeEnum::WORK_END_NEXT_DAY
-                );
+                // 複数ある場合は、集計・編集画面の表示と同じく最後のものを対象にする
+                $existingWorkEnd = $existingRecords
+                    ->filter(fn ($r) => $r->record_type->isWorkEnd())
+                    ->last();
 
                 $endDateTime = CarbonImmutable::parse("{$targetDate} {$data['end_time']}");
 

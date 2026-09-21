@@ -614,6 +614,106 @@ class DailyWorkSummaryBatchServiceTest extends TestCase
     }
 
     /**
+     * 前夜の日付越え勤務（1/15 22:00出勤・1/16 02:00退勤、休憩1/16 00:30-01:00）と、
+     * 1/16自身の勤務（09:00-18:00）の打刻を作成する。
+     */
+    private function createNightShiftAndNextDayShiftRecords(): void
+    {
+        $create = fn (TimeRecordTypeEnum $type, string $time) => TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => $type,
+            'record_time' => $time,
+            'rounded_time' => $time,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $create(TimeRecordTypeEnum::WORK_START, '2025-01-15 22:00:00');
+        $create(TimeRecordTypeEnum::BREAK_START, '2025-01-16 00:30:00');
+        $create(TimeRecordTypeEnum::BREAK_END, '2025-01-16 01:00:00');
+        $create(TimeRecordTypeEnum::WORK_END_NEXT_DAY, '2025-01-16 02:00:00');
+        $create(TimeRecordTypeEnum::WORK_START, '2025-01-16 09:00:00');
+        $create(TimeRecordTypeEnum::WORK_END, '2025-01-16 18:00:00');
+    }
+
+    /**
+     * @test
+     *
+     * 前夜の日付越え勤務の休憩は当日の日付で保存されるが、前日の勤務のもの。
+     * 当日の休憩時間として控除してはいけない（当日は休憩を取っていない）。
+     * 前日側の集計には、これまでどおり含まれる。
+     */
+    public function aggregate_by_user_does_not_deduct_previous_nights_break_from_new_shift_same_day(): void
+    {
+        // Arrange
+        $this->createNightShiftAndNextDayShiftRecords();
+
+        // Act
+        $this->service->aggregateByUser($this->company, $this->user, CarbonImmutable::parse('2025-01-16'));
+        $this->service->aggregateByUser($this->company, $this->user, CarbonImmutable::parse('2025-01-15'));
+
+        // Assert: 1/16は休憩0分・実働9時間
+        $nextDay = DailyWorkSummary::query()
+            ->where('user_id', $this->user->id)
+            ->where('work_date', '2025-01-16')
+            ->first();
+        $this->assertNotNull($nextDay);
+        $this->assertEquals(0, $nextDay->break_minutes, '前夜の休憩(00:30-01:00)が当日の休憩として控除されるべきではない');
+        $this->assertEquals(540, $nextDay->net_work_minutes);
+
+        // Assert: 前日（夜勤）側には前夜の休憩が含まれる
+        $nightShift = DailyWorkSummary::query()
+            ->where('user_id', $this->user->id)
+            ->where('work_date', '2025-01-15')
+            ->first();
+        $this->assertNotNull($nightShift);
+        $this->assertEquals(30, $nightShift->break_minutes);
+        $this->assertEquals('2025-01-16 02:00:00', $nightShift->work_end->format('Y-m-d H:i:s'));
+    }
+
+    /**
+     * @test
+     *
+     * 前夜の休憩だけがある日は、当日の休憩打刻があるものと扱ってはいけない。
+     * 当日に休憩の打刻がなければ、シフトの休憩時刻(auto_fill_break)で補える。
+     */
+    public function aggregate_by_user_auto_fills_break_for_new_shift_even_when_previous_night_has_break(): void
+    {
+        // Arrange
+        $shiftPattern = ShiftPattern::query()->create([
+            'company_id' => $this->company->id,
+            'name' => '通常勤務',
+            'start_time' => '09:00',
+            'end_time' => '18:00',
+            'work_minutes' => 480,
+            'break_mode' => 2,
+            'break_start' => '12:00',
+            'break_end' => '13:00',
+            'auto_fill_break' => true,
+        ]);
+
+        Shift::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'shift_date' => '2025-01-16',
+            'shift_pattern_id' => $shiftPattern->id,
+        ]);
+
+        $this->createNightShiftAndNextDayShiftRecords();
+
+        // Act
+        $this->service->aggregateByUser($this->company, $this->user, CarbonImmutable::parse('2025-01-16'));
+
+        // Assert
+        $summary = DailyWorkSummary::query()
+            ->where('user_id', $this->user->id)
+            ->where('work_date', '2025-01-16')
+            ->first();
+        $this->assertNotNull($summary);
+        $this->assertEquals(60, $summary->break_minutes, '当日の休憩打刻がないため、シフトの休憩(12:00-13:00)で補われる');
+    }
+
+    /**
      * @test
      */
     public function aggregate_all_users_processes_all_companies_and_users(): void

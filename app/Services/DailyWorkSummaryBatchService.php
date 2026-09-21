@@ -49,7 +49,8 @@ class DailyWorkSummaryBatchService
         private readonly ShiftRepositoryInterface $shiftRepository,
         private readonly WorkTimeCalculator $workTimeCalculator,
         private readonly AutoBreakFillService $autoBreakFillService,
-        private readonly CompanyShiftRoundingSettingRepositoryInterface $roundingSettingRepository
+        private readonly CompanyShiftRoundingSettingRepositoryInterface $roundingSettingRepository,
+        private readonly PreviousNightTimeRecords $previousNightTimeRecords
     ) {}
 
     /**
@@ -163,10 +164,17 @@ class DailyWorkSummaryBatchService
         }
 
         // 打刻レコードを取得（当日分）
-        $timeRecords = $this->timeRecordRepository->findByUserIdAndDate(
-            $company->id,
-            $user->id,
-            $dateString
+        //
+        // 当日の日付には前夜の日付越え勤務の退勤・休憩が混在することがある。
+        // これは前日の勤務のものなので、当日の集計からは除く。含めたままだと、
+        // 前夜の休憩が当日の休憩時間として控除され、休憩の打刻があるものとして
+        // シフトの休憩の自動入力も効かなくなる。
+        $timeRecords = $this->previousNightTimeRecords->excludeFrom(
+            $this->timeRecordRepository->findByUserIdAndDate(
+                $company->id,
+                $user->id,
+                $dateString
+            )
         );
 
         // 翌日の日付越え退勤レコードと、夜勤の翌日休憩レコードも取得して結合

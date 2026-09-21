@@ -7,6 +7,35 @@ export interface BreakPeriod {
 }
 
 /**
+ * 対象日の日付にある、前夜の日跨ぎ勤務に属する打刻を除いて返す
+ *
+ * 日跨ぎ退勤(WORK_END_NEXT_DAY)とその時刻以前の休憩は、出勤日ではなく翌日の日付で
+ * 保存される。そのため前夜に日跨ぎ勤務があった日は、対象日の日付の打刻に
+ * 「前夜（前日の勤務）の退勤・休憩」が混在する。これは前日の行で表示・編集される
+ * ものなので、対象日の出退勤・休憩としては扱わない。
+ *
+ * 判定は翌日分を前日へ寄せる際の基準（日跨ぎ退勤と、その時刻以前の休憩）と同じ。
+ * 対象日以外の日付（マージ済みの翌日分など）の打刻はそのまま残す。
+ */
+export function excludePreviousNightRecords(records: TimeRecord[], dateStr: string): TimeRecord[] {
+  const previousNightEnd = records.find(
+    (r) => r.record_date === dateStr && String(r.record_type.value) === '3'
+  );
+  if (!previousNightEnd) {
+    return records;
+  }
+
+  return records.filter((r) => {
+    if (r.record_date !== dateStr) return true;
+    if (String(r.record_type.value) === '3') return false;
+    if (r.record_type.is_break) {
+      return r.record_time.localeCompare(previousNightEnd.record_time) > 0;
+    }
+    return true;
+  });
+}
+
+/**
  * 対象日の打刻レコード + 日跨ぎ夜勤の場合のみ翌日のレコードをマージして返す
  *
  * 翌日レコードは WORK_END_NEXT_DAY (=3) と、その時刻以前の BREAK_START/END のみ対象
@@ -71,11 +100,14 @@ export function getBreakPeriodsForDate(timeRecords: TimeRecord[] | undefined, da
     }
   }
 
+  // 前夜の日跨ぎ勤務の休憩は前日の勤務のものなので、当日の休憩には含めない
+  const ownRecords = excludePreviousNightRecords(records, format(date, 'yyyy-MM-dd'));
+
   // BREAK_START=4, BREAK_END=5
-  const starts = records
+  const starts = ownRecords
     .filter((r) => String(r.record_type.value) === '4')
     .sort((a, b) => a.record_time.localeCompare(b.record_time));
-  const ends = records
+  const ends = ownRecords
     .filter((r) => String(r.record_type.value) === '5')
     .sort((a, b) => a.record_time.localeCompare(b.record_time));
   const periods: BreakPeriod[] = [];
@@ -110,9 +142,10 @@ export function getRawWorkTimesForDate(
   // 日跨ぎ夜勤の翌日欄には、前夜の残り(WORK_END_NEXT_DAY、当日の新しい出勤より前)と
   // 当日の新しい出勤が混在することがある。出勤位置より前を含めて探すと、
   // 前夜の退勤時刻を当日の退勤として誤表示してしまう。
-  const workStartIndex = records.findIndex((r) => r.record_type.is_work_start);
-  const workStartRecord = workStartIndex >= 0 ? records[workStartIndex] : undefined;
-  const workEndSearchRecords = workStartIndex >= 0 ? records.slice(workStartIndex) : records;
+  const ownRecords = excludePreviousNightRecords(records, format(date, 'yyyy-MM-dd'));
+  const workStartIndex = ownRecords.findIndex((r) => r.record_type.is_work_start);
+  const workStartRecord = workStartIndex >= 0 ? ownRecords[workStartIndex] : undefined;
+  const workEndSearchRecords = workStartIndex >= 0 ? ownRecords.slice(workStartIndex) : ownRecords;
   const workEndRecord = [...workEndSearchRecords].reverse().find((r) => r.record_type.is_work_end);
   return {
     rawStart: workStartRecord?.record_time ?? null,

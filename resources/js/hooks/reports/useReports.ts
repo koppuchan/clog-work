@@ -4,6 +4,7 @@ import { router } from '@inertiajs/react';
 import { getHolidayName } from '@/lib/holidays';
 import { formatMinutesToHM } from '@/utils/timeFormat';
 import { resolveAutoFillBreakPeriod } from '@/utils/autoBreakFill';
+import { excludePreviousNightRecords } from '@/utils/attendanceRecords';
 import type { ReportUser, WorkSummary, ApprovedRequest, ExportFormats, TimeRecord, ShiftInfo } from '@/types/reports';
 import type { ExportScope } from '@/Components/Reports/ReportExportModal';
 
@@ -82,7 +83,11 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
       }
 
       // workSummaryがない場合、timeRecordsから生成（本日分など）
-      const dayRecords = timeRecords.filter((record) => record.record_date === dateStr);
+      // 前夜の日跨ぎ勤務の退勤・休憩は前日のものなので、当日の勤務には含めない
+      const dayRecords = excludePreviousNightRecords(
+        timeRecords.filter((record) => record.record_date === dateStr),
+        dateStr
+      );
       if (dayRecords.length === 0) {
         return undefined;
       }
@@ -262,17 +267,10 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
   const getRecordsIncludingNextDayCarryOver = useCallback(
     (dateStr: string): TimeRecord[] => {
       const nextDateStr = format(addDays(parseISO(dateStr), 1), 'yyyy-MM-dd');
-      const allDayRecords = timeRecords.filter((r) => r.record_date === dateStr);
-      const previousNightEnd = allDayRecords.find((r) => String(r.record_type.value) === '3');
-      const dayRecords = previousNightEnd
-        ? allDayRecords.filter((r) => {
-            if (String(r.record_type.value) === '3') return false;
-            if (r.record_type.is_break) {
-              return r.record_time.localeCompare(previousNightEnd.record_time) > 0;
-            }
-            return true;
-          })
-        : allDayRecords;
+      const dayRecords = excludePreviousNightRecords(
+        timeRecords.filter((r) => r.record_date === dateStr),
+        dateStr
+      );
       const nextDayRecords = timeRecords.filter((r) => r.record_date === nextDateStr);
 
       const nextDayCrossEnd = nextDayRecords.find((r) => String(r.record_type.value) === '3');

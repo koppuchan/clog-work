@@ -6,9 +6,11 @@ namespace Tests\Feature\Services;
 
 use App\Enums\RecordSourceEnum;
 use App\Enums\RequestStatusEnum;
+use App\Enums\TimeRecordTypeEnum;
 use App\Models\Company;
 use App\Models\DailyWorkSummary;
 use App\Models\Request;
+use App\Models\TimeRecord;
 use App\Models\User;
 use App\Services\AttendanceExcelExportService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -194,5 +196,149 @@ class AttendanceExcelExportTest extends TestCase
         $sheet = $this->generatedSheet();
 
         $this->assertSame('1.75', (string) $sheet->getCell('S10')->getValue());
+    }
+
+    /**
+     * @test
+     *
+     * 明細行の労働時間・時間外・休日・深夜・遅刻早退は、文字列ではなく
+     * 実際の数値（時刻の端数）として書き込まれ、合計行の数式が正しく
+     * 計算できること（クライアント報告 #70: 合計値が計算されていない）。
+     */
+    public function 明細行の時間は合計可能な数値として出力され合計行が計算される(): void
+    {
+        // 6/21始まりの期間で6/24は10行目、6/25は11行目
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-24',
+            'work_start' => '2026-06-24 09:00:00',
+            'work_end' => '2026-06-24 18:00:00',
+            'scheduled_start_time' => '09:00:00',
+            'scheduled_end_time' => '18:00:00',
+            'net_work_minutes' => 480,
+            'overtime_minutes' => 30,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-25',
+            'work_start' => '2026-06-25 09:00:00',
+            'work_end' => '2026-06-25 19:00:00',
+            'scheduled_start_time' => '09:00:00',
+            'scheduled_end_time' => '18:00:00',
+            'net_work_minutes' => 540,
+            'overtime_minutes' => 90,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $sheet = $this->generatedSheet();
+
+        // M10・M11は文字列ではなく数値（時刻の端数）で入っていること
+        $this->assertIsNumeric($sheet->getCell('M10')->getValue());
+        $this->assertEqualsWithDelta(480 / 1440, (float) $sheet->getCell('M10')->getValue(), 0.0001);
+        $this->assertEqualsWithDelta(540 / 1440, (float) $sheet->getCell('M11')->getValue(), 0.0001);
+
+        // 合計行の数式(=SUM(M7:M37))が、書き込んだ数値を正しく合算できること
+        $totalMinutes = (int) round(((float) $sheet->getCell('M38')->getCalculatedValue()) * 1440);
+        $this->assertSame(480 + 540, $totalMinutes, 'M38=SUM(M7:M37) が実際の労働時間の合計を計算できていない');
+
+        $totalOvertimeMinutes = (int) round(((float) $sheet->getCell('N38')->getCalculatedValue()) * 1440);
+        $this->assertSame(30 + 90, $totalOvertimeMinutes);
+    }
+
+    /**
+     * @test
+     *
+     * 0分の項目は、これまでどおり空欄のまま（文字列"0:00"等にはしない）。
+     */
+    public function 時間が0の項目は空欄のまま(): void
+    {
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-24',
+            'work_start' => '2026-06-24 09:00:00',
+            'work_end' => '2026-06-24 18:00:00',
+            'scheduled_start_time' => '09:00:00',
+            'scheduled_end_time' => '18:00:00',
+            'net_work_minutes' => 480,
+            'overtime_minutes' => 0,
+            'holiday_minutes' => 0,
+            'night_minutes' => 0,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $sheet = $this->generatedSheet();
+
+        $this->assertSame('', (string) $sheet->getCell('N10')->getValue());
+        $this->assertSame('', (string) $sheet->getCell('O10')->getValue());
+        $this->assertSame('', (string) $sheet->getCell('P10')->getValue());
+    }
+
+    /**
+     * @test
+     *
+     * シフトの所定時刻と実際の出退勤があるのに「欠勤」と出力されていた
+     * 不具合（クライアント報告 #70）。日次集計バッチがまだ反映しておらず
+     * summary.work_startがnullのままでも、実打刻（time_records）があれば
+     * 「出勤」と判定されること。
+     */
+    public function シフトと実打刻があれば集計未反映でも出勤と出力される(): void
+    {
+        // 6/24は10行目。summaryは作るがwork_startは未反映のまま（バッチ未実行を再現）
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-24',
+            'work_start' => null,
+            'work_end' => null,
+            'scheduled_start_time' => '09:00:00',
+            'scheduled_end_time' => '18:00:00',
+            'net_work_minutes' => 0,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => '2026-06-24 08:58:00',
+            'rounded_time' => '2026-06-24 09:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $sheet = $this->generatedSheet();
+
+        $this->assertSame('出勤', (string) $sheet->getCell('B10')->getValue());
+        $this->assertSame('08:58', (string) $sheet->getCell('G10')->getValue(), '出勤時刻は実打刻を優先する');
+    }
+
+    /**
+     * @test
+     *
+     * シフトが割り当てられている土曜・日曜に出退勤がなければ、平日と同じ
+     * 基準で「欠勤」と出力されること（以前は曜日で別ロジックを使っており
+     * 「休日」になってしまっていた）。
+     */
+    public function シフトのある土日に出退勤がなければ欠勤と出力される(): void
+    {
+        // 6/27(土)は13行目
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-27',
+            'work_start' => null,
+            'work_end' => null,
+            'scheduled_start_time' => '09:00:00',
+            'scheduled_end_time' => '18:00:00',
+            'net_work_minutes' => 0,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $sheet = $this->generatedSheet();
+
+        $this->assertSame('欠勤', (string) $sheet->getCell('B13')->getValue());
     }
 }

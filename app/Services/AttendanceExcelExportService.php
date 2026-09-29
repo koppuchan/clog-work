@@ -95,7 +95,14 @@ class AttendanceExcelExportService
         // 明細部分を設定
         $this->setDetailData($sheet, $summaries, $startDate, $endDate, $requestMap, $dailyWorkingMinutes, $rawTimes);
 
-        // 合計行を設定（38行目）
+        // 合計行（38行目）はテンプレート側のSUM数式（例: M38=SUM(M7:M37)）が
+        // そのまま計算する。ここでは明細行と同じ[h]:mm書式を当てて、数式が
+        // 実際に計算した値が崩れず表示されるようにするだけでよい
+        // （数式自体は書き換えない。テンプレートのnumFmtIdが未設定のGeneral
+        // のままだと、計算結果が小数のシリアル値のまま表示されてしまうため）。
+        foreach (['M', 'N', 'O', 'P', 'Q'] as $column) {
+            $sheet->getStyle($column.'38')->getNumberFormat()->setFormatCode('[h]:mm');
+        }
 
         // 一時ファイルとして保存
         return $this->saveToTempFile($spreadsheet, $user, $endDate);
@@ -195,13 +202,21 @@ class AttendanceExcelExportService
         while ($currentDate->lte($endDate)) {
             $dateKey = $currentDate->format('Y-m-d');
             $summary = $summaryMap->get($dateKey);
+            $raw = $rawTimes[$dateKey] ?? null;
+
+            // 出退勤済みかどうかの判定・G列表示のどちらにも使う実効的な出勤時刻。
+            // summaryのwork_startだけを見ると、実打刻はあるのに集計バッチが
+            // まだ反映していない日に「打刻なし」と誤判定してしまう
+            // （クライアント報告: シフト・出退勤があるのに欠勤で出力される）。
+            // 実打刻を優先し、無ければ集計値にフォールバックする。
+            $effectiveWorkStart = $raw['work_start'] ?? $summary?->work_start?->format('H:i');
 
             // A: 日付（例: 12/1(月)）
             $dateText = $currentDate->format('n/j').'('.self::WEEKDAYS[$currentDate->dayOfWeek].')';
             $sheet->setCellValue('A'.$row, $dateText);
 
             // B: 勤務区分
-            $workType = $this->getWorkType($summary, $currentDate);
+            $workType = $this->getWorkType($summary, $effectiveWorkStart);
             $sheet->setCellValue('B'.$row, $workType);
 
             if ($summary) {
@@ -216,8 +231,7 @@ class AttendanceExcelExportService
                 $sheet->setCellValue('F'.$row, $this->formatTimeToHM($summary->scheduled_break_end ?? null));
 
                 // G・H: 出退勤（実打刻。丸め時刻は計算にのみ使う）
-                $raw = $rawTimes[$dateKey] ?? null;
-                $sheet->setCellValue('G'.$row, $raw['work_start'] ?? $summary->work_start?->format('H:i') ?? '');
+                $sheet->setCellValue('G'.$row, $effectiveWorkStart ?? '');
                 $sheet->setCellValue('H'.$row, $raw['work_end'] ?? $summary->work_end?->format('H:i') ?? '');
 
                 // I〜L: 休憩の入り・出（2枠。こちらも実打刻）
@@ -230,22 +244,20 @@ class AttendanceExcelExportService
                 $sheet->setCellValue('K'.$row, $breaks[1]['start'] ?? '');
                 $sheet->setCellValue('L'.$row, $breaks[1]['end'] ?? '');
 
-                // M: 労働時間
-                $sheet->setCellValue('M'.$row, $this->formatMinutesToHM($summary->net_work_minutes ?? 0));
-
-                // N: 時間外
-                $sheet->setCellValue('N'.$row, $this->formatMinutesToHM($summary->overtime_minutes ?? 0));
-
-                // O: 休日
-                $sheet->setCellValue('O'.$row, $this->formatMinutesToHM($summary->holiday_minutes ?? 0));
-
-                // P: 深夜
-                $sheet->setCellValue('P'.$row, $this->formatMinutesToHM($summary->night_minutes ?? 0));
+                // M〜Q: 労働時間・時間外・休日・深夜・遅刻早退
+                // 文字列("6:30"など)のまま書き込むと表示は同じでも数値として
+                // 扱われず、38行目の合計欄(=SUM(M7:M37)等)が常に0になってしまう
+                // （クライアント報告: 合計値が計算されていない）。実際の時刻の
+                // 端数として書き込み、テンプレート内の他セルと同じ[h]:mm書式を当てる。
+                $this->writeMinutesAsTime($sheet, 'M'.$row, $summary->net_work_minutes ?? 0);
+                $this->writeMinutesAsTime($sheet, 'N'.$row, $summary->overtime_minutes ?? 0);
+                $this->writeMinutesAsTime($sheet, 'O'.$row, $summary->holiday_minutes ?? 0);
+                $this->writeMinutesAsTime($sheet, 'P'.$row, $summary->night_minutes ?? 0);
 
                 // Q: 遅刻早退（承認済みの休暇がある日は遅刻早退として扱わない）
                 $lateEarlyMinutes = $this->lateEarlyLeaveDisplay->lateMinutes($summary)
                     + $this->lateEarlyLeaveDisplay->earlyLeaveMinutes($summary);
-                $sheet->setCellValue('Q'.$row, $this->formatMinutesToHM($lateEarlyMinutes));
+                $this->writeMinutesAsTime($sheet, 'Q'.$row, $lateEarlyMinutes);
 
                 // R・S: 備考/申請（ラベルと数値を別の列に分ける）
                 //
@@ -300,34 +312,44 @@ class AttendanceExcelExportService
             ->all();
     }
 
-    private function getWorkType($summary, CarbonImmutable $date): string
+    /**
+     * 勤務区分を判定する
+     *
+     * 櫻本さまに確定いただいた基準（task#71）。曜日（土日かどうか）は
+     * 判定に使わない。以前は土日かどうかで別ロジックを使っていたが、
+     * その結果シフトが割り当てられている土日に出退勤がないと「休日」に
+     * なってしまい（本来は欠勤と同じ扱いのはず）、逆に平日でシフトも
+     * 打刻も無い日は空欄になるなど、曜日で結果が変わってしまっていた。
+     *
+     * - 休暇種別が設定されている日はそれを優先する（有給休暇・特別休暇など）
+     * - シフト時間あり + 出退勤あり → 出勤
+     * - シフト時間あり + 出退勤なし → 欠勤
+     * - シフト時間なし + 出退勤あり → 休出
+     * - シフト時間なし + 出退勤なし → 休日
+     *
+     * @param  string|null  $effectiveWorkStart  実打刻優先の出勤時刻（H:i形式）。
+     *                                           summaryのwork_startだけで判定すると、実打刻はあるのに集計バッチが
+     *                                           まだ反映していない日を「打刻なし」と誤判定してしまうため、
+     *                                           呼び出し側で実打刻を優先した値を渡す（クライアント報告: シフト・
+     *                                           出退勤があるのに欠勤と出力される不具合の原因だった）。
+     */
+    private function getWorkType($summary, ?string $effectiveWorkStart): string
     {
-        // 土日判定
-        if ($date->isSaturday() || $date->isSunday()) {
-            if ($summary?->work_start !== null) {
-                return '休出';
-            }
-
-            return '休日';
-        }
-
         // 休暇種別がある場合
         if ($summary?->leave_type !== null) {
             return $summary->leave_type->label();
         }
 
-        // 出勤している場合
-        if ($summary?->work_start !== null) {
-            return '出勤';
-        }
+        $hasShiftTime = $summary?->scheduled_start_time !== null;
+        $hasClockTimes = $effectiveWorkStart !== null;
 
-        // シフトが割り当てられているのに出退勤がなく、休暇の申請もない日は欠勤。
-        // 集計欄の欠勤日数は =COUNTIFS(B7:B37,"欠勤") でこの表記を数えている。
-        if ($summary?->scheduled_start_time !== null) {
-            return '欠勤';
-        }
-
-        return '';
+        return match (true) {
+            $hasShiftTime && $hasClockTimes => '出勤',
+            // 集計欄の欠勤日数は =COUNTIFS(B7:B37,"欠勤") でこの表記を数えている。
+            $hasShiftTime && ! $hasClockTimes => '欠勤',
+            ! $hasShiftTime && $hasClockTimes => '休出',
+            default => '休日',
+        };
     }
 
     /**
@@ -493,21 +515,24 @@ class AttendanceExcelExportService
     }
 
     /**
-     * 分を「H:MM」形式に変換
+     * 分を実際の数値（1日を1とする時刻の端数）としてセルへ書き込み、[h]:mm書式を当てる
+     *
+     * 表示用の文字列（"6:30"など）をそのまま書き込むと、見た目は同じでも
+     * セルが文字列扱いになり、38行目の合計欄（=SUM(M7:M37)等）が計算できず
+     * 常に0になってしまう（クライアント報告: 合計値が計算されていない）。
+     * [h]:mmは24時間を超えても時間表示が崩れない書式で、テンプレート内の
+     * 他の時間セルと同じもの。0分は空欄のままにする（既存の見た目を変えない）。
      *
      * @param  int  $minutes  分数
-     * @return string 「H:MM」形式の文字列
      */
-    private function formatMinutesToHM(int $minutes): string
+    private function writeMinutesAsTime($sheet, string $cell, int $minutes): void
     {
-        if ($minutes === 0) {
-            return '';
+        if ($minutes <= 0) {
+            return;
         }
 
-        $hours = intdiv($minutes, 60);
-        $mins = $minutes % 60;
-
-        return sprintf('%d:%02d', $hours, $mins);
+        $sheet->setCellValue($cell, $minutes / 1440);
+        $sheet->getStyle($cell)->getNumberFormat()->setFormatCode('[h]:mm');
     }
 
     /**

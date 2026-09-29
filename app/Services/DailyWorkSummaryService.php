@@ -763,31 +763,36 @@ class DailyWorkSummaryService
     /**
      * 勤務区分を判定する
      *
-     * 帳票（Excel）と同じ基準で判定する。シフトが割り当てられているのに
-     * 出退勤がなく休暇の申請もない日は欠勤として扱う。
+     * 帳票（Excel）と同じ基準（task#71）で判定する。曜日（土日かどうか）は
+     * 判定に使わない。
+     *
+     * - 休暇種別が設定されている日はそれを優先する（有給休暇・特別休暇など）
+     * - シフト時間あり + 出退勤あり → 出勤
+     * - シフト時間あり + 出退勤なし → 欠勤
+     * - シフト時間なし + 出退勤あり → 休出
+     * - シフト時間なし + 出退勤なし → 休日
      *
      * @param  mixed  $summary  勤務実績
-     * @param  CarbonImmutable  $date  対象日
+     * @param  string|null  $effectiveWorkStart  実打刻優先の出勤時刻（H:i形式）。
+     *                                           summaryのwork_startだけで判定すると、実打刻はあるのに集計バッチが
+     *                                           まだ反映していない日を「打刻なし」と誤判定してしまうため、
+     *                                           呼び出し側で実打刻を優先した値を渡す。
      */
-    private function resolveWorkType($summary, CarbonImmutable $date): string
+    private function resolveWorkType($summary, ?string $effectiveWorkStart): string
     {
-        if ($date->isSaturday() || $date->isSunday()) {
-            return $summary?->work_start !== null ? '休出' : '休日';
-        }
-
         if ($summary?->leave_type !== null) {
             return $summary->leave_type->label();
         }
 
-        if ($summary?->work_start !== null) {
-            return '出勤';
-        }
+        $hasShiftTime = $summary?->scheduled_start_time !== null;
+        $hasClockTimes = $effectiveWorkStart !== null;
 
-        if ($summary?->scheduled_start_time !== null) {
-            return '欠勤';
-        }
-
-        return '';
+        return match (true) {
+            $hasShiftTime && $hasClockTimes => '出勤',
+            $hasShiftTime && ! $hasClockTimes => '欠勤',
+            ! $hasShiftTime && $hasClockTimes => '休出',
+            default => '休日',
+        };
     }
 
     /**
@@ -848,18 +853,21 @@ class DailyWorkSummaryService
                 // 表示は実打刻を使う。集計テーブルには丸め後の時刻が入っている。
                 $raw = $rawTimes[$dateKey] ?? null;
                 $breaks = $raw['breaks'] ?? [];
+                // 勤務区分の判定にも使う（summaryのwork_startだけだと、実打刻は
+                // あるのに集計バッチがまだ反映していない日を誤判定してしまうため）
+                $effectiveWorkStart = $raw['work_start'] ?? $summary?->work_start?->format('H:i');
 
                 $lines[] = [
                     $user->employee_code ?? '',
                     $user->name,
                     $dateText,
-                    $this->resolveWorkType($summary, $currentDate),
+                    $this->resolveWorkType($summary, $effectiveWorkStart),
                     $this->formatScheduledTime($summary?->scheduled_start_time),
                     $this->formatScheduledTime($summary?->scheduled_end_time),
                     // シフト休憩入・休憩出: 帳票（Excel）にも対応する所定データがなく常に空欄
                     '',
                     '',
-                    $raw['work_start'] ?? $summary?->work_start?->format('H:i') ?? '',
+                    $effectiveWorkStart ?? '',
                     $raw['work_end'] ?? $summary?->work_end?->format('H:i') ?? '',
                     $breaks[0]['start'] ?? '',
                     $breaks[0]['end'] ?? '',

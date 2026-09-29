@@ -887,6 +887,176 @@ class DailyWorkSummaryServiceTest extends TestCase
         );
     }
 
+    // ========================================
+    // updateWorkTimes 丸め結果が古いまま残っている場合の再計算
+    // 課題2（クライアント報告 #73）: 打刻時刻自体は変わっていない編集で、
+    // rounded_timeが古い丸め設定のままだと直らなかった
+    // ========================================
+
+    /**
+     * @test
+     *
+     * 奥野さまの9/2のケースの再現。退勤の打刻が何らかの理由で丸められて
+     * おらず（rounded_timeが実打刻のまま）、その状態で編集画面から同じ
+     * 表示上の時刻（秒は画面に無いため常に00で送られる）を保存し直しても、
+     * 「実質的な変更なし」と判定されて丸め直しが行われず、労働時間の計算が
+     * 直らなかった。時刻自体は変えずに保存し直すだけで丸め結果が直ること。
+     */
+    public function update_work_times_fixes_stale_rounded_time_even_when_displayed_value_is_unchanged(): void
+    {
+        // Arrange: 15分単位の丸め設定
+        CompanyShiftRoundingSetting::query()->create([
+            'company_id' => $this->company->id,
+            'rounding_unit_id' => 4, // 15分単位
+        ]);
+
+        $workDate = '2026-09-02';
+
+        $workStartRecord = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => $workDate.' 10:00:00',
+            'rounded_time' => $workDate.' 10:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        // 退勤は秒まで含む生打刻がそのままrounded_timeに入っており、
+        // 15分単位に丸められていない状態を再現（本来は09:02:29 -> 14:30 になるべき）
+        $workEndRecord = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END,
+            'record_time' => $workDate.' 14:35:29',
+            'rounded_time' => $workDate.' 14:35:29',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $summary = DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => $workDate,
+            'work_start' => $workDate.' 10:00:00',
+            'work_end' => $workDate.' 14:35:29',
+            'work_minutes' => 275,
+            'break_minutes' => 0,
+            'net_work_minutes' => 275,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $admin = User::factory()->forCompany($this->company->id)->create();
+
+        // Act: 編集画面で表示されるとおりの値（秒は無いので14:35）で保存し直す。
+        // 画面上は何も変えていないため、$hasChangedはfalseになるケース。
+        $result = $this->service->updateWorkTimes($summary->id, '10:00', '14:35', [], $admin->id);
+
+        // Assert: rounded_timeが15分単位（14:30、切り捨て）に直る
+        $workEndRecord->refresh();
+        $this->assertEquals(
+            $workDate.' 14:30:00',
+            $workEndRecord->rounded_time->format('Y-m-d H:i:s'),
+            'rounded_timeが会社の丸め設定どおりに直っていない'
+        );
+        // record_time（実打刻の生値）・record_source・noteは変えない
+        // （実際に打刻や入力内容が変わったわけではないため）
+        $this->assertEquals($workDate.' 14:35:29', $workEndRecord->record_time->format('Y-m-d H:i:s'));
+        $this->assertEquals(RecordSourceEnum::AUTO, $workEndRecord->record_source);
+
+        // 修正履歴は残らない（実打刻自体は変わっていないため「修正」扱いにしない）
+        $this->assertSame(0, TimeRecordCorrection::query()->where('time_record_id', $workEndRecord->id)->count());
+
+        // Assert: 労働時間が丸め後の時刻(10:00〜14:30=270分)で再計算される
+        $this->assertEquals(270, $result->net_work_minutes);
+
+        // WORK_START側（既に丸め済みで元から正しい: 10:00）も壊れていないこと
+        $workStartRecord->refresh();
+        $this->assertEquals($workDate.' 10:00:00', $workStartRecord->rounded_time->format('Y-m-d H:i:s'));
+    }
+
+    /**
+     * @test
+     *
+     * 休憩側でも同様に、時刻自体は変えない保存で丸め結果だけ直ること。
+     */
+    public function update_work_times_fixes_stale_rounded_time_for_break_even_when_displayed_value_is_unchanged(): void
+    {
+        CompanyShiftRoundingSetting::query()->create([
+            'company_id' => $this->company->id,
+            'rounding_unit_id' => 4, // 15分単位
+        ]);
+
+        $workDate = '2026-09-02';
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => $workDate.' 09:00:00',
+            'rounded_time' => $workDate.' 09:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        // 休憩開始が丸められておらず生値のまま（本来は切り捨てで12:00になるべき）
+        $breakStart = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::BREAK_START,
+            'record_time' => $workDate.' 12:04:10',
+            'rounded_time' => $workDate.' 12:04:10',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::BREAK_END,
+            'record_time' => $workDate.' 13:00:00',
+            'rounded_time' => $workDate.' 13:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END,
+            'record_time' => $workDate.' 18:00:00',
+            'rounded_time' => $workDate.' 18:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $summary = DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => $workDate,
+            'work_start' => $workDate.' 09:00:00',
+            'work_end' => $workDate.' 18:00:00',
+            'work_minutes' => 540,
+            'break_minutes' => 56,
+            'net_work_minutes' => 484,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $admin = User::factory()->forCompany($this->company->id)->create();
+
+        // Act: 休憩の表示上の値（12:04〜13:00）を変えずに保存し直す
+        $this->service->updateWorkTimes(
+            $summary->id,
+            '09:00',
+            '18:00',
+            [['start' => '12:04', 'end' => '13:00']],
+            $admin->id
+        );
+
+        $breakStart->refresh();
+        $this->assertEquals(
+            $workDate.' 12:00:00',
+            $breakStart->rounded_time->format('Y-m-d H:i:s'),
+            '休憩開始のrounded_timeが会社の丸め設定どおりに直っていない'
+        );
+        $this->assertEquals($workDate.' 12:04:10', $breakStart->record_time->format('Y-m-d H:i:s'));
+        $this->assertSame(0, TimeRecordCorrection::query()->where('time_record_id', $breakStart->id)->count());
+    }
+
     /**
      * @test
      *

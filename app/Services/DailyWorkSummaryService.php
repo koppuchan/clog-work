@@ -11,6 +11,7 @@ use App\Enums\TimeRecordTypeEnum;
 use App\Exceptions\NotFoundException;
 use App\Models\DailyWorkSummary;
 use App\Models\Request as LeaveRequest;
+use App\Models\TimeRecord;
 use App\Models\TimeRecordCorrection;
 use App\Models\User;
 use App\Repositories\Contracts\CompanyRepositoryInterface;
@@ -408,6 +409,16 @@ class DailyWorkSummaryService
                             'record_source' => RecordSourceEnum::MANUAL,
                             'note' => self::NOTE_ADMIN_CORRECTION,
                         ]);
+                    } elseif ($this->isRoundedTimeStale($workStartRecord, $roundedStart)) {
+                        // 打刻時刻自体は変わっていないが、丸め結果だけが会社の丸め設定と
+                        // 食い違っている（丸め単位の変更前に打刻された等）。この場合
+                        // $hasChangedがfalseになり以前は何もせず終わっていたため、編集
+                        // 画面で保存し直しても丸め結果が直らなかった（クライアント報告
+                        // #73: 15分単位で計算されていない日を編集しても計算が変わらない）。
+                        // 実打刻・修正区分はそのまま、丸め結果だけ直す。
+                        $this->timeRecordRepository->update($workStartRecord->id, [
+                            'rounded_time' => $roundedStart,
+                        ]);
                     }
                 } else {
                     $newRecord = $this->timeRecordRepository->create([
@@ -500,6 +511,11 @@ class DailyWorkSummaryService
                             'rounded_time' => $roundedEnd,
                             'record_source' => RecordSourceEnum::MANUAL,
                             'note' => self::NOTE_ADMIN_CORRECTION,
+                        ]);
+                    } elseif ($this->isRoundedTimeStale($workEndRecord, $roundedEnd)) {
+                        // 理由はWORK_START側と同様（クライアント報告 #73）
+                        $this->timeRecordRepository->update($workEndRecord->id, [
+                            'rounded_time' => $roundedEnd,
                         ]);
                     }
                 } else {
@@ -632,6 +648,11 @@ class DailyWorkSummaryService
                         'record_source' => RecordSourceEnum::MANUAL,
                         'note' => self::NOTE_ADMIN_CORRECTION,
                     ]);
+                } elseif ($this->isRoundedTimeStale($existingStart, $roundedBreakStart)) {
+                    // 理由はWORK_START側と同様（クライアント報告 #73）
+                    $this->timeRecordRepository->update($existingStart->id, [
+                        'rounded_time' => $roundedBreakStart,
+                    ]);
                 }
                 if ($endChanged) {
                     $this->timeRecordRepository->update($existingEnd->id, [
@@ -639,6 +660,10 @@ class DailyWorkSummaryService
                         'rounded_time' => $roundedBreakEnd,
                         'record_source' => RecordSourceEnum::MANUAL,
                         'note' => self::NOTE_ADMIN_CORRECTION,
+                    ]);
+                } elseif ($this->isRoundedTimeStale($existingEnd, $roundedBreakEnd)) {
+                    $this->timeRecordRepository->update($existingEnd->id, [
+                        'rounded_time' => $roundedBreakEnd,
                     ]);
                 }
             }
@@ -736,6 +761,25 @@ class DailyWorkSummaryService
         }
 
         return $result;
+    }
+
+    /**
+     * 打刻の丸め結果（rounded_time）が、会社の丸め設定で今計算し直した結果と
+     * 食い違っていないか判定する
+     *
+     * 打刻時刻（record_time）自体が変わっていない編集は「実質的な変更なし」として
+     * 何もしない設計になっているが、rounded_timeだけが古い丸め設定のままだったり
+     * 何らかの理由で丸められていなかったりするケースでは、その判定のせいで
+     * 編集画面から保存し直しても直らなかった（クライアント報告 #73: 15分単位で
+     * 計算されていない日を編集しても計算が変わらない）。
+     *
+     * @param  TimeRecord  $record  対象の打刻レコード
+     * @param  CarbonImmutable  $expectedRounded  会社の丸め設定で今計算し直した結果
+     */
+    private function isRoundedTimeStale(TimeRecord $record, CarbonImmutable $expectedRounded): bool
+    {
+        return $record->rounded_time === null
+            || $record->rounded_time->format('Y-m-d H:i:s') !== $expectedRounded->format('Y-m-d H:i:s');
     }
 
     /**

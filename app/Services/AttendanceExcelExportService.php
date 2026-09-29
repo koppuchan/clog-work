@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\LeaveTypeEnum;
 use App\Enums\RequestStatusEnum;
 use App\Models\User;
 use App\Repositories\Contracts\DailyWorkSummaryRepositoryInterface;
@@ -327,6 +328,14 @@ class AttendanceExcelExportService
      * - シフト時間なし + 出退勤あり → 休出
      * - シフト時間なし + 出退勤なし → 休日
      *
+     * ただし「欠勤」の休暇種別（ABSENCE）だけは例外で、実打刻があれば
+     * 優先しない。欠勤申請が承認された後に実際は出勤していた場合
+     * （入江さまの9/18のケース: 打刻間違いの修正申請とは別に、欠勤の
+     * 承認済み申請が残っていた）、申請どおり欠勤のまま表示され続けて
+     * しまい、実際の出退勤があるのに欠勤と出力される不具合の一因になって
+     * いた。有給休暇・特別休暇は半日勤務などと両立しうる区分のため、
+     * 実打刻の有無に関わらずこれまでどおり優先する。
+     *
      * @param  string|null  $effectiveWorkStart  実打刻優先の出勤時刻（H:i形式）。
      *                                           summaryのwork_startだけで判定すると、実打刻はあるのに集計バッチが
      *                                           まだ反映していない日を「打刻なし」と誤判定してしまうため、
@@ -335,13 +344,15 @@ class AttendanceExcelExportService
      */
     private function getWorkType($summary, ?string $effectiveWorkStart): string
     {
+        $hasClockTimes = $effectiveWorkStart !== null;
+
         // 休暇種別がある場合
-        if ($summary?->leave_type !== null) {
+        if ($summary?->leave_type !== null
+            && ! ($summary->leave_type === LeaveTypeEnum::ABSENCE && $hasClockTimes)) {
             return $summary->leave_type->label();
         }
 
         $hasShiftTime = $summary?->scheduled_start_time !== null;
-        $hasClockTimes = $effectiveWorkStart !== null;
 
         return match (true) {
             $hasShiftTime && $hasClockTimes => '出勤',

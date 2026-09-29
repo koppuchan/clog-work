@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Services;
 
+use App\Enums\LeaveTypeEnum;
 use App\Services\DailyWorkSummaryService;
 use Tests\TestCase;
 
@@ -97,17 +98,23 @@ class CsvWorkTypeExportTest extends TestCase
      */
     public function 休暇種別があればシフト_出退勤の有無に関わらずそれを優先する(): void
     {
-        $leaveType = new class
-        {
-            public function label(): string
-            {
-                return '特別休暇';
-            }
-        };
-
         $this->assertSame('特別休暇', $this->workType([
-            'leave_type' => $leaveType,
+            'leave_type' => LeaveTypeEnum::SPECIAL_LEAVE,
             'scheduled_start_time' => '09:00',
         ], '09:00'));
+    }
+
+    /**
+     * @test
+     *
+     * 「欠勤」の休暇種別だけは例外で、実打刻があれば優先しない
+     * （WorkTypeExportTest.php参照）。
+     */
+    public function 欠勤の休暇種別があっても実打刻があれば出勤になる(): void
+    {
+        $this->assertSame('出勤', $this->workType([
+            'leave_type' => LeaveTypeEnum::ABSENCE,
+            'scheduled_start_time' => '09:00',
+        ], '08:51'));
     }
 }

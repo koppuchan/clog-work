@@ -780,12 +780,17 @@ class DailyWorkSummaryService
      */
     private function resolveWorkType($summary, ?string $effectiveWorkStart): string
     {
-        if ($summary?->leave_type !== null) {
+        $hasClockTimes = $effectiveWorkStart !== null;
+
+        // 「欠勤」の休暇種別（ABSENCE）だけは実打刻があれば優先しない
+        // （帳票/AttendanceExcelExportService::getWorkTypeと同じ理由。
+        // 欠勤申請の承認後に実際は出勤していたケースへの対応）。
+        if ($summary?->leave_type !== null
+            && ! ($summary->leave_type === LeaveTypeEnum::ABSENCE && $hasClockTimes)) {
             return $summary->leave_type->label();
         }
 
         $hasShiftTime = $summary?->scheduled_start_time !== null;
-        $hasClockTimes = $effectiveWorkStart !== null;
 
         return match (true) {
             $hasShiftTime && $hasClockTimes => '出勤',

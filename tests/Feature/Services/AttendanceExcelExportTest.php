@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Services;
 
+use App\Enums\LeaveTypeEnum;
 use App\Enums\RecordSourceEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\TimeRecordTypeEnum;
@@ -340,5 +341,44 @@ class AttendanceExcelExportTest extends TestCase
         $sheet = $this->generatedSheet();
 
         $this->assertSame('欠勤', (string) $sheet->getCell('B13')->getValue());
+    }
+
+    /**
+     * @test
+     *
+     * 入江さまの9/18のケース（クライアント報告 #70）の再現。欠勤の申請が
+     * 承認された後、実際には出勤して打刻していた場合、欠勤の申請が
+     * 残っているせいで出勤時刻が表示されているのに欠勤のまま出力されて
+     * いた。実打刻があれば、欠勤の休暇種別が設定されていても出勤として
+     * 出力されること。
+     */
+    public function 欠勤申請が承認済みでも実打刻があれば出勤と出力される(): void
+    {
+        // 6/24は10行目
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-24',
+            'work_start' => null,
+            'work_end' => null,
+            'scheduled_start_time' => '09:00:00',
+            'scheduled_end_time' => '18:00:00',
+            'net_work_minutes' => 0,
+            'leave_type' => LeaveTypeEnum::ABSENCE,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => '2026-06-24 08:51:00',
+            'rounded_time' => '2026-06-24 09:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $sheet = $this->generatedSheet();
+
+        $this->assertSame('出勤', (string) $sheet->getCell('B10')->getValue());
     }
 }

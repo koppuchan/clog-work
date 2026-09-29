@@ -401,10 +401,47 @@ class AttendanceExcelExportService
             $values[] = $valueStr;
         }
 
+        // daily_work_summaries.leave_type は、承認された申請（requestsテーブル）経由
+        // だけでなく、旧システムからのCSV移行データのように申請なしで直接設定されて
+        // いることがある。そのケースは上のループでは拾えず備考欄に出ないだけでなく、
+        // 集計欄の有給日数・欠勤日数（=SUMPRODUCTでこの列のラベルを数えている）からも
+        // 漏れてしまう（クライアント報告 #72: 有給休暇が反映されているのに備考欄に
+        // 出力されない）。対応する休暇系の申請が無い場合はここで補う。
+        $hasLeaveRequest = $dayRequests->contains(
+            fn ($request) => LeaveTypeEnum::isLeaveApplication($request->type)
+        );
+        if ($summary?->leave_type !== null && ! $hasLeaveRequest) {
+            $labels[] = $summary->leave_type->label();
+            $values[] = $this->formatSummaryLeaveDays($summary, $dailyWorkingMinutes);
+        }
+
         return [
             implode("\n", array_filter($labels)),
             implode("\n", array_filter($values)),
         ];
+    }
+
+    /**
+     * 申請を経由しないleave_type（CSV移行データ等）の日数を計算する
+     *
+     * CSV移行では休暇の時間内訳（leave_minutes）を保存していないため、
+     * 基本的に全日（"1.0"）になる。将来leave_minutesが入る経路ができても
+     * 対応できるよう、入っていれば所定時間に対する割合で計算する。
+     *
+     * @param  mixed  $summary  daily_work_summaries レコード
+     * @param  int  $dailyWorkingMinutes  1日所定勤務時間（分）
+     */
+    private function formatSummaryLeaveDays($summary, int $dailyWorkingMinutes): string
+    {
+        $leaveMinutes = $summary->leave_minutes ?? null;
+
+        if ($leaveMinutes === null || $dailyWorkingMinutes <= 0 || $leaveMinutes >= $dailyWorkingMinutes) {
+            return '1.0';
+        }
+
+        $days = round($leaveMinutes / $dailyWorkingMinutes, 4);
+
+        return rtrim(rtrim(number_format($days, 4), '0'), '.');
     }
 
     /**

@@ -381,4 +381,78 @@ class AttendanceExcelExportTest extends TestCase
 
         $this->assertSame('出勤', (string) $sheet->getCell('B10')->getValue());
     }
+
+    /**
+     * @test
+     *
+     * 東部さまの8/28のケース（クライアント報告 #72）。旧システムからの
+     * CSV移行データのように、daily_work_summaries.leave_type が承認された
+     * 申請（requestsテーブル）を経由せず直接設定されている日は、備考欄
+     * （R・S列）に何も出力されず、集計欄の有給日数のカウント
+     * （=SUMPRODUCTでR列のラベルを数えている）からも漏れてしまっていた。
+     * 対応する申請が無くても、勤務区分（B列）と同じ休暇種別を備考欄にも
+     * 出力すること。
+     */
+    public function 申請を経由しない有給休暇でも備考欄に出力される(): void
+    {
+        // 6/24は10行目
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-24',
+            'work_start' => null,
+            'work_end' => null,
+            'scheduled_start_time' => '09:00:00',
+            'scheduled_end_time' => '18:00:00',
+            'net_work_minutes' => 0,
+            'leave_type' => LeaveTypeEnum::PAID_LEAVE,
+            'leave_minutes' => null,
+            'record_source' => RecordSourceEnum::MANUAL,
+            'note' => '有給休暇',
+        ]);
+        // この日に対応するRequestは意図的に作らない（CSV移行データの再現）
+
+        $sheet = $this->generatedSheet();
+
+        $this->assertSame('有給休暇', (string) $sheet->getCell('B10')->getValue());
+        $this->assertSame('有給休暇', (string) $sheet->getCell('R10')->getValue());
+        $this->assertSame('1.0', (string) $sheet->getCell('S10')->getValue());
+    }
+
+    /**
+     * @test
+     *
+     * 申請（requestsテーブル）経由で有給休暇が設定されている、これまでどおりの
+     * 正常系では、備考欄が申請の値のまま出力され、leave_typeからの補完で
+     * 二重に表示されないこと。
+     */
+    public function 申請経由の有給休暇は備考欄が二重にならない(): void
+    {
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-24',
+            'work_start' => null,
+            'work_end' => null,
+            'scheduled_start_time' => '09:00:00',
+            'scheduled_end_time' => '18:00:00',
+            'net_work_minutes' => 0,
+            'leave_type' => LeaveTypeEnum::PAID_LEAVE,
+            'record_source' => RecordSourceEnum::REQUEST,
+        ]);
+
+        Request::query()->create([
+            'company_id' => $this->company->id,
+            'requested_by' => $this->user->id,
+            'type' => 1, // 有給休暇
+            'target_date' => '2026-06-24',
+            'reason' => '私用のため',
+            'status' => RequestStatusEnum::APPROVED,
+        ]);
+
+        $sheet = $this->generatedSheet();
+
+        $this->assertSame('有給休暇', (string) $sheet->getCell('R10')->getValue());
+        $this->assertSame('1.0', (string) $sheet->getCell('S10')->getValue());
+    }
 }

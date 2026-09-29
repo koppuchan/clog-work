@@ -212,4 +212,42 @@ class DailyWorkSummaryCsvExportColumnsTest extends TestCase
 
         $this->assertSame('残業申請 2.0', $row[19]); // 備考/申請
     }
+
+    /**
+     * @test
+     *
+     * 東部さまの8/28のケース（クライアント報告 #72）。旧システムからのCSV
+     * 移行データのように、daily_work_summaries.leave_type が承認された申請
+     * （requestsテーブル）を経由せず直接設定されている日は、対応する申請が
+     * 無いため備考欄に何も出力されなかった。勤務区分（B列相当）と同じ休暇
+     * 種別を備考欄にも出力すること（帳票=Excelと同じ対応）。
+     */
+    public function csv_note_column_shows_leave_type_without_matching_request(): void
+    {
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-24',
+            'leave_type' => \App\Enums\LeaveTypeEnum::PAID_LEAVE,
+            'leave_minutes' => null,
+            'record_source' => RecordSourceEnum::MANUAL,
+            'note' => '有給休暇',
+        ]);
+        // この日に対応するRequestは意図的に作らない（CSV移行データの再現）
+
+        $csv = $this->service->generateCsv(
+            $this->company->id,
+            $this->user->id,
+            '2026-06-24',
+            '2026-06-24',
+            $this->user,
+        );
+        $row = str_getcsv(array_values(array_filter(
+            explode("\n", $csv),
+            fn ($line) => str_contains($line, '6/24(水)')
+        ))[0]);
+
+        $this->assertSame('有給休暇', $row[3]); // 勤務区分
+        $this->assertSame('有給休暇 1.0', $row[19]); // 備考/申請
+    }
 }

@@ -7,6 +7,7 @@ namespace Tests\Feature\Services;
 use App\Enums\RecordSourceEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\TimeRecordTypeEnum;
+use App\Exceptions\BusinessException;
 use App\Models\Company;
 use App\Models\DailyWorkSummary;
 use App\Models\Shift;
@@ -1391,6 +1392,201 @@ class TimeRecordCorrectionRequestServiceTest extends TestCase
         $this->assertEquals(45, $summary->break_minutes, '12:00-12:45 = 45分の休憩');
         $this->assertEquals(540, $summary->work_minutes, '09:00-18:00 = 540分');
         $this->assertEquals(495, $summary->net_work_minutes, '540 - 45 = 495分');
+    }
+
+    // ========================================
+    // approveCorrectionRequest テスト（承認時点の食い違い検知）
+    // ========================================
+
+    /**
+     * @test
+     *
+     * 休憩の打刻漏れ(未打刻)を修正する申請を作成した後、承認までの間に
+     * 別の手段（管理者の手動編集など）で同じ休憩が既に打刻されていた場合、
+     * そのまま承認すると同じ休憩がもう一組新規作成され、二重に計上されて
+     * しまっていた（クライアント報告 #69: 休憩打刻の承認で休憩が重複して計上された）。
+     * 承認できず、既存の休憩・申請ともに変更されないこと。
+     */
+    public function approve_correction_request_rejects_when_break_already_added_since_request_was_created(): void
+    {
+        // Arrange
+        $targetDate = '2025-01-15';
+
+        // 打刻修正申請（休憩の打刻漏れを追加する内容。申請作成時点では未打刻）
+        $correctionRequest = TimeRecordCorrectionRequest::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'target_date' => $targetDate,
+            'reason' => '休憩開始打刻時に間違えて退勤打刻をしてしまいました。',
+            'status' => RequestStatusEnum::PENDING,
+        ]);
+        TimeRecordCorrectionRequestDetail::query()->create([
+            'correction_request_id' => $correctionRequest->id,
+            'time_record_id' => null,
+            'record_type' => TimeRecordTypeEnum::BREAK_START,
+            'original_record_time' => null,
+            'original_rounded_time' => null,
+            'corrected_record_time' => $targetDate.' 14:33:00',
+            'corrected_rounded_time' => $targetDate.' 14:33:00',
+        ]);
+        TimeRecordCorrectionRequestDetail::query()->create([
+            'correction_request_id' => $correctionRequest->id,
+            'time_record_id' => null,
+            'record_type' => TimeRecordTypeEnum::BREAK_END,
+            'original_record_time' => null,
+            'original_rounded_time' => null,
+            'corrected_record_time' => $targetDate.' 15:32:00',
+            'corrected_rounded_time' => $targetDate.' 15:32:00',
+        ]);
+        $correctionRequest->load('details');
+
+        // 申請作成後、承認までの間に別の手段で同じ休憩が既に打刻されていた状態を再現
+        $alreadyAddedBreakStart = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::BREAK_START,
+            'record_time' => $targetDate.' 14:33:00',
+            'rounded_time' => $targetDate.' 14:33:00',
+            'record_source' => RecordSourceEnum::MANUAL,
+        ]);
+        $alreadyAddedBreakEnd = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::BREAK_END,
+            'record_time' => $targetDate.' 15:32:00',
+            'rounded_time' => $targetDate.' 15:32:00',
+            'record_source' => RecordSourceEnum::MANUAL,
+        ]);
+
+        // Act & Assert
+        $this->expectException(BusinessException::class);
+
+        try {
+            $this->service->approveCorrectionRequest($correctionRequest->id, $this->approver->id);
+        } finally {
+            // 承認は行われず、休憩は既存の1組のまま（二重にならない）
+            $correctionRequest->refresh();
+            $this->assertEquals(RequestStatusEnum::PENDING, $correctionRequest->status);
+            $this->assertEquals(
+                2,
+                TimeRecord::query()->where('user_id', $this->user->id)->where('record_type', TimeRecordTypeEnum::BREAK_START)->count()
+                + TimeRecord::query()->where('user_id', $this->user->id)->where('record_type', TimeRecordTypeEnum::BREAK_END)->count(),
+                '休憩の打刻が重複作成されていないこと（開始・終了 各1件のまま）'
+            );
+            $this->assertDatabaseHas('time_records', ['id' => $alreadyAddedBreakStart->id]);
+            $this->assertDatabaseHas('time_records', ['id' => $alreadyAddedBreakEnd->id]);
+        }
+    }
+
+    /**
+     * @test
+     *
+     * 修正対象の既存レコードが、申請作成後に別の手段で申請内容と異なる
+     * 時刻へ変更されていた場合、古い申請内容で上書きしてしまわないよう
+     * 承認できないこと。
+     */
+    public function approve_correction_request_rejects_when_existing_record_changed_to_different_time_since_request_was_created(): void
+    {
+        // Arrange
+        $targetDate = '2025-01-15';
+
+        $workStartRecord = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => $targetDate.' 09:30:00',
+            'rounded_time' => $targetDate.' 09:30:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $correctionRequest = $this->createCorrectionRequestWithDetail(
+            $targetDate,
+            $workStartRecord,
+            TimeRecordTypeEnum::WORK_START,
+            '09:00:00'
+        );
+
+        // 申請作成後、承認までの間に別の手段（例: 別の申請の承認）で
+        // 申請内容とは異なる時刻に変わっていた状態を再現
+        $workStartRecord->update(['record_time' => $targetDate.' 09:15:00']);
+
+        // Act & Assert
+        $this->expectException(BusinessException::class);
+
+        try {
+            $this->service->approveCorrectionRequest($correctionRequest->id, $this->approver->id);
+        } finally {
+            $correctionRequest->refresh();
+            $this->assertEquals(RequestStatusEnum::PENDING, $correctionRequest->status);
+            // 09:15の変更が古い申請内容(09:00)で上書きされていないこと
+            $this->assertEquals($targetDate.' 09:15:00', $workStartRecord->refresh()->record_time->format('Y-m-d H:i:s'));
+        }
+    }
+
+    /**
+     * @test
+     *
+     * 既存レコードが、申請内容と「同じ値」に既に変わっていた場合（＝他の手段で
+     * 先に同じ修正が適用済み）は、衝突ではなく無変更として扱い、承認できること。
+     */
+    public function approve_correction_request_succeeds_when_existing_record_already_matches_corrected_value(): void
+    {
+        // Arrange
+        $targetDate = '2025-01-15';
+
+        $workStartRecord = TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => $targetDate.' 09:30:00',
+            'rounded_time' => $targetDate.' 09:30:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $correctionRequest = $this->createCorrectionRequestWithDetail(
+            $targetDate,
+            $workStartRecord,
+            TimeRecordTypeEnum::WORK_START,
+            '09:00:00'
+        );
+
+        // 承認前に、別の手段で既に申請と同じ値(09:00)へ修正済み
+        $workStartRecord->update(['record_time' => $targetDate.' 09:00:00']);
+
+        // Act
+        $result = $this->service->approveCorrectionRequest($correctionRequest->id, $this->approver->id);
+
+        // Assert
+        $this->assertEquals(RequestStatusEnum::APPROVED, $result->status);
+    }
+
+    /**
+     * @test
+     *
+     * 衝突が無ければ、これまでどおり新規作成が承認できること（正常系の回帰確認）。
+     */
+    public function approve_correction_request_still_creates_new_record_when_no_conflict_exists(): void
+    {
+        // Arrange
+        $targetDate = '2025-01-15';
+
+        $correctionRequest = $this->createCorrectionRequestWithDetail(
+            $targetDate,
+            null,
+            TimeRecordTypeEnum::BREAK_START,
+            '12:00:00'
+        );
+
+        // Act
+        $result = $this->service->approveCorrectionRequest($correctionRequest->id, $this->approver->id);
+
+        // Assert
+        $this->assertEquals(RequestStatusEnum::APPROVED, $result->status);
+        $this->assertDatabaseHas('time_records', [
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::BREAK_START->value,
+            'record_time' => $targetDate.' 12:00:00',
+        ]);
     }
 
     // ========================================

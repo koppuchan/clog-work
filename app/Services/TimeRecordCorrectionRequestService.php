@@ -7,6 +7,8 @@ namespace App\Services;
 use App\Enums\RecordSourceEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\TimeRecordTypeEnum;
+use App\Exceptions\BusinessException;
+use App\Models\TimeRecord;
 use App\Models\TimeRecordCorrection;
 use App\Models\TimeRecordCorrectionRequest;
 use App\Models\TimeRecordCorrectionRequestDetail;
@@ -262,6 +264,14 @@ class TimeRecordCorrectionRequestService
             fn (TimeRecordCorrectionRequestDetail $detail) => $detail->time_record_id === null || ! $existingRecords->has($detail->time_record_id)
         );
 
+        // 承認時点で申請内容と食い違う打刻が既にできていないか確認する。
+        // 申請作成から承認までの間（数日〜数週間空くこともある）に、管理者の
+        // 手動編集や別の申請の承認で打刻が変わっていることがある。気づかず
+        // そのまま適用すると、既にある休憩と別にもう一組休憩を新規作成して
+        // 二重計上したり、他の人が入れた新しい値を古い申請内容で上書きして
+        // しまう（クライアント報告: 休憩打刻修正の承認で休憩が重複して計上された）。
+        $this->assertNoStaleConflicts($correctionRequest, $detailsWithExistingRecord, $detailsWithoutRecord, $existingRecords);
+
         // 既存レコードをupsertで一括更新
         $updateRecords = $detailsWithExistingRecord->map(
             fn (TimeRecordCorrectionRequestDetail $detail) => [
@@ -363,6 +373,73 @@ class TimeRecordCorrectionRequestService
                 $targetDate,
                 $breakTypesToDelete
             );
+        }
+    }
+
+    /**
+     * 承認時点の打刻が、申請作成時点の内容と食い違っていないか確認する
+     *
+     * 2種類の食い違いを検知する。
+     * 1. 既存レコードを修正する明細: 申請作成時に記録した original_record_time と、
+     *    承認時点の実際の打刻時刻が一致しない場合（申請後に他の手段で打刻が
+     *    変わっている）。そのまま上書きすると、その変更を古い申請内容で
+     *    無かったことにしてしまう。
+     * 2. 新規作成する明細（申請時点で未打刻だった項目）: 承認時点で既に
+     *    同じ種別の打刻が存在する場合（申請後に他の手段で打刻が追加されている）。
+     *    そのまま新規作成すると、同じ休憩などが二重にできてしまう。
+     *
+     * @param  Collection<int, TimeRecordCorrectionRequestDetail>  $detailsWithExistingRecord  既存レコードを更新する明細（無変更を除く）
+     * @param  Collection<int, TimeRecordCorrectionRequestDetail>  $detailsWithoutRecord  新規作成する明細
+     * @param  \Illuminate\Support\Collection<int, TimeRecord>  $existingRecords  この申請の明細が参照する既存レコード（id => レコード）。
+     *                                                                            明細が1件も既存レコードを参照しない場合は素の Support\Collection（空）になるため、その基底型で受ける
+     *
+     * @throws BusinessException 承認時点の打刻が申請内容と食い違う場合
+     */
+    private function assertNoStaleConflicts(
+        TimeRecordCorrectionRequest $correctionRequest,
+        Collection $detailsWithExistingRecord,
+        Collection $detailsWithoutRecord,
+        \Illuminate\Support\Collection $existingRecords
+    ): void {
+        foreach ($detailsWithExistingRecord as $detail) {
+            $existingRecord = $existingRecords->get($detail->time_record_id);
+
+            if ($existingRecord === null || $detail->original_record_time === null) {
+                continue;
+            }
+
+            if ($existingRecord->record_time->format('Y-m-d H:i') !== $detail->original_record_time->format('Y-m-d H:i')) {
+                throw new BusinessException(sprintf(
+                    '承認できませんでした。%sの打刻が申請後に%sへ変更されているため、内容を確認のうえ申請し直してください。',
+                    $detail->record_type->label(),
+                    $existingRecord->record_time->format('H:i')
+                ));
+            }
+        }
+
+        if ($detailsWithoutRecord->isEmpty()) {
+            return;
+        }
+
+        $targetDate = $correctionRequest->target_date->format('Y-m-d');
+        $nextDate = CarbonImmutable::parse($targetDate)->addDay()->format('Y-m-d');
+        $linkedRecordIds = $existingRecords->keys()->all();
+
+        $currentRecords = $this->timeRecordRepository
+            ->findByUserIdAndDate($correctionRequest->company_id, $correctionRequest->user_id, $targetDate)
+            ->merge($this->timeRecordRepository->findByUserIdAndDate($correctionRequest->company_id, $correctionRequest->user_id, $nextDate))
+            ->reject(fn (TimeRecord $r) => in_array($r->id, $linkedRecordIds, true));
+
+        foreach ($detailsWithoutRecord as $detail) {
+            $conflict = $currentRecords->first(fn (TimeRecord $r) => $r->record_type === $detail->record_type);
+
+            if ($conflict !== null) {
+                throw new BusinessException(sprintf(
+                    '承認できませんでした。申請後に%sの打刻（%s）が別途追加されているため、内容を確認のうえ申請し直してください。',
+                    $detail->record_type->label(),
+                    $conflict->record_time->format('H:i')
+                ));
+            }
         }
     }
 

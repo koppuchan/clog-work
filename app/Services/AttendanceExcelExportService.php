@@ -267,7 +267,7 @@ class AttendanceExcelExportService
                 //   例: H4 = SUMPRODUCT(... FIND("有給休暇", $R$7:$R$37) ... $S$7:$S$37 ...)
                 // 1セルにまとめると数式が値を拾えなくなるため、必ず2列に分けて書く。
                 $dayRequests = $requestMap->get($dateKey, collect());
-                [$noteLabel, $noteValue] = $this->buildNoteColumns($summary, $dayRequests, $dailyWorkingMinutes);
+                [$noteLabel, $noteValue] = $this->buildNoteColumns($summary, $dayRequests, $dailyWorkingMinutes, $effectiveWorkStart);
                 $sheet->setCellValue('R'.$row, $noteLabel);
                 $sheet->setCellValueExplicit('S'.$row, $noteValue, DataType::TYPE_STRING);
             }
@@ -373,9 +373,10 @@ class AttendanceExcelExportService
      * @param  mixed  $summary  daily_work_summaries レコード
      * @param  Collection  $dayRequests  当日の承認済み申請コレクション
      * @param  int  $dailyWorkingMinutes  1日所定勤務時間（分）
+     * @param  string|null  $effectiveWorkStart  実打刻優先の出勤時刻（H:i形式）。getWorkTypeに渡すものと同じ
      * @return array{0: string, 1: string} [O列テキスト, P列テキスト]
      */
-    private function buildNoteColumns($summary, Collection $dayRequests, int $dailyWorkingMinutes): array
+    private function buildNoteColumns($summary, Collection $dayRequests, int $dailyWorkingMinutes, ?string $effectiveWorkStart = null): array
     {
         $labels = [];
         $values = [];
@@ -407,10 +408,17 @@ class AttendanceExcelExportService
         // 集計欄の有給日数・欠勤日数（=SUMPRODUCTでこの列のラベルを数えている）からも
         // 漏れてしまう（クライアント報告 #72: 有給休暇が反映されているのに備考欄に
         // 出力されない）。対応する休暇系の申請が無い場合はここで補う。
+        //
+        // ただし「欠勤」（ABSENCE）は、getWorkTypeと同じ理由で実打刻があれば
+        // 対象外にする。欠勤の申請承認後に実際は出勤していた日にまで備考欄へ
+        // 「欠勤 1.0」を出してしまい、実際に出勤している全員の備考欄に欠勤が
+        // 表示される不具合になっていた（クライアント報告: 全員に欠勤の表示が
+        // 出るようになった。#72対応時にgetWorkTypeと同じ例外を入れ忘れていた）。
         $hasLeaveRequest = $dayRequests->contains(
             fn ($request) => LeaveTypeEnum::isLeaveApplication($request->type)
         );
-        if ($summary?->leave_type !== null && ! $hasLeaveRequest) {
+        $isStaleAbsence = $summary?->leave_type === LeaveTypeEnum::ABSENCE && $effectiveWorkStart !== null;
+        if ($summary?->leave_type !== null && ! $hasLeaveRequest && ! $isStaleAbsence) {
             $labels[] = $summary->leave_type->label();
             $values[] = $this->formatSummaryLeaveDays($summary, $dailyWorkingMinutes);
         }

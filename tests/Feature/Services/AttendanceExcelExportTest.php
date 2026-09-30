@@ -455,4 +455,79 @@ class AttendanceExcelExportTest extends TestCase
         $this->assertSame('有給休暇', (string) $sheet->getCell('R10')->getValue());
         $this->assertSame('1.0', (string) $sheet->getCell('S10')->getValue());
     }
+
+    /**
+     * @test
+     *
+     * #72対応で追加した「申請なしのleave_typeを備考欄に補う」処理が、
+     * getWorkTypeと同じ「欠勤（ABSENCE）は実打刻があれば対象外」の例外を
+     * 入れ忘れていたため、実際に出勤している日にまで備考欄へ「欠勤 1.0」が
+     * 出てしまっていた（クライアント報告: 確認したら全員に欠勤の表示が
+     * 出るようになっていた）。勤務区分（B列）は正しく「出勤」なのに、
+     * 備考欄だけ「欠勤」が出るのは矛盾するため、出さないこと。
+     */
+    public function 欠勤の休暇種別が残っていても実打刻があれば備考欄に出ない(): void
+    {
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-24',
+            'scheduled_start_time' => '09:00:00',
+            'scheduled_end_time' => '18:00:00',
+            'net_work_minutes' => 480,
+            'leave_type' => LeaveTypeEnum::ABSENCE,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => '2026-06-24 08:51:00',
+            'rounded_time' => '2026-06-24 09:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END,
+            'record_time' => '2026-06-24 18:00:00',
+            'rounded_time' => '2026-06-24 18:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $sheet = $this->generatedSheet();
+
+        $this->assertSame('出勤', (string) $sheet->getCell('B10')->getValue(), '勤務区分は出勤のはず');
+        $this->assertSame('', (string) $sheet->getCell('R10')->getValue(), '実打刻がある日に備考欄へ欠勤を出してはいけない');
+        $this->assertSame('', (string) $sheet->getCell('S10')->getValue());
+    }
+
+    /**
+     * @test
+     *
+     * 上記と対になる確認。実打刻が無ければ、これまでどおり欠勤が
+     * 備考欄に出ること（本当の欠勤日まで消してしまわないように）。
+     */
+    public function 欠勤の休暇種別は実打刻が無ければ備考欄に出る(): void
+    {
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-24',
+            'work_start' => null,
+            'work_end' => null,
+            'scheduled_start_time' => '09:00:00',
+            'scheduled_end_time' => '18:00:00',
+            'net_work_minutes' => 0,
+            'leave_type' => LeaveTypeEnum::ABSENCE,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $sheet = $this->generatedSheet();
+
+        $this->assertSame('欠勤', (string) $sheet->getCell('B10')->getValue());
+        $this->assertSame('欠勤', (string) $sheet->getCell('R10')->getValue());
+        $this->assertSame('1.0', (string) $sheet->getCell('S10')->getValue());
+    }
 }

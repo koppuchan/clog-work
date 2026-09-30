@@ -930,7 +930,7 @@ class DailyWorkSummaryService
                         $this->lateEarlyLeaveDisplay->lateMinutes($summary)
                         + $this->lateEarlyLeaveDisplay->earlyLeaveMinutes($summary)
                     ),
-                    $this->buildNoteAndRequestColumn($summary, $requestMap->get($dateKey, collect()), $dailyWorkingMinutes),
+                    $this->buildNoteAndRequestColumn($summary, $requestMap->get($dateKey, collect()), $dailyWorkingMinutes, $effectiveWorkStart),
                 ];
 
                 $currentDate = $currentDate->addDay();
@@ -967,8 +967,9 @@ class DailyWorkSummaryService
      * @param  mixed  $summary  daily_work_summaries レコード
      * @param  \Illuminate\Support\Collection<int, LeaveRequest>  $dayRequests  当日の承認済み申請
      * @param  int  $dailyWorkingMinutes  1日所定勤務時間（分）
+     * @param  string|null  $effectiveWorkStart  実打刻優先の出勤時刻（H:i形式）。resolveWorkTypeに渡すものと同じ
      */
-    private function buildNoteAndRequestColumn($summary, \Illuminate\Support\Collection $dayRequests, int $dailyWorkingMinutes): string
+    private function buildNoteAndRequestColumn($summary, \Illuminate\Support\Collection $dayRequests, int $dailyWorkingMinutes, ?string $effectiveWorkStart = null): string
     {
         $entries = [];
 
@@ -1000,10 +1001,17 @@ class DailyWorkSummaryService
         // 帳票（Excel）の集計欄の有給日数・欠勤日数からも漏れてしまう
         // （クライアント報告 #72: 有給休暇が反映されているのに備考欄に出力されない）。
         // 対応する休暇系の申請が無い場合はここで補う（帳票と同じ基準）。
+        //
+        // ただし「欠勤」（ABSENCE）は、resolveWorkTypeと同じ理由で実打刻があれば
+        // 対象外にする。欠勤の申請承認後に実際は出勤していた日にまで備考欄へ
+        // 「欠勤 1.0」を出してしまい、実際に出勤している全員の備考欄に欠勤が
+        // 表示される不具合になっていた（クライアント報告: 全員に欠勤の表示が
+        // 出るようになった。#72対応時にresolveWorkTypeと同じ例外を入れ忘れていた）。
         $hasLeaveRequest = $dayRequests->contains(
             fn ($request) => LeaveTypeEnum::isLeaveApplication($request->type)
         );
-        if ($summary?->leave_type !== null && ! $hasLeaveRequest) {
+        $isStaleAbsence = $summary?->leave_type === LeaveTypeEnum::ABSENCE && $effectiveWorkStart !== null;
+        if ($summary?->leave_type !== null && ! $hasLeaveRequest && ! $isStaleAbsence) {
             $entries[] = trim($summary->leave_type->label().' '.$this->formatSummaryLeaveDays($summary, $dailyWorkingMinutes));
         }
 

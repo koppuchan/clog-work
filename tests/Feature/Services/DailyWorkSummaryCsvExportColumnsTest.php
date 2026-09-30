@@ -250,4 +250,58 @@ class DailyWorkSummaryCsvExportColumnsTest extends TestCase
         $this->assertSame('有給休暇', $row[3]); // 勤務区分
         $this->assertSame('有給休暇 1.0', $row[19]); // 備考/申請
     }
+
+    /**
+     * @test
+     *
+     * #72対応の「申請なしのleave_typeを備考欄に補う」処理が、帳票（Excel）
+     * 側と同じ「欠勤（ABSENCE）は実打刻があれば対象外」の例外を入れ忘れて
+     * いたため、実際に出勤している日にまで備考欄へ「欠勤 1.0」が出てしまって
+     * いた（クライアント報告: 確認したら全員に欠勤の表示が出るようになった）。
+     */
+    public function csv_note_column_does_not_show_absence_when_actually_worked(): void
+    {
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-24',
+            'scheduled_start_time' => '09:00:00',
+            'scheduled_end_time' => '18:00:00',
+            'net_work_minutes' => 480,
+            'leave_type' => \App\Enums\LeaveTypeEnum::ABSENCE,
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => '2026-06-24 08:51:00',
+            'rounded_time' => '2026-06-24 09:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END,
+            'record_time' => '2026-06-24 18:00:00',
+            'rounded_time' => '2026-06-24 18:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $csv = $this->service->generateCsv(
+            $this->company->id,
+            $this->user->id,
+            '2026-06-24',
+            '2026-06-24',
+            $this->user,
+        );
+        $row = str_getcsv(array_values(array_filter(
+            explode("\n", $csv),
+            fn ($line) => str_contains($line, '6/24(水)')
+        ))[0]);
+
+        $this->assertSame('出勤', $row[3]); // 勤務区分
+        $this->assertSame('', $row[19]); // 実打刻がある日に欠勤を出してはいけない
+    }
 }

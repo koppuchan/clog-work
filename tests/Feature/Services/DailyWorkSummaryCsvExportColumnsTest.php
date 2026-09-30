@@ -163,7 +163,7 @@ class DailyWorkSummaryCsvExportColumnsTest extends TestCase
             fn ($line) => str_contains($line, '6/24(水)')
         ))[0]);
 
-        $this->assertSame('有給休暇 1.0', $row[19]); // 備考/申請
+        $this->assertSame('有給休暇 1.000', $row[19]); // 備考/申請
     }
 
     /**
@@ -248,7 +248,7 @@ class DailyWorkSummaryCsvExportColumnsTest extends TestCase
         ))[0]);
 
         $this->assertSame('有給休暇', $row[3]); // 勤務区分
-        $this->assertSame('有給休暇 1.0', $row[19]); // 備考/申請
+        $this->assertSame('有給休暇 1.000', $row[19]); // 備考/申請
     }
 
     /**
@@ -303,5 +303,60 @@ class DailyWorkSummaryCsvExportColumnsTest extends TestCase
 
         $this->assertSame('出勤', $row[3]); // 勤務区分
         $this->assertSame('', $row[19]); // 実打刻がある日に欠勤を出してはいけない
+    }
+
+    /**
+     * @test
+     *
+     * task#75: 半日有給（leave_minutesが設定されている）は勤務区分に
+     * 「有給休暇」を出さず、実際の出退勤状況（出勤）を表示する。備考欄には
+     * これまでどおり「有給休暇」とその日数を出す。
+     */
+    public function csv_does_not_show_paid_leave_as_work_type_for_half_day_leave(): void
+    {
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-24',
+            'scheduled_start_time' => '09:00:00',
+            'scheduled_end_time' => '18:00:00',
+            'net_work_minutes' => 240,
+            'leave_type' => \App\Enums\LeaveTypeEnum::PAID_LEAVE,
+            'leave_minutes' => 240,
+            'record_source' => RecordSourceEnum::REQUEST,
+        ]);
+
+        Request::query()->create([
+            'company_id' => $this->company->id,
+            'requested_by' => $this->user->id,
+            'type' => 9, // 半日有給
+            'target_date' => '2026-06-24',
+            'reason' => '私用のため',
+            'status' => RequestStatusEnum::APPROVED,
+        ]);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => '2026-06-24 13:00:00',
+            'rounded_time' => '2026-06-24 13:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $csv = $this->service->generateCsv(
+            $this->company->id,
+            $this->user->id,
+            '2026-06-24',
+            '2026-06-24',
+            $this->user,
+        );
+        $row = str_getcsv(array_values(array_filter(
+            explode("\n", $csv),
+            fn ($line) => str_contains($line, '6/24(水)')
+        ))[0]);
+
+        $this->assertSame('出勤', $row[3]); // 勤務区分
+        $this->assertSame('有給休暇 0.500', $row[19]); // 備考/申請には引き続き出す
     }
 }

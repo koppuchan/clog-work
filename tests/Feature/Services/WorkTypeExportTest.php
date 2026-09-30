@@ -126,6 +126,7 @@ class WorkTypeExportTest extends TestCase
     {
         $type = $this->workType([
             'leave_type' => LeaveTypeEnum::PAID_LEAVE,
+            'leave_minutes' => null,
             'scheduled_start_time' => '09:00',
         ], '09:00');
 

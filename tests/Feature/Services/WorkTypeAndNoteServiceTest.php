@@ -90,7 +90,7 @@ class WorkTypeAndNoteServiceTest extends TestCase
      */
     public function 休暇種別があればシフト_出退勤の有無に関わらずそれを優先する(): void
     {
-        $summary = (object) ['leave_type' => LeaveTypeEnum::PAID_LEAVE, 'scheduled_start_time' => '09:00'];
+        $summary = (object) ['leave_type' => LeaveTypeEnum::PAID_LEAVE, 'leave_minutes' => null, 'scheduled_start_time' => '09:00'];
 
         $this->assertSame('有給休暇', $this->service->resolveWorkType($summary, '09:00'));
     }
@@ -118,6 +118,59 @@ class WorkTypeAndNoteServiceTest extends TestCase
         $this->assertSame('欠勤', $this->service->resolveWorkType($summary, null));
     }
 
+    /**
+     * @test
+     *
+     * 有給休暇のうち、半日・時間有給（leave_minutesが設定されている）は
+     * 勤務区分に優先しない。残りの時間を勤務しているのが通常のため、
+     * 実際の出退勤状況（この場合は出勤）を表示する（task#75）。
+     */
+    public function 半日_時間有給は実打刻があれば勤務区分に優先されず出勤になる(): void
+    {
+        $summary = (object) [
+            'leave_type' => LeaveTypeEnum::PAID_LEAVE,
+            'leave_minutes' => 240, // 半日分など、終日ではない値
+            'scheduled_start_time' => '09:00',
+        ];
+
+        $this->assertSame('出勤', $this->service->resolveWorkType($summary, '13:00'));
+    }
+
+    /**
+     * @test
+     *
+     * 半日・時間有給で、その日はまだ出退勤の実打刻が無ければ、これまでの
+     * 基準（シフトあり+出退勤なし＝欠勤）どおり欠勤になる（有給休暇には
+     * ならない）。
+     */
+    public function 半日_時間有給で実打刻が無ければ欠勤になる(): void
+    {
+        $summary = (object) [
+            'leave_type' => LeaveTypeEnum::PAID_LEAVE,
+            'leave_minutes' => 240,
+            'scheduled_start_time' => '09:00',
+        ];
+
+        $this->assertSame('欠勤', $this->service->resolveWorkType($summary, null));
+    }
+
+    /**
+     * @test
+     *
+     * 全日有給（leave_minutesがnull）は、これまでどおり勤務区分に
+     * 「有給休暇」が優先される。
+     */
+    public function 全日有給は勤務区分に優先される(): void
+    {
+        $summary = (object) [
+            'leave_type' => LeaveTypeEnum::PAID_LEAVE,
+            'leave_minutes' => null,
+            'scheduled_start_time' => '09:00',
+        ];
+
+        $this->assertSame('有給休暇', $this->service->resolveWorkType($summary, null));
+    }
+
     // ========================================
     // buildNoteEntries
     // ========================================
@@ -143,7 +196,7 @@ class WorkTypeAndNoteServiceTest extends TestCase
 
         $entries = $this->service->buildNoteEntries($summary, collect(), 480);
 
-        $this->assertSame([['label' => '有給休暇', 'value' => '1.0']], $entries);
+        $this->assertSame([['label' => '有給休暇', 'value' => '1.000']], $entries);
     }
 
     /**
@@ -180,7 +233,7 @@ class WorkTypeAndNoteServiceTest extends TestCase
 
         $this->assertCount(1, $entries);
         $this->assertSame('有給休暇', $entries[0]['label']);
-        $this->assertSame('1.0', $entries[0]['value']);
+        $this->assertSame('1.000', $entries[0]['value']);
     }
 
     /**
@@ -255,7 +308,7 @@ class WorkTypeAndNoteServiceTest extends TestCase
 
         $this->assertSame([
             ['label' => '遅刻', 'value' => '0.25'],
-            ['label' => '有給休暇', 'value' => '0.5'],
+            ['label' => '有給休暇', 'value' => '0.500'],
         ], $entries);
     }
 }

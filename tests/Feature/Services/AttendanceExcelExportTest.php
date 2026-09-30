@@ -416,7 +416,7 @@ class AttendanceExcelExportTest extends TestCase
 
         $this->assertSame('有給休暇', (string) $sheet->getCell('B10')->getValue());
         $this->assertSame('有給休暇', (string) $sheet->getCell('R10')->getValue());
-        $this->assertSame('1.0', (string) $sheet->getCell('S10')->getValue());
+        $this->assertSame('1.000', (string) $sheet->getCell('S10')->getValue());
     }
 
     /**
@@ -453,7 +453,7 @@ class AttendanceExcelExportTest extends TestCase
         $sheet = $this->generatedSheet();
 
         $this->assertSame('有給休暇', (string) $sheet->getCell('R10')->getValue());
-        $this->assertSame('1.0', (string) $sheet->getCell('S10')->getValue());
+        $this->assertSame('1.000', (string) $sheet->getCell('S10')->getValue());
     }
 
     /**
@@ -528,6 +528,91 @@ class AttendanceExcelExportTest extends TestCase
 
         $this->assertSame('欠勤', (string) $sheet->getCell('B10')->getValue());
         $this->assertSame('欠勤', (string) $sheet->getCell('R10')->getValue());
-        $this->assertSame('1.0', (string) $sheet->getCell('S10')->getValue());
+        $this->assertSame('1.000', (string) $sheet->getCell('S10')->getValue());
+    }
+
+    /**
+     * @test
+     *
+     * task#75: 半日・時間有給（leave_minutesが設定されている）は、勤務区分
+     * には「有給休暇」を出さず、実際の出退勤状況（出勤）を表示すること。
+     * 備考欄（R・S列）には、これまでどおり「有給休暇」とその日数を出す
+     * （表示するのをやめるのは勤務区分だけ）。
+     */
+    public function 半日有給は勤務区分に出さず備考欄には出す(): void
+    {
+        // 6/24は10行目
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-24',
+            'scheduled_start_time' => '09:00:00',
+            'scheduled_end_time' => '18:00:00',
+            'net_work_minutes' => 240,
+            'leave_type' => LeaveTypeEnum::PAID_LEAVE,
+            'leave_minutes' => 240,
+            'record_source' => RecordSourceEnum::REQUEST,
+        ]);
+
+        Request::query()->create([
+            'company_id' => $this->company->id,
+            'requested_by' => $this->user->id,
+            'type' => 9, // 半日有給
+            'target_date' => '2026-06-24',
+            'reason' => '私用のため',
+            'status' => RequestStatusEnum::APPROVED,
+        ]);
+
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => '2026-06-24 13:00:00',
+            'rounded_time' => '2026-06-24 13:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $sheet = $this->generatedSheet();
+
+        $this->assertSame('出勤', (string) $sheet->getCell('B10')->getValue(), '半日有給の日は勤務区分に有給休暇を出さない');
+        $this->assertSame('有給休暇', (string) $sheet->getCell('R10')->getValue(), '備考欄には引き続き出す');
+        $this->assertSame('0.500', (string) $sheet->getCell('S10')->getValue());
+    }
+
+    /**
+     * @test
+     *
+     * task#75: 全日有給（leave_minutesがnull）は、これまでどおり勤務区分に
+     * 「有給休暇」が出ること（半日・時間有給だけを対象外にする例外が、
+     * 全日有給まで巻き込んでいないことの確認）。
+     */
+    public function 全日有給は勤務区分に出す(): void
+    {
+        DailyWorkSummary::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'work_date' => '2026-06-24',
+            'work_start' => null,
+            'work_end' => null,
+            'scheduled_start_time' => '09:00:00',
+            'scheduled_end_time' => '18:00:00',
+            'net_work_minutes' => 0,
+            'leave_type' => LeaveTypeEnum::PAID_LEAVE,
+            'leave_minutes' => null,
+            'record_source' => RecordSourceEnum::REQUEST,
+        ]);
+
+        Request::query()->create([
+            'company_id' => $this->company->id,
+            'requested_by' => $this->user->id,
+            'type' => 1, // 全日有給
+            'target_date' => '2026-06-24',
+            'reason' => '私用のため',
+            'status' => RequestStatusEnum::APPROVED,
+        ]);
+
+        $sheet = $this->generatedSheet();
+
+        $this->assertSame('有給休暇', (string) $sheet->getCell('B10')->getValue());
     }
 }

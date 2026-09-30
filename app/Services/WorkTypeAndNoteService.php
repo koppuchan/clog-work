@@ -37,13 +37,21 @@ class WorkTypeAndNoteService
      * - シフト時間なし + 出退勤あり → 休出
      * - シフト時間なし + 出退勤なし → 休日
      *
-     * ただし「欠勤」の休暇種別（ABSENCE）だけは例外で、実打刻があれば
-     * 優先しない。欠勤申請が承認された後に実際は出勤していた場合
-     * （入江さまの9/18のケース: 打刻間違いの修正申請とは別に、欠勤の
-     * 承認済み申請が残っていた）、申請どおり欠勤のまま表示され続けて
-     * しまい、実際の出退勤があるのに欠勤と出力される不具合の一因になって
-     * いた。有給休暇・特別休暇は半日勤務などと両立しうる区分のため、
-     * 実打刻の有無に関わらずこれまでどおり優先する。
+     * ただし2つ例外がある。
+     *
+     * 1. 「欠勤」の休暇種別（ABSENCE）は、実打刻があれば優先しない。
+     * 欠勤申請が承認された後に実際は出勤していた場合（入江さまの9/18の
+     * ケース: 打刻間違いの修正申請とは別に、欠勤の承認済み申請が残って
+     * いた）、申請どおり欠勤のまま表示され続けてしまい、実際の出退勤が
+     * あるのに欠勤と出力される不具合の一因になっていた。
+     *
+     * 2. 「有給休暇」は、半日有給・時間有給（leave_minutesが設定されている
+     * ＝終日ではない休暇）だけは優先しない（task#75）。半日・時間有給は
+     * 残りの時間を勤務しているのが通常のため、その日の勤務区分としては
+     * 実際の出退勤状況（出勤/欠勤/休出/休日）を表示する。全日有給
+     * （leave_minutesがnull）はこれまでどおり優先する。備考欄（R・S列）には
+     * 半日・時間有給でも「有給休暇」とその日数が引き続き表示される
+     * （buildNoteEntries参照。ここで変えているのは勤務区分の表示だけ）。
      *
      * @param  mixed  $summary  daily_work_summaries レコード
      * @param  string|null  $effectiveWorkStart  実打刻優先の出勤時刻（H:i形式）。
@@ -54,9 +62,10 @@ class WorkTypeAndNoteService
     public function resolveWorkType($summary, ?string $effectiveWorkStart): string
     {
         $hasClockTimes = $effectiveWorkStart !== null;
+        $isStaleAbsence = $summary?->leave_type === LeaveTypeEnum::ABSENCE && $hasClockTimes;
+        $isPartialPaidLeave = $summary?->leave_type === LeaveTypeEnum::PAID_LEAVE && ($summary->leave_minutes ?? null) !== null;
 
-        if ($summary?->leave_type !== null
-            && ! ($summary->leave_type === LeaveTypeEnum::ABSENCE && $hasClockTimes)) {
+        if ($summary?->leave_type !== null && ! $isStaleAbsence && ! $isPartialPaidLeave) {
             return $summary->leave_type->label();
         }
 
@@ -147,7 +156,7 @@ class WorkTypeAndNoteService
      * 申請を経由しないleave_type（CSV移行データ等）の日数を計算する
      *
      * CSV移行では休暇の時間内訳（leave_minutes）を保存していないため、
-     * 基本的に全日（"1.0"）になる。将来leave_minutesが入る経路ができても
+     * 基本的に全日（"1.000"）になる。将来leave_minutesが入る経路ができても
      * 対応できるよう、入っていれば所定時間に対する割合で計算する。
      *
      * @param  mixed  $summary  daily_work_summaries レコード
@@ -158,12 +167,10 @@ class WorkTypeAndNoteService
         $leaveMinutes = $summary->leave_minutes ?? null;
 
         if ($leaveMinutes === null || $dailyWorkingMinutes <= 0 || $leaveMinutes >= $dailyWorkingMinutes) {
-            return '1.0';
+            return self::formatLeaveDayCount(1.0);
         }
 
-        $days = round($leaveMinutes / $dailyWorkingMinutes, 4);
-
-        return rtrim(rtrim(number_format($days, 4), '0'), '.');
+        return self::formatLeaveDayCount($leaveMinutes / $dailyWorkingMinutes);
     }
 
     /**
@@ -210,13 +217,13 @@ class WorkTypeAndNoteService
      * @param  int  $typeId  申請種別ID
      * @param  mixed  $request  申請レコード
      * @param  int  $dailyWorkingMinutes  1日所定勤務時間（分）
-     * @return string 日数文字列（例: "1.0", "0.5", "0.125"）
+     * @return string 日数文字列（例: "1.000", "0.500", "0.125"）
      */
     public function calculateLeaveDays(int $typeId, $request, int $dailyWorkingMinutes): string
     {
         // 半日有給（type=9）: 常に0.5日
         if ($typeId === 9) {
-            return '0.5';
+            return self::formatLeaveDayCount(0.5);
         }
 
         // 時間有給（type=10）: start_time/end_time から時間数を算出し、1日所定時間で割る
@@ -226,15 +233,27 @@ class WorkTypeAndNoteService
             $leaveMinutes = (int) $start->diffInMinutes($end);
 
             if ($dailyWorkingMinutes > 0 && $leaveMinutes > 0) {
-                $days = round($leaveMinutes / $dailyWorkingMinutes, 4);
-
-                return rtrim(rtrim(number_format($days, 4), '0'), '.');
+                return self::formatLeaveDayCount($leaveMinutes / $dailyWorkingMinutes);
             }
 
-            return '0';
+            return self::formatLeaveDayCount(0.0);
         }
 
         // 全日有給（type=1）/ 特別休暇（type=5）/ 欠勤（type=6）/ その他: 1.0日
-        return '1.0';
+        return self::formatLeaveDayCount(1.0);
+    }
+
+    /**
+     * 休暇の日数を小数点以下3桁固定で表示用文字列に変換する（task#74）
+     *
+     * 以前は末尾のゼロを削った表示（"1.0"、"0.5"など）だったが、
+     * 「有給休暇の桁数は下3桁 0.000 の表示で」という指定に合わせ、
+     * 常に3桁で揃える。
+     *
+     * @param  float  $days  日数
+     */
+    private static function formatLeaveDayCount(float $days): string
+    {
+        return number_format($days, 3, '.', '');
     }
 }

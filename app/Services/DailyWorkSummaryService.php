@@ -50,7 +50,8 @@ class DailyWorkSummaryService
         private readonly RawStampTimeService $rawStampTimeService,
         private readonly LateEarlyLeaveDisplay $lateEarlyLeaveDisplay,
         private readonly RequestRepositoryInterface $requestRepository,
-        private readonly PreviousNightTimeRecords $previousNightTimeRecords
+        private readonly PreviousNightTimeRecords $previousNightTimeRecords,
+        private readonly WorkTypeAndNoteService $workTypeAndNoteService
     ) {}
 
     /**
@@ -807,14 +808,9 @@ class DailyWorkSummaryService
     /**
      * 勤務区分を判定する
      *
-     * 帳票（Excel）と同じ基準（task#71）で判定する。曜日（土日かどうか）は
-     * 判定に使わない。
-     *
-     * - 休暇種別が設定されている日はそれを優先する（有給休暇・特別休暇など）
-     * - シフト時間あり + 出退勤あり → 出勤
-     * - シフト時間あり + 出退勤なし → 欠勤
-     * - シフト時間なし + 出退勤あり → 休出
-     * - シフト時間なし + 出退勤なし → 休日
+     * 判定基準はExcel・CSV共通のWorkTypeAndNoteServiceに一本化している
+     * （task#70〜72の経緯: 判定ロジックを2箇所に別々に持っていたことが、
+     * 片方だけ直して他方に反映し忘れる不具合の原因になっていた）。
      *
      * @param  mixed  $summary  勤務実績
      * @param  string|null  $effectiveWorkStart  実打刻優先の出勤時刻（H:i形式）。
@@ -824,24 +820,7 @@ class DailyWorkSummaryService
      */
     private function resolveWorkType($summary, ?string $effectiveWorkStart): string
     {
-        $hasClockTimes = $effectiveWorkStart !== null;
-
-        // 「欠勤」の休暇種別（ABSENCE）だけは実打刻があれば優先しない
-        // （帳票/AttendanceExcelExportService::getWorkTypeと同じ理由。
-        // 欠勤申請の承認後に実際は出勤していたケースへの対応）。
-        if ($summary?->leave_type !== null
-            && ! ($summary->leave_type === LeaveTypeEnum::ABSENCE && $hasClockTimes)) {
-            return $summary->leave_type->label();
-        }
-
-        $hasShiftTime = $summary?->scheduled_start_time !== null;
-
-        return match (true) {
-            $hasShiftTime && $hasClockTimes => '出勤',
-            $hasShiftTime && ! $hasClockTimes => '欠勤',
-            ! $hasShiftTime && $hasClockTimes => '休出',
-            default => '休日',
-        };
+        return $this->workTypeAndNoteService->resolveWorkType($summary, $effectiveWorkStart);
     }
 
     /**
@@ -958,11 +937,11 @@ class DailyWorkSummaryService
     }
 
     /**
-     * 備考/申請列を生成する（帳票=Excelと同じ判定基準）
+     * 備考/申請列を生成する
      *
-     * - 時間系申請（遅刻・早退・残業）: 小数の時間数（例: "1.75"）
-     * - 日数系申請（有給・特別休暇・欠勤等）: leave_minutes ÷ 1日所定分 の日数
-     * - 1日に複数申請がある場合は改行区切りで表示する
+     * 項目の中身はExcel・CSV共通のWorkTypeAndNoteServiceで判定する
+     * （理由はresolveWorkType参照）。CSVは1セルにラベルと数値をまとめて
+     * 出力するため、Excelの[ラベル, 数値]の2列形式とは結合の仕方だけが異なる。
      *
      * @param  mixed  $summary  daily_work_summaries レコード
      * @param  \Illuminate\Support\Collection<int, LeaveRequest>  $dayRequests  当日の承認済み申請
@@ -971,141 +950,12 @@ class DailyWorkSummaryService
      */
     private function buildNoteAndRequestColumn($summary, \Illuminate\Support\Collection $dayRequests, int $dailyWorkingMinutes, ?string $effectiveWorkStart = null): string
     {
-        $entries = [];
+        $entries = $this->workTypeAndNoteService->buildNoteEntries($summary, $dayRequests, $dailyWorkingMinutes, $effectiveWorkStart);
 
-        foreach ($dayRequests as $request) {
-            $typeName = $request->applicationType?->name ?? '';
-
-            if ($typeName === '') {
-                continue;
-            }
-
-            $valueStr = match ($request->type) {
-                // 遅刻・早退: 申請自体に時間の指定はないため、打刻ベースの自動計算値を使う
-                3 => $this->formatHourlyRequestValue($summary?->late_minutes ?? 0),
-                4 => $this->formatHourlyRequestValue($summary?->early_leave_minutes ?? 0),
-                // 残業申請: 承認しても daily_work_summaries の overtime_minutes は
-                // 書き換えない設計（打刻ベースの自動計算値を維持するため）なので、
-                // ここで summary の overtime_minutes を参照すると常に空欄/実態と
-                // ずれた値になってしまう。申請自体の開始・終了時刻から算出する。
-                7 => $this->formatHourlyRequestValue($this->requestRangeMinutes($request)),
-                default => $this->calculateLeaveDays($request->type, $request, $dailyWorkingMinutes),
-            };
-
-            $entries[] = trim($typeName.' '.$valueStr);
-        }
-
-        // daily_work_summaries.leave_type は、承認された申請（requestsテーブル）経由
-        // だけでなく、旧システムからのCSV移行データのように申請なしで直接設定されて
-        // いることがある。そのケースは上のループでは拾えず備考欄に出ないだけでなく、
-        // 帳票（Excel）の集計欄の有給日数・欠勤日数からも漏れてしまう
-        // （クライアント報告 #72: 有給休暇が反映されているのに備考欄に出力されない）。
-        // 対応する休暇系の申請が無い場合はここで補う（帳票と同じ基準）。
-        //
-        // ただし「欠勤」（ABSENCE）は、resolveWorkTypeと同じ理由で実打刻があれば
-        // 対象外にする。欠勤の申請承認後に実際は出勤していた日にまで備考欄へ
-        // 「欠勤 1.0」を出してしまい、実際に出勤している全員の備考欄に欠勤が
-        // 表示される不具合になっていた（クライアント報告: 全員に欠勤の表示が
-        // 出るようになった。#72対応時にresolveWorkTypeと同じ例外を入れ忘れていた）。
-        $hasLeaveRequest = $dayRequests->contains(
-            fn ($request) => LeaveTypeEnum::isLeaveApplication($request->type)
-        );
-        $isStaleAbsence = $summary?->leave_type === LeaveTypeEnum::ABSENCE && $effectiveWorkStart !== null;
-        if ($summary?->leave_type !== null && ! $hasLeaveRequest && ! $isStaleAbsence) {
-            $entries[] = trim($summary->leave_type->label().' '.$this->formatSummaryLeaveDays($summary, $dailyWorkingMinutes));
-        }
-
-        return implode("\n", $entries);
-    }
-
-    /**
-     * 申請を経由しないleave_type（CSV移行データ等）の日数を計算する
-     *
-     * 帳票（Excel）のAttendanceExcelExportService::formatSummaryLeaveDaysと同じ基準。
-     *
-     * @param  mixed  $summary  daily_work_summaries レコード
-     * @param  int  $dailyWorkingMinutes  1日所定勤務時間（分）
-     */
-    private function formatSummaryLeaveDays($summary, int $dailyWorkingMinutes): string
-    {
-        $leaveMinutes = $summary->leave_minutes ?? null;
-
-        if ($leaveMinutes === null || $dailyWorkingMinutes <= 0 || $leaveMinutes >= $dailyWorkingMinutes) {
-            return '1.0';
-        }
-
-        $days = round($leaveMinutes / $dailyWorkingMinutes, 4);
-
-        return rtrim(rtrim(number_format($days, 4), '0'), '.');
-    }
-
-    /**
-     * 時間系申請（遅刻・早退・残業）の表示値を生成する
-     *
-     * @param  int  $minutes  時間（分）
-     * @return string 小数の時間数（例: 1時間45分 → "1.75"）、0以下の場合は空文字
-     */
-    private function formatHourlyRequestValue(int $minutes): string
-    {
-        if ($minutes <= 0) {
-            return '';
-        }
-
-        $hours = round($minutes / 60, 2);
-        $formatted = rtrim(rtrim(number_format($hours, 2, '.', ''), '0'), '.');
-
-        return str_contains($formatted, '.') ? $formatted : $formatted.'.0';
-    }
-
-    /**
-     * 申請自体の開始・終了時刻から時間数（分）を算出する
-     *
-     * @param  LeaveRequest  $request  申請レコード
-     */
-    private function requestRangeMinutes(LeaveRequest $request): int
-    {
-        if (! $request->start_time || ! $request->end_time) {
-            return 0;
-        }
-
-        $start = CarbonImmutable::parse($request->start_time);
-        $end = CarbonImmutable::parse($request->end_time);
-
-        return max(0, (int) $start->diffInMinutes($end));
-    }
-
-    /**
-     * 休暇申請の日数を計算する（帳票=Excelと同じ基準）
-     *
-     * @param  int  $typeId  申請種別ID
-     * @param  LeaveRequest  $request  申請レコード
-     * @param  int  $dailyWorkingMinutes  1日所定勤務時間（分）
-     * @return string 日数文字列（例: "1.0", "0.5", "0.125"）
-     */
-    private function calculateLeaveDays(int $typeId, LeaveRequest $request, int $dailyWorkingMinutes): string
-    {
-        // 半日有給（type=9）: 常に0.5日
-        if ($typeId === 9) {
-            return '0.5';
-        }
-
-        // 時間有給（type=10）: start_time/end_time から時間数を算出し、1日所定時間で割る
-        if ($typeId === 10 && $request->start_time && $request->end_time) {
-            $start = CarbonImmutable::parse($request->start_time);
-            $end = CarbonImmutable::parse($request->end_time);
-            $leaveMinutes = (int) $start->diffInMinutes($end);
-
-            if ($dailyWorkingMinutes > 0 && $leaveMinutes > 0) {
-                $days = round($leaveMinutes / $dailyWorkingMinutes, 4);
-
-                return rtrim(rtrim(number_format($days, 4), '0'), '.');
-            }
-
-            return '0';
-        }
-
-        // 全日有給（type=1）/ 特別休暇（type=5）/ 欠勤（type=6）/ その他: 1.0日
-        return '1.0';
+        return implode("\n", array_map(
+            fn (array $entry) => trim($entry['label'].' '.$entry['value']),
+            $entries
+        ));
     }
 
     /**

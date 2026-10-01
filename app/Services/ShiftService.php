@@ -8,6 +8,7 @@ use App\Enums\ErrorCodeEnum;
 use App\Exceptions\BusinessException;
 use App\Exceptions\NotFoundException;
 use App\Models\Shift;
+use App\Repositories\Contracts\DailyWorkSummaryRepositoryInterface;
 use App\Repositories\Contracts\DepartmentRepositoryInterface;
 use App\Repositories\Contracts\ShiftRepositoryInterface;
 use App\Repositories\Contracts\UserRepositoryInterface;
@@ -27,7 +28,8 @@ class ShiftService
     public function __construct(
         private readonly ShiftRepositoryInterface $shiftRepository,
         private readonly UserRepositoryInterface $userRepository,
-        private readonly DepartmentRepositoryInterface $departmentRepository
+        private readonly DepartmentRepositoryInterface $departmentRepository,
+        private readonly DailyWorkSummaryRepositoryInterface $dailyWorkSummaryRepository
     ) {}
 
     /**
@@ -188,6 +190,7 @@ class ShiftService
         try {
             DB::transaction(function () use ($companyId, $shifts): void {
                 $this->shiftRepository->upsertMany($companyId, $shifts);
+                $this->clearStaleScheduleForRestDays($companyId, $shifts);
             });
         } catch (\Throwable $e) {
             $this->logError(ErrorCodeEnum::SHIFT_BULK_UPSERT_FAILED, [
@@ -196,6 +199,38 @@ class ShiftService
             ], $e);
 
             throw new BusinessException(ErrorCodeEnum::SHIFT_BULK_UPSERT_FAILED);
+        }
+    }
+
+    /**
+     * 休み（shift_pattern_id未設定）にした日の、打刻の無い勤務実績の
+     * 空レコードを削除する。
+     *
+     * shifts.shift_pattern_idを休みにするとShiftRepository::upsertMany()が
+     * そのシフト行自体を削除するが、daily_work_summariesに残っている
+     * scheduled_start_time/end_time（以前のシフトの予定時刻）はこれでは
+     * 更新されない。勤務実績画面はシフトが無い日、この予定時刻が残って
+     * いればそれを表示してしまうため、休みにしたのに古いシフト時刻の
+     * ままに見える不具合になっていた。実打刻（work_start）が無い空の
+     * レコードに限り削除する（実際に働いた記録があるレコードは、後から
+     * シフトを休みに変えても消さない）。
+     *
+     * @param  array<int, array<string, mixed>>  $shifts  シフトデータの配列
+     */
+    private function clearStaleScheduleForRestDays(int $companyId, array $shifts): void
+    {
+        $restDays = collect($shifts)->filter(fn ($shift) => empty($shift['shift_pattern_id']));
+
+        foreach ($restDays as $shift) {
+            $summary = $this->dailyWorkSummaryRepository->findByUserIdAndDate(
+                $companyId,
+                (int) $shift['user_id'],
+                $shift['shift_date']
+            );
+
+            if ($summary && $summary->work_start === null) {
+                $this->dailyWorkSummaryRepository->delete($summary->id);
+            }
         }
     }
 

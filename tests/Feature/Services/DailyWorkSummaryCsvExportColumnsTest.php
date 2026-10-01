@@ -10,6 +10,8 @@ use App\Enums\TimeRecordTypeEnum;
 use App\Models\Company;
 use App\Models\DailyWorkSummary;
 use App\Models\Request;
+use App\Models\Shift;
+use App\Models\ShiftPattern;
 use App\Models\TimeRecord;
 use App\Models\User;
 use App\Services\DailyWorkSummaryService;
@@ -358,5 +360,52 @@ class DailyWorkSummaryCsvExportColumnsTest extends TestCase
 
         $this->assertSame('出勤', $row[3]); // 勤務区分
         $this->assertSame('有給休暇 0.500', $row[19]); // 備考/申請には引き続き出す
+    }
+
+    /**
+     * @test
+     *
+     * シフトは登録されているが、まだ打刻が無く勤務実績（daily_work_summaries）の
+     * 行自体が存在しない日。帳票画面はshiftsテーブルを直接見るためシフト時間が
+     * 表示されるが、CSV出力はsummary.scheduled_start_time/end_timeしか見て
+     * おらず、この場合は何も値が無いため空欄になってしまっていた
+     * （クライアント報告: CSV出力するとシフト時間が出力されていなかった）。
+     */
+    public function csv_shows_shift_time_from_shifts_table_when_no_summary_exists(): void
+    {
+        $shiftPattern = ShiftPattern::query()->create([
+            'company_id' => $this->company->id,
+            'name' => '日勤',
+            'start_time' => '08:30',
+            'end_time' => '17:15',
+            'work_minutes' => 465,
+            'break_mode' => 1,
+            'break_minutes' => 45,
+            'break_start' => '12:00',
+            'break_end' => '12:45',
+        ]);
+        Shift::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'shift_date' => '2026-06-24',
+            'shift_pattern_id' => $shiftPattern->id,
+        ]);
+
+        // daily_work_summariesの行は作らない（打刻がまだ無い状態を再現）
+
+        $csv = $this->service->generateCsv(
+            $this->company->id,
+            $this->user->id,
+            '2026-06-24',
+            '2026-06-24',
+            $this->user,
+        );
+        $row = str_getcsv(array_values(array_filter(
+            explode("\n", $csv),
+            fn ($line) => str_contains($line, '6/24(水)')
+        ))[0]);
+
+        $this->assertSame('08:30', $row[4]); // シフト開始
+        $this->assertSame('17:15', $row[5]); // シフト終了
     }
 }

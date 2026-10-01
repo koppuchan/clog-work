@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Repositories\Contracts\CompanyRepositoryInterface;
 use App\Repositories\Contracts\DailyWorkSummaryRepositoryInterface;
 use App\Repositories\Contracts\RequestRepositoryInterface;
+use App\Repositories\Contracts\ShiftRepositoryInterface;
 use App\Repositories\Contracts\TimeRecordCorrectionRepositoryInterface;
 use App\Repositories\Contracts\TimeRecordRepositoryInterface;
 use App\Repositories\Contracts\UserRepositoryInterface;
@@ -51,7 +52,8 @@ class DailyWorkSummaryService
         private readonly LateEarlyLeaveDisplay $lateEarlyLeaveDisplay,
         private readonly RequestRepositoryInterface $requestRepository,
         private readonly PreviousNightTimeRecords $previousNightTimeRecords,
-        private readonly WorkTypeAndNoteService $workTypeAndNoteService
+        private readonly WorkTypeAndNoteService $workTypeAndNoteService,
+        private readonly ShiftRepositoryInterface $shiftRepository
     ) {}
 
     /**
@@ -857,6 +859,20 @@ class DailyWorkSummaryService
             );
             $summaryMap = $summaries->keyBy(fn ($s) => $s->work_date->format('Y-m-d'));
 
+            // シフト開始・終了は summary.scheduled_start_time/end_time だけでは
+            // 不十分（打刻が無い日はdaily_work_summariesの行自体が作られず
+            // 空になる＝未来日や単に出勤前の日が「シフト時間なし」に見えてしまう。
+            // クライアント報告: CSV出力するとシフト時間が出力されていなかった）。
+            // 帳票画面（WorkReportTable.tsx）と同じく、現在のシフト登録（shiftsテーブル）
+            // を優先して参照する。
+            $shifts = $this->shiftRepository->findByUserIdAndDateRange(
+                $companyId,
+                $user->id,
+                $startDate->format('Y-m-d'),
+                $endDate->format('Y-m-d')
+            );
+            $shiftsMap = $shifts->keyBy(fn ($s) => $s->shift_date->format('Y-m-d'));
+
             // 帳票（Excel）と同じ基準で1日所定勤務時間を求める（申請の日数・時間換算に使う）
             $user->loadMissing('companies');
             $primaryCompany = $user->companies->firstWhere('pivot.is_primary', true) ?? $user->companies->first();
@@ -876,6 +892,7 @@ class DailyWorkSummaryService
             while ($currentDate->lte($endDate)) {
                 $dateKey = $currentDate->format('Y-m-d');
                 $summary = $summaryMap->get($dateKey);
+                $shift = $shiftsMap->get($dateKey);
                 $dateText = $currentDate->format('n/j').'('.$weekdays[$currentDate->dayOfWeek].')';
 
                 // 表示は実打刻を使う。集計テーブルには丸め後の時刻が入っている。
@@ -890,8 +907,8 @@ class DailyWorkSummaryService
                     $user->name,
                     $dateText,
                     $this->resolveWorkType($summary, $effectiveWorkStart),
-                    $this->formatScheduledTime($summary?->scheduled_start_time),
-                    $this->formatScheduledTime($summary?->scheduled_end_time),
+                    $this->formatScheduledTime($shift?->shiftPattern?->start_time ?? $summary?->scheduled_start_time),
+                    $this->formatScheduledTime($shift?->shiftPattern?->end_time ?? $summary?->scheduled_end_time),
                     // シフト休憩入・休憩出: 帳票（Excel）にも対応する所定データがなく常に空欄
                     '',
                     '',

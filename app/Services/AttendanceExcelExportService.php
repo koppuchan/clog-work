@@ -105,6 +105,14 @@ class AttendanceExcelExportService
             $sheet->getStyle($column.'38')->getNumberFormat()->setFormatCode('[h]:mm');
         }
 
+        // 集計欄の有給日数（H4）も、テンプレートのnumFmtIdがGeneralのため、
+        // 計算結果が3.000のような小数でも末尾のゼロが省略されて「3」と
+        // 表示されてしまう（クライアント報告 #74: 有給の桁数が0.000の
+        // 小数点以下3桁で反映されていない）。数式自体は書き換えず、
+        // 明細行の値（task#74でWorkTypeAndNoteServiceが小数点以下3桁で
+        // 統一した）に合わせて表示だけ3桁固定にする。
+        $sheet->getStyle('H4')->getNumberFormat()->setFormatCode('0.000');
+
         // 一時ファイルとして保存
         return $this->saveToTempFile($spreadsheet, $user, $endDate);
     }

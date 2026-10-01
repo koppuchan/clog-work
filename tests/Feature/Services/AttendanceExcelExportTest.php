@@ -85,6 +85,23 @@ class AttendanceExcelExportTest extends TestCase
 
     /**
      * @test
+     *
+     * 有給日数（H4）はテンプレート側のnumFmtIdがGeneralのため、計算結果が
+     * 3.000のような小数でも末尾のゼロが省略されて「3」と表示されてしまって
+     * いた（クライアント報告 #74: 有給の桁数が0.000の小数点以下3桁で
+     * 反映されていない）。数式はそのまま、表示形式だけ3桁固定にすること。
+     */
+    public function 有給日数の表示形式が小数点以下3桁に固定されている(): void
+    {
+        $sheet = $this->generatedSheet();
+
+        $this->assertSame('0.000', $sheet->getStyle('H4')->getNumberFormat()->getFormatCode());
+        // 数式自体は書き換えていないこと（上のテストと合わせて二重に確認）
+        $this->assertStringStartsWith('=', (string) $sheet->getCell('H4')->getValue());
+    }
+
+    /**
+     * @test
      */
     public function 出力後も合計行の数式が残っている(): void
     {

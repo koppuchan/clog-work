@@ -127,11 +127,15 @@ class UserService
      * ユーザーを作成
      *
      * @param  array<string, mixed>  $data  ユーザーデータ
+     * @param  string|null  $precomputedStampPasswordHash  打刻用パスワードのハッシュ済み値。
+     *                                                     CSV一括インポートなど、全行が同じ初期値（DEFAULT_STAMP_PASSWORD）を使う場面で、
+     *                                                     行ごとにbcryptハッシュを計算し直す無駄を避けるために呼び出し側で１度だけ
+     *                                                     計算した値を渡せるようにしている。省略時はこれまでどおり都度計算する。
      * @return User 作成されたユーザー
      *
      * @throws BusinessException ビジネスルール違反時
      */
-    public function create(array $data): User
+    public function create(array $data, ?string $precomputedStampPasswordHash = null): User
     {
         // 画面からはFormRequestで防いでいるが、CSV取り込みなど別経路から
         // 呼ばれた場合にDBエラーがそのまま出ないよう、ここでも確認する
@@ -169,7 +173,7 @@ class UserService
 
             // 打刻専用パスワードの初期値
             $stampPassword = self::DEFAULT_STAMP_PASSWORD;
-            $data['stamp_password'] = Hash::make($stampPassword);
+            $data['stamp_password'] = $precomputedStampPasswordHash ?? Hash::make($stampPassword);
 
             return DB::transaction(function () use ($data, $plainPassword, $stampPassword, $hasEmail): User {
                 // リレーション・関連データを抽出
@@ -653,6 +657,13 @@ class UserService
      */
     public function importFromCsv(UploadedFile $file, int $companyId): array
     {
+        // 行ごとにbcryptハッシュ計算（ログインパスワード・打刻用パスワード）や
+        // メール送信を行うため、件数が多いとPHP-FPMの実行時間制限（デフォルト30秒）に
+        // 達して処理が途中で打ち切られることがあった
+        // （クライアント報告: 128名登録しようとすると88名目以降が失敗する）。
+        // 管理者が手動で実行する一括インポートのため、ここだけ上限を緩める。
+        set_time_limit(300);
+
         $result = [
             'success' => 0,
             'failed' => 0,
@@ -690,6 +701,10 @@ class UserService
 
             return $result;
         }
+
+        // 打刻用パスワードの初期値はどの行も同じ値のため、行ごとに
+        // ハッシュ化し直さずここで1回だけ計算する
+        $stampPasswordHash = Hash::make(self::DEFAULT_STAMP_PASSWORD);
 
         // 各行を処理
         foreach ($csv as $rowIndex => $row) {
@@ -744,7 +759,7 @@ class UserService
                 $wasEmployeeCodeEmpty = empty($userData['employee_code']);
 
                 // ユーザー作成
-                $createdUser = $this->create($userData);
+                $createdUser = $this->create($userData, $stampPasswordHash);
                 $result['success']++;
 
                 if ($wasEmployeeCodeEmpty) {

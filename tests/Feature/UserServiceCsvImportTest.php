@@ -312,6 +312,54 @@ class UserServiceCsvImportTest extends TestCase
     }
 
     /**
+     * 打刻用パスワードの初期値ハッシュは全行で使い回され、行ごとに
+     * bcryptハッシュを計算し直さない（task#76: 128名登録しようとすると
+     * 88名目以降が失敗する不具合の対応。行ごとのbcryptハッシュ計算の
+     * 積み重ねがPHP-FPMの実行時間制限超過の一因だった）。
+     *
+     * @test
+     */
+    public function import_from_csv_reuses_stamp_password_hash_across_rows(): void
+    {
+        $csv = $this->buildCsv([
+            ['800001', '一人目', 'ヒトリメ', 'one@example.com', (string) $this->department->id, '3'],
+            ['800002', '二人目', 'フタリメ', 'two@example.com', (string) $this->department->id, '3'],
+            ['800003', '三人目', 'サンニンメ', 'three@example.com', (string) $this->department->id, '3'],
+        ]);
+        $file = UploadedFile::fake()->createWithContent('users.csv', $csv);
+
+        $result = $this->service->importFromCsv($file, $this->company->id);
+
+        $this->assertSame(3, $result['success'], 'errors: '.json_encode($result['errors'], JSON_UNESCAPED_UNICODE));
+
+        $hashes = User::query()
+            ->whereIn('employee_code', ['800001', '800002', '800003'])
+            ->pluck('stamp_password')
+            ->unique();
+
+        // 3人とも初期値（1111）のままなので、ハッシュが使い回されていれば1種類になる
+        $this->assertCount(1, $hashes);
+    }
+
+    /**
+     * 大量行のインポートがPHPの実行時間制限で打ち切られないよう、
+     * importFromCsv内で制限を緩めている（task#76）。
+     *
+     * @test
+     */
+    public function import_from_csv_extends_execution_time_limit(): void
+    {
+        $csv = $this->buildCsv([
+            ['900001', '制限確認太郎', 'セイゲンカクニンタロウ', 'limit@example.com', (string) $this->department->id, '3'],
+        ]);
+        $file = UploadedFile::fake()->createWithContent('users.csv', $csv);
+
+        $this->service->importFromCsv($file, $this->company->id);
+
+        $this->assertSame('300', ini_get('max_execution_time'));
+    }
+
+    /**
      * CSV内容を生成するヘルパー
      *
      * @param  array<int, array<int, string>>  $rows  各行6列分の文字列配列

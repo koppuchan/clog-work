@@ -392,6 +392,15 @@ class AttendanceExcelExportService
 
         $writer->save($tempPath);
 
+        // Spreadsheet内部はWorksheet⇔Spreadsheet間などで循環参照を持つため、
+        // ローカル変数のスコープを抜けるだけでは解放されず、PHPのGCサイクル
+        // コレクタ任せになる。全従業員分を1プロセスでループ生成する際、
+        // 1人あたりの未解放メモリが積み重なりPHPのメモリ上限
+        // （本番128M）に達して500エラーになっていた
+        // （クライアント報告: Excelの全員出力でエラーになる）。
+        // ここで明示的に循環参照を断ち切り、即座に回収できるようにする。
+        $spreadsheet->disconnectWorksheets();
+
         return $tempPath;
     }
 

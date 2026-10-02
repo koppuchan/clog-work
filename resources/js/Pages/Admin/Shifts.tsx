@@ -482,7 +482,10 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
         <InlineFlashMessage type="error" message={errorMessage} />
 
         <div className="bg-white shadow rounded-lg p-3 sm:p-6">
-          <div className="flex items-center justify-between mb-4">
+          {/* スクロールしても期間表示と保存ボタンが見えるよう固定する。
+              高さを固定値にしているのは、直下の日付ヘッダー（ShiftCalendar）の
+              sticky位置（top-[52px]）をこの高さに合わせるため */}
+          <div className="sticky top-14 md:top-0 z-30 bg-white flex items-center justify-between h-[52px]">
             <h2 className="text-lg font-semibold text-gray-900">{getPeriodLabel(getCurrentPeriodMonth())}</h2>
             <button
               onClick={handleSaveShifts}

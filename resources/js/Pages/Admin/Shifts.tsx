@@ -485,7 +485,7 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
           {/* スクロールしても期間表示と保存ボタンが見えるよう固定する。
               高さを固定値にしているのは、直下の日付ヘッダー（ShiftCalendar）の
               sticky位置（top-[52px]）をこの高さに合わせるため */}
-          <div className="sticky top-14 md:top-0 z-30 bg-white flex items-center justify-between h-[52px]">
+          <div className="sticky top-[50px] sm:top-[58px] md:top-0 z-10 bg-white flex items-center justify-between h-[52px]">
             <h2 className="text-lg font-semibold text-gray-900">{getPeriodLabel(getCurrentPeriodMonth())}</h2>
             <button
               onClick={handleSaveShifts}

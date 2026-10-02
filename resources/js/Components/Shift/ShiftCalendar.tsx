@@ -221,7 +221,7 @@ export default function ShiftCalendar({
           固定幅ではなく最小幅とし、名前が長ければ列ごと広がるようにする */}
       <div className="min-w-32 flex-shrink-0 mr-4">
         {/* 日付ヘッダーと同じ位置に固定する（期間見出しの下。値は Shifts.tsx の見出し行の高さ52pxに合わせる） */}
-        <div className='p-1 sticky top-[108px] md:top-[52px] z-20 bg-white'>
+        <div className='p-1 sticky top-[102px] sm:top-[110px] md:top-[52px] z-10 bg-white'>
           <div className="font-medium text-gray-900 p-2 bg-gray-50 rounded-lg text-center mb-2">
             スタッフ
           </div>
@@ -294,7 +294,7 @@ export default function ShiftCalendar({
         {/* カレンダーヘッダー（縦スクロールしても日付が見えるよう固定） */}
         <div
           ref={headerContainerRef}
-          className="overflow-x-hidden overflow-y-hidden sticky top-[108px] md:top-[52px] z-20 bg-white"
+          className="overflow-x-hidden overflow-y-hidden sticky top-[102px] sm:top-[110px] md:top-[52px] z-10 bg-white"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           <div className="p-1" style={{ minWidth: `${monthDays.length * 60 + 224}px` }}>

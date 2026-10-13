@@ -130,6 +130,7 @@ export interface TimeRecordCorrectionItem {
   corrected_at: string;
   record_type: { value: number; label: string };
   correction_source: 'request' | 'admin';
+  corrected_by_name: string | null;
 }
 
 /**

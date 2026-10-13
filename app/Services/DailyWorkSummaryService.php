@@ -1020,7 +1020,7 @@ class DailyWorkSummaryService
      * @param  int  $userId  ユーザーID
      * @param  string  $startDate  開始日（Y-m-d形式）
      * @param  string  $endDate  終了日（Y-m-d形式）
-     * @return array<string, array<int, array{before_time: string, after_time: string, corrected_at: string, record_type: array{value: int, label: string}, correction_source: string}>>
+     * @return array<string, array<int, array{before_time: string, after_time: string, corrected_at: string, record_type: array{value: int, label: string}, correction_source: string, corrected_by_name: string|null}>>
      */
     public function getCorrectionsByUserIdAndDateRange(int $userId, string $startDate, string $endDate): array
     {
@@ -1044,6 +1044,7 @@ class DailyWorkSummaryService
                     'label' => $c->record_type->label(),
                 ],
                 'correction_source' => $c->correction_request_detail_id !== null ? self::CORRECTION_SOURCE_REQUEST : self::CORRECTION_SOURCE_ADMIN,
+                'corrected_by_name' => $c->correctedBy?->name,
             ])->values())
             ->toArray();
     }

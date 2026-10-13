@@ -55,7 +55,7 @@ class TimeRecordCorrectionRepository implements TimeRecordCorrectionRepositoryIn
                 $q->where('user_id', $userId);
             })
             ->whereBetween('before_record_time', [$startDateTime, $endDateTime])
-            ->with(['timeRecord:id,record_time,user_id'])
+            ->with(['timeRecord:id,record_time,user_id', 'correctedBy:id,name'])
             ->get();
     }
 }

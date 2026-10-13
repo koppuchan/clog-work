@@ -23,7 +23,7 @@ export default function CorrectionDetailModal({
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4">
         <div className="fixed inset-0 bg-black bg-opacity-40" onClick={onClose} />
-        <div className="relative bg-white rounded-lg shadow-xl w-full max-w-lg">
+        <div className="relative bg-white rounded-lg shadow-xl w-full max-w-xl">
           <div className="flex items-center justify-between p-4 border-b">
             <h3 className="text-lg font-bold text-gray-900">打刻修正履歴</h3>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
@@ -58,9 +58,14 @@ export default function CorrectionDetailModal({
                           申請
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
-                          管理者
-                        </span>
+                        <div className="flex flex-col items-start gap-0.5">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                            管理者
+                          </span>
+                          {c.corrected_by_name && (
+                            <span className="text-xs text-gray-700 whitespace-nowrap">{c.corrected_by_name}</span>
+                          )}
+                        </div>
                       )}
                     </td>
                     <td className="py-2 text-gray-500 text-xs">{c.corrected_at}</td>

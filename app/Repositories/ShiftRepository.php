@@ -94,6 +94,34 @@ class ShiftRepository implements ShiftRepositoryInterface
     }
 
     /**
+     * {@inheritDoc}
+     */
+    public function findByShiftPatternId(int $companyId, int $shiftPatternId): Collection
+    {
+        return $this->shift->query()
+            ->where('company_id', $companyId)
+            ->where('shift_pattern_id', $shiftPatternId)
+            ->select(['id', 'company_id', 'user_id', 'shift_date', 'shift_pattern_id'])
+            ->get();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getPatternIdMap(int $companyId, string $startDate, string $endDate): array
+    {
+        return $this->shift->query()
+            ->where('company_id', $companyId)
+            ->whereBetween('shift_date', [$startDate, $endDate])
+            ->select(['user_id', 'shift_date', 'shift_pattern_id'])
+            ->get()
+            ->mapWithKeys(fn ($shift) => [
+                $shift->user_id.':'.$shift->shift_date->format('Y-m-d') => $shift->shift_pattern_id,
+            ])
+            ->all();
+    }
+
+    /**
      * シフトを作成
      *
      * @param  array<string, mixed>  $data  シフトデータ

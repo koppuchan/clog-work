@@ -52,6 +52,25 @@ interface ShiftRepositoryInterface
     public function findByDepartmentIdAndDateRange(int $companyId, int $departmentId, string $startDate, string $endDate): Collection;
 
     /**
+     * 指定したシフトパターンが割り当てられているシフト（ユーザー・日付）を取得
+     *
+     * @param  int  $companyId  会社ID
+     * @param  int  $shiftPatternId  シフトパターンID
+     * @return Collection<int, Shift>
+     */
+    public function findByShiftPatternId(int $companyId, int $shiftPatternId): Collection;
+
+    /**
+     * 期間内のシフトパターンIDを「ユーザーID:日付(Y-m-d)」をキーにして取得
+     *
+     * @param  int  $companyId  会社ID
+     * @param  string  $startDate  開始日（Y-m-d形式）
+     * @param  string  $endDate  終了日（Y-m-d形式）
+     * @return array<string, int|null>
+     */
+    public function getPatternIdMap(int $companyId, string $startDate, string $endDate): array;
+
+    /**
      * シフトを作成
      *
      * @param  array<string, mixed>  $data  シフトデータ

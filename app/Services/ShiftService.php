@@ -29,7 +29,8 @@ class ShiftService
         private readonly ShiftRepositoryInterface $shiftRepository,
         private readonly UserRepositoryInterface $userRepository,
         private readonly DepartmentRepositoryInterface $departmentRepository,
-        private readonly DailyWorkSummaryRepositoryInterface $dailyWorkSummaryRepository
+        private readonly DailyWorkSummaryRepositoryInterface $dailyWorkSummaryRepository,
+        private readonly DailyWorkSummaryRecalculationService $recalculationService
     ) {}
 
     /**
@@ -187,7 +188,12 @@ class ShiftService
      */
     public function upsertMany(int $companyId, array $shifts): void
     {
+        $changedTargets = [];
+
         try {
+            // 保存前の状態と見比べて、シフトが実際に変わった日だけを覚えておく
+            $changedTargets = $this->findChangedShiftTargets($companyId, $shifts);
+
             DB::transaction(function () use ($companyId, $shifts): void {
                 $this->shiftRepository->upsertMany($companyId, $shifts);
                 $this->clearStaleScheduleForRestDays($companyId, $shifts);
@@ -200,6 +206,43 @@ class ShiftService
 
             throw new BusinessException(ErrorCodeEnum::SHIFT_BULK_UPSERT_FAILED);
         }
+
+        // 変わった日の集計済みの勤務実績は古いシフトで計算したままのため、
+        // レスポンスを返した後に再集計する（保存し直すだけで全員分を送る
+        // 画面のため、変わっていない日は対象にしない）
+        if ($changedTargets !== []) {
+            dispatch(fn () => $this->recalculationService->recalculateForUserDates($companyId, $changedTargets))
+                ->afterResponse();
+        }
+    }
+
+    /**
+     * 保存前と比べてシフトパターンが変わる（ユーザー・日付）を求める
+     *
+     * @param  array<int, array<string, mixed>>  $shifts  保存するシフトデータ
+     * @return array<int, array{user_id: int, shift_date: string}>
+     */
+    private function findChangedShiftTargets(int $companyId, array $shifts): array
+    {
+        if ($shifts === []) {
+            return [];
+        }
+
+        $dates = collect($shifts)->pluck('shift_date');
+        $current = $this->shiftRepository->getPatternIdMap($companyId, (string) $dates->min(), (string) $dates->max());
+
+        $changed = [];
+        foreach ($shifts as $shift) {
+            $key = $shift['user_id'].':'.$shift['shift_date'];
+            $new = empty($shift['shift_pattern_id']) ? null : (int) $shift['shift_pattern_id'];
+            $old = $current[$key] ?? null;
+
+            if ($new !== $old) {
+                $changed[$key] = ['user_id' => (int) $shift['user_id'], 'shift_date' => (string) $shift['shift_date']];
+            }
+        }
+
+        return array_values($changed);
     }
 
     /**

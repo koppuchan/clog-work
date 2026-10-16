@@ -31,9 +31,18 @@ class ShiftPatternService
 
     private const DEFAULT_TEXT_COLOR = 'text-teal-800';
 
+    /**
+     * 変更すると、集計済みの勤務実績（労働時間・時間外・休憩の控除）に影響する項目
+     */
+    private const SUMMARY_AFFECTING_FIELDS = [
+        'start_time', 'end_time', 'work_minutes', 'break_mode', 'break_minutes',
+        'break_start', 'break_end', 'auto_fill_break',
+    ];
+
     public function __construct(
         private readonly ShiftPatternRepositoryInterface $shiftPatternRepository,
         private readonly ShiftColorRepositoryInterface $shiftColorRepository,
+        private readonly DailyWorkSummaryRecalculationService $recalculationService,
     ) {}
 
     /**
@@ -249,6 +258,7 @@ class ShiftPatternService
 
         // 更新データに含まれていないフィールドは既存のパターンから取得
         $existingPattern = $this->shiftPatternRepository->findById($id);
+        $valuesBefore = $existingPattern ? $this->summaryAffectingValues($existingPattern) : null;
         if ($existingPattern) {
             $calcData['startTime'] = $calcData['startTime'] ?? (string) $existingPattern->start_time;
             $calcData['endTime'] = $calcData['endTime'] ?? (string) $existingPattern->end_time;
@@ -273,6 +283,15 @@ class ShiftPatternService
 
         $pattern = $this->shiftPatternRepository->update($id, $updateData);
 
+        // 時刻・休憩を変えた場合、このパターンで集計済みの勤務実績は古い計算のまま
+        // 残るため、レスポンスを返した後に再集計する（件数が多いと画面が待たされるため）
+        if ($valuesBefore !== null && $valuesBefore !== $this->summaryAffectingValues($pattern)) {
+            $companyId = (int) $pattern->company_id;
+            $patternId = (int) $pattern->id;
+            dispatch(fn () => $this->recalculationService->recalculateForShiftPattern($companyId, $patternId))
+                ->afterResponse();
+        }
+
         if (array_key_exists('colorId', $data)) {
             if (! empty($data['colorId'])) {
                 $pattern->colors()->sync([$data['colorId']]);
@@ -284,6 +303,24 @@ class ShiftPatternService
         $pattern = $this->shiftPatternRepository->findByIdWithRelations($pattern->id);
 
         return $this->formatShiftPatternForSettings($pattern);
+    }
+
+    /**
+     * 勤務実績の計算に影響する項目の値（時刻は秒の違いを無視して比較する）
+     *
+     * @return array<string, string>
+     */
+    private function summaryAffectingValues(ShiftPattern $pattern): array
+    {
+        $timeFields = ['start_time', 'end_time', 'break_start', 'break_end'];
+
+        return collect(self::SUMMARY_AFFECTING_FIELDS)
+            ->mapWithKeys(fn (string $field) => [
+                $field => in_array($field, $timeFields, true)
+                    ? substr((string) $pattern->{$field}, 0, 5)
+                    : (string) $pattern->{$field},
+            ])
+            ->all();
     }
 
     /**

@@ -53,7 +53,8 @@ class DailyWorkSummaryService
         private readonly RequestRepositoryInterface $requestRepository,
         private readonly PreviousNightTimeRecords $previousNightTimeRecords,
         private readonly WorkTypeAndNoteService $workTypeAndNoteService,
-        private readonly ShiftRepositoryInterface $shiftRepository
+        private readonly ShiftRepositoryInterface $shiftRepository,
+        private readonly AutoBreakFillService $autoBreakFillService
     ) {}
 
     /**
@@ -877,6 +878,8 @@ class DailyWorkSummaryService
             $user->loadMissing('companies');
             $primaryCompany = $user->companies->firstWhere('pivot.is_primary', true) ?? $user->companies->first();
             $dailyWorkingMinutes = (int) (($primaryCompany?->daily_working_hours ?? 8) * 60);
+            // 休憩の自動入力は、その日のシフトが無いと会社の基本シフトで補われる（集計と同じ）
+            $primaryCompany?->loadMissing('defaultShiftPattern');
 
             // 帳票（Excel）と同じく、承認済み申請を日付ごとにまとめておく
             $approvedRequests = $this->requestRepository->findByUserIdAndDateRange(
@@ -898,6 +901,16 @@ class DailyWorkSummaryService
                 // 表示は実打刻を使う。集計テーブルには丸め後の時刻が入っている。
                 $raw = $rawTimes[$dateKey] ?? null;
                 $breaks = $raw['breaks'] ?? [];
+                // 休憩の打刻が無い日は、集計で補完された休憩（画面の薄い表示と同じ）を出す
+                if ($breaks === []) {
+                    $filledBreak = $this->autoBreakFillService->periodForOutput(
+                        $shift?->shiftPattern ?? $primaryCompany?->defaultShiftPattern,
+                        $summary
+                    );
+                    if ($filledBreak !== null) {
+                        $breaks = [$filledBreak];
+                    }
+                }
                 // 勤務区分の判定にも使う（summaryのwork_startだけだと、実打刻は
                 // あるのに集計バッチがまだ反映していない日を誤判定してしまうため）
                 $effectiveWorkStart = $raw['work_start'] ?? $summary?->work_start?->format('H:i');

@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Enums\RequestStatusEnum;
+use App\Models\ShiftPattern;
 use App\Models\User;
 use App\Repositories\Contracts\DailyWorkSummaryRepositoryInterface;
 use App\Repositories\Contracts\RequestRepositoryInterface;
+use App\Repositories\Contracts\ShiftRepositoryInterface;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
@@ -36,6 +38,8 @@ class AttendanceExcelExportService
         private readonly RequestRepositoryInterface $requestRepository,
         private readonly LateEarlyLeaveDisplay $lateEarlyLeaveDisplay,
         private readonly WorkTypeAndNoteService $workTypeAndNoteService,
+        private readonly ShiftRepositoryInterface $shiftRepository,
+        private readonly AutoBreakFillService $autoBreakFillService,
     ) {}
 
     /**
@@ -75,6 +79,12 @@ class AttendanceExcelExportService
         $primaryCompany = $user->companies->firstWhere('pivot.is_primary', true) ?? $user->companies->first();
         $dailyWorkingMinutes = (int) (($primaryCompany?->daily_working_hours ?? 8) * 60);
 
+        // 休憩の自動入力で補われた休憩を出すために、その日のシフト（無ければ会社の基本シフト）を使う
+        $primaryCompany?->loadMissing('defaultShiftPattern');
+        $shiftMap = $this->shiftRepository
+            ->findByUserIdAndDateRange($companyId, $user->id, $startDate->format('Y-m-d'), $endDate->format('Y-m-d'))
+            ->keyBy(fn ($shift) => $shift->shift_date->format('Y-m-d'));
+
         // 月間サマリーを計算
         $monthlySummary = $this->calculateMonthlySummary($summaries, $approvedRequests, $dailyWorkingMinutes);
 
@@ -94,7 +104,7 @@ class AttendanceExcelExportService
         );
 
         // 明細部分を設定
-        $this->setDetailData($sheet, $summaries, $startDate, $endDate, $requestMap, $dailyWorkingMinutes, $rawTimes);
+        $this->setDetailData($sheet, $summaries, $startDate, $endDate, $requestMap, $dailyWorkingMinutes, $rawTimes, $shiftMap, $primaryCompany?->defaultShiftPattern);
 
         // 合計行（38行目）はテンプレート側のSUM数式（例: M38=SUM(M7:M37)）が
         // そのまま計算する。ここでは明細行と同じ[h]:mm書式を当てて、数式が
@@ -200,7 +210,7 @@ class AttendanceExcelExportService
      * @param  Collection  $requestMap  日付をキーにした承認済み申請マップ
      * @param  int  $dailyWorkingMinutes  1日所定勤務時間（分）
      */
-    private function setDetailData($sheet, Collection $summaries, CarbonImmutable $startDate, CarbonImmutable $endDate, Collection $requestMap, int $dailyWorkingMinutes, array $rawTimes = []): void
+    private function setDetailData($sheet, Collection $summaries, CarbonImmutable $startDate, CarbonImmutable $endDate, Collection $requestMap, int $dailyWorkingMinutes, array $rawTimes = [], ?Collection $shiftMap = null, ?ShiftPattern $defaultShiftPattern = null): void
     {
         // 日付をキーにしたマップを作成
         $summaryMap = $summaries->keyBy(fn ($s) => $s->work_date->format('Y-m-d'));
@@ -246,7 +256,12 @@ class AttendanceExcelExportService
                 // I〜L: 休憩の入り・出（2枠。こちらも実打刻）
                 $breaks = $raw['breaks'] ?? [];
                 if ($breaks === []) {
-                    $breaks = $this->breakPeriodsFor($summary);
+                    // 休憩の打刻が無い日は、集計で補完された休憩（画面の薄い表示と同じ）を出す
+                    $filledBreak = $this->autoBreakFillService->periodForOutput(
+                        $shiftMap?->get($dateKey)?->shiftPattern ?? $defaultShiftPattern,
+                        $summary
+                    );
+                    $breaks = $filledBreak !== null ? [$filledBreak] : [];
                 }
                 $sheet->setCellValue('I'.$row, $breaks[0]['start'] ?? '');
                 $sheet->setCellValue('J'.$row, $breaks[0]['end'] ?? '');
@@ -283,42 +298,6 @@ class AttendanceExcelExportService
             $currentDate = $currentDate->addDay();
             $row++;
         }
-    }
-
-    /**
-     * 勤務区分を取得
-     *
-     * @param  mixed  $summary
-     */
-    /**
-     * 休憩の入り・出を最大2枠まで取り出す
-     *
-     * テンプレートは休憩を2枠（休憩入①/出①、休憩入②/出②）持つ。
-     * 打刻から得られる休憩を順に割り当て、無い枠は空欄にする。
-     *
-     * @param  mixed  $summary
-     * @return array<int, array{start: string, end: string}>
-     */
-    private function breakPeriodsFor($summary): array
-    {
-        $periods = $summary->break_periods ?? null;
-
-        if (is_string($periods)) {
-            $periods = json_decode($periods, true);
-        }
-
-        if (! is_array($periods)) {
-            return [];
-        }
-
-        return collect($periods)
-            ->take(2)
-            ->map(fn ($period) => [
-                'start' => $this->formatTimeToHM($period['start'] ?? null),
-                'end' => $this->formatTimeToHM($period['end'] ?? null),
-            ])
-            ->values()
-            ->all();
     }
 
     /**

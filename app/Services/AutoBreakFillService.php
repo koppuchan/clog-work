@@ -84,6 +84,53 @@ class AutoBreakFillService
     }
 
     /**
+     * 帳票・CSVに出す、自動補完された休憩の時間帯（H:i形式）
+     *
+     * 休憩の打刻が無い日に休憩時間が控除されているのは、シフトの休憩時刻で
+     * 補完された結果である。画面ではこの時間帯を薄く表示するが、帳票・CSVは
+     * 実打刻しか出していなかったため、休憩の欄が空欄のまま労働時間だけ
+     * 休憩分が引かれて見えていた（クライアント報告: 休憩の自動入力で
+     * 計算はされていますが、出力時に反映されていないようでした）。
+     *
+     * 呼び出し側は、休憩の打刻が1件も無い日にだけ使う。控除済みの休憩時間
+     * （break_minutes）が0の日は、補完されていない（または補完の結果0分）ため
+     * 何も返さない。
+     *
+     * @param  mixed  $summary  daily_work_summaries レコード
+     * @return array{start: string, end: string}|null
+     */
+    public function periodForOutput(?ShiftPattern $pattern, $summary): ?array
+    {
+        if ($summary === null || ($summary->break_minutes ?? 0) <= 0) {
+            return null;
+        }
+
+        if ($summary->work_start === null || $summary->work_end === null) {
+            return null;
+        }
+
+        if (! $this->isApplicable($pattern, hasAnyBreakRecord: false)) {
+            return null;
+        }
+
+        $period = $this->resolvePeriod(
+            $pattern,
+            CarbonImmutable::parse($summary->work_date),
+            CarbonImmutable::parse($summary->work_start),
+            CarbonImmutable::parse($summary->work_end),
+        );
+
+        if ($period === null) {
+            return null;
+        }
+
+        return [
+            'start' => $period['start']->format('H:i'),
+            'end' => $period['end']->format('H:i'),
+        ];
+    }
+
+    /**
      * 補完する休憩時間（分）
      */
     public function fillMinutes(

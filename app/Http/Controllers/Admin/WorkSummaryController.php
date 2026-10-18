@@ -415,62 +415,29 @@ class WorkSummaryController extends Controller
         $users = $this->userService->findByCompanyId($companyId);
 
         if ($scope === 'all') {
-            // 全従業員: 1人1ファイルのExcelをZIPにまとめる
+            // 全従業員: 1つのExcelファイルに、スタッフごとのシートで出力する
             $batch = $this->resolveExportBatch($request, $users->count());
             $targetUsers = $batch === null
                 ? $users
                 : $users->slice($batch['offset'], $batch['size'])->values();
 
-            $zipPath = tempnam(sys_get_temp_dir(), 'excel_export_');
-            $tempFiles = [];
+            // 人数分のシートを1つのブックに持つため、通常のリクエストの
+            // 実行時間・メモリ上限では足りないことがある
+            set_time_limit(300);
+            ini_set('memory_limit', '512M');
 
-            try {
-                $zip = new \ZipArchive;
-                $zip->open($zipPath, \ZipArchive::OVERWRITE);
+            $filePath = $this->attendanceExcelExportService->generateForUsers(
+                $companyId,
+                $targetUsers,
+                $startDate->format('Y-m-d'),
+                $endDate->format('Y-m-d')
+            );
 
-                // 人数分のブックを一度に抱えるとメモリが尽きるため、
-                // バッチサイズごとに区切って解放しながら生成する
-                foreach ($targetUsers->chunk($this->exportBatchSize()) as $chunk) {
-                    foreach ($chunk as $user) {
-                        $filePath = $this->attendanceExcelExportService->generate(
-                            $companyId,
-                            $user,
-                            $startDate->format('Y-m-d'),
-                            $endDate->format('Y-m-d')
-                        );
-
-                        $excelFilename = sprintf(
-                            '勤務実績_%s_%s.xlsx',
-                            $user->name,
-                            $periodLabel
-                        );
-
-                        $zip->addFile($filePath, $excelFilename);
-                        $tempFiles[] = $filePath;
-                    }
-
-                    gc_collect_cycles();
-                }
-
-                $zip->close();
-            } finally {
-                // 例外発生時も一時ファイルを確実に削除
-                foreach ($tempFiles as $tempFile) {
-                    if (file_exists($tempFile)) {
-                        unlink($tempFile);
-                    }
-                }
-            }
-
-            $zipFilename = sprintf(
-                '勤務実績_%s_%s.zip',
+            $filename = sprintf(
+                '勤務実績_%s_%s.xlsx',
                 $batch === null ? '全従業員' : $batch['label'],
                 $periodLabel
             );
-
-            return response()->download($zipPath, $zipFilename, [
-                'Content-Type' => 'application/zip',
-            ])->deleteFileAfterSend(true);
         } else {
             $selectedUserId = $request->query('user_id');
             $availableUserIds = $users->pluck('id');

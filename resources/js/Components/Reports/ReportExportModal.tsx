@@ -108,7 +108,8 @@ export default function ReportExportModal({
               ))}
             </div>
             <p className="mt-2 text-xs text-gray-500">
-              全員まとめても内部では{batchSize}名ずつ処理しますが、人数が多く時間がかかる場合は範囲を分けて取得できます。
+              {exportFormats.excel && 'Excelはスタッフごとにシートを分けて、1つのファイルにまとめて出力します。'}
+              人数が多く時間がかかる場合は、{batchSize}名ずつの範囲に分けて取得できます。
             </p>
           </div>
         )}

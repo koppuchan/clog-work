@@ -28,6 +28,20 @@ class AttendanceExcelExportService
     private const DATA_START_ROW = 7;
 
     /**
+     * テンプレートで内容のある最終行（39〜40行目は余白）
+     *
+     * テンプレートは1000行目まで書式だけの空セルを持っている（5,700セル以上）。
+     * スタッフごとにシートを複製する際、これが人数分に膨れて時間とメモリを
+     * 大きく消費する（65名で約75秒・570MB）ため、これより下の行は取り除く。
+     */
+    private const TEMPLATE_LAST_ROW = 40;
+
+    /**
+     * 開いたときの選択セルであり、ウィンドウ枠の固定位置
+     */
+    private const VIEW_ANCHOR_CELL = 'B7';
+
+    /**
      * 曜日の表記（日曜始まり）
      */
     private const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -43,7 +57,7 @@ class AttendanceExcelExportService
     ) {}
 
     /**
-     * 勤務実績をExcelファイルとして生成
+     * 勤務実績をExcelファイルとして生成（1人分）
      *
      * @param  int  $companyId  会社ID
      * @param  User  $user  ユーザー
@@ -53,9 +67,61 @@ class AttendanceExcelExportService
      */
     public function generate(int $companyId, User $user, string $periodStart, string $periodEnd): string
     {
+        return $this->generateForUsers($companyId, collect([$user]), $periodStart, $periodEnd);
+    }
+
+    /**
+     * 複数のスタッフの勤務実績を、1つのExcelファイルにスタッフごとのシートで出力する
+     *
+     * 以前は1人1ファイルのZIPで出力していたため、全員分を印刷するのに
+     * ファイルを1つずつ開く必要があった（クライアント要望: 一つのファイルに
+     * シートを全員分で出力できないか。印刷するのが非常に手間）。
+     * 各シートはテンプレートと同じ体裁・数式で、シート名はスタッフ名にする。
+     *
+     * @param  int  $companyId  会社ID
+     * @param  Collection<int, User>  $users  対象スタッフ（この順にシートを並べる）
+     * @param  string  $periodStart  開始日（Y-m-d形式）
+     * @param  string  $periodEnd  終了日（Y-m-d形式）
+     * @return string 一時ファイルパス
+     */
+    public function generateForUsers(int $companyId, Collection $users, string $periodStart, string $periodEnd): string
+    {
         $startDate = CarbonImmutable::parse($periodStart);
         $endDate = CarbonImmutable::parse($periodEnd);
 
+        $spreadsheet = $this->loadTemplate();
+        // テンプレートのシートは書き込まずに雛形として残し、スタッフごとに複製して使う
+        $templateSheet = $spreadsheet->getSheet(0);
+        if ($templateSheet->getHighestRow() > self::TEMPLATE_LAST_ROW) {
+            $templateSheet->removeRow(
+                self::TEMPLATE_LAST_ROW + 1,
+                $templateSheet->getHighestRow() - self::TEMPLATE_LAST_ROW
+            );
+        }
+        $usedTitles = [];
+
+        foreach ($users as $user) {
+            $sheet = clone $templateSheet;
+            $sheet->setTitle($this->uniqueSheetTitle($user, $usedTitles));
+            $spreadsheet->addSheet($sheet);
+
+            $this->fillSheet($sheet, $companyId, $user, $startDate, $endDate);
+        }
+
+        $spreadsheet->removeSheetByIndex(0);
+        $spreadsheet->setActiveSheetIndex(0);
+
+        // 一時ファイルとして保存
+        return $this->saveToTempFile($spreadsheet);
+    }
+
+    /**
+     * 1人分の勤務実績を、スタッフのシートに書き込む
+     *
+     * @param  \PhpOffice\PhpSpreadsheet\Worksheet\Worksheet  $sheet
+     */
+    private function fillSheet($sheet, int $companyId, User $user, CarbonImmutable $startDate, CarbonImmutable $endDate): void
+    {
         // 勤務実績データを取得
         $summaries = $this->dailyWorkSummaryRepository->findByUserIdAndDateRange(
             $companyId,
@@ -84,13 +150,6 @@ class AttendanceExcelExportService
         $shiftMap = $this->shiftRepository
             ->findByUserIdAndDateRange($companyId, $user->id, $startDate->format('Y-m-d'), $endDate->format('Y-m-d'))
             ->keyBy(fn ($shift) => $shift->shift_date->format('Y-m-d'));
-
-        // 月間サマリーを計算
-        $monthlySummary = $this->calculateMonthlySummary($summaries, $approvedRequests, $dailyWorkingMinutes);
-
-        // テンプレートを読み込み
-        $spreadsheet = $this->loadTemplate();
-        $sheet = $spreadsheet->getActiveSheet();
 
         // ヘッダー部分を設定
         $this->setHeaderData($sheet, $user, $endDate);
@@ -123,8 +182,55 @@ class AttendanceExcelExportService
         // 統一した）に合わせて表示だけ3桁固定にする。
         $sheet->getStyle('H4')->getNumberFormat()->setFormatCode('0.000');
 
-        // 一時ファイルとして保存
-        return $this->saveToTempFile($spreadsheet, $user, $endDate);
+        $this->setSheetView($sheet);
+    }
+
+    /**
+     * 開いたときの表示位置と、ウィンドウ枠の固定を設定する
+     *
+     * テンプレートは保存時のカーソル位置（集計欄の長い数式のセル）で開いてしまい、
+     * 数式バーに長い数式が表示されていた（クライアント要望: B7を
+     * デフォルトの位置にして、B7でウィンドウ枠も固定してほしい）。
+     * B7は明細の先頭行・日付列の右隣で、上のヘッダー・集計欄（1〜6行目）と
+     * 日付列（A列）を固定する。
+     *
+     * @param  \PhpOffice\PhpSpreadsheet\Worksheet\Worksheet  $sheet
+     */
+    private function setSheetView($sheet): void
+    {
+        $sheet->setTopLeftCell('A1');
+        $sheet->freezePane(self::VIEW_ANCHOR_CELL);
+        $sheet->setSelectedCells(self::VIEW_ANCHOR_CELL);
+    }
+
+    /**
+     * シート名を決める（スタッフ名。Excelの制約に合わせて整える）
+     *
+     * シート名は31文字まで、: \ / ? * [ ] は使えず、大文字小文字を区別せず
+     * 重複できない。同じ名前のスタッフがいる場合は個人コードを付けて区別する。
+     *
+     * @param  array<string, true>  $usedTitles  使用済みのシート名（小文字）
+     */
+    private function uniqueSheetTitle(User $user, array &$usedTitles): string
+    {
+        $name = trim((string) preg_replace('#[\\\\/?*\[\]:]#u', '', (string) $user->name), "' ");
+        $base = $name !== '' ? $name : (string) ($user->employee_code ?: 'スタッフ');
+        $title = mb_substr($base, 0, 31);
+
+        if (isset($usedTitles[mb_strtolower($title)])) {
+            $suffix = '_'.($user->employee_code ?: $user->id);
+            $title = mb_substr($base, 0, 31 - mb_strlen($suffix)).$suffix;
+        }
+
+        $counter = 2;
+        while (isset($usedTitles[mb_strtolower($title)])) {
+            $suffix = '_'.$counter++;
+            $title = mb_substr($base, 0, 31 - mb_strlen($suffix)).$suffix;
+        }
+
+        $usedTitles[mb_strtolower($title)] = true;
+
+        return $title;
     }
 
     /**
@@ -345,15 +451,11 @@ class AttendanceExcelExportService
      *
      * @return string ファイルパス
      */
-    private function saveToTempFile(Spreadsheet $spreadsheet, User $user, CarbonImmutable $targetMonth): string
+    private function saveToTempFile(Spreadsheet $spreadsheet): string
     {
-        $filename = sprintf(
-            '勤務実績_%s_%s.xlsx',
-            $user->name,
-            $targetMonth->format('Y年m月')
-        );
-
-        $tempPath = storage_path('app/temp/'.$filename);
+        // 同時に複数の出力が走っても上書きし合わないよう、ファイル名は毎回変える
+        // （ダウンロード時のファイル名は呼び出し側で付ける）
+        $tempPath = storage_path('app/temp/attendance_'.bin2hex(random_bytes(8)).'.xlsx');
 
         // tempディレクトリがなければ作成
         $tempDir = dirname($tempPath);

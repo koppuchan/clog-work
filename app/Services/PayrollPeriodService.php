@@ -45,6 +45,56 @@ class PayrollPeriodService
     }
 
     /**
+     * 指定した日が属する月度（締め期間の終わりの年月）を求める
+     *
+     * 締日が15日なら、10/16〜11/15は「11月度」になる。暦月（10月）でそのまま
+     * 引くと、10/16以降も10/15までの終わった期間が「今月」として扱われ、
+     * いま進行中の期間のアラートが見られなかった。
+     *
+     * @return array{year: int, month: int}
+     */
+    public function periodMonthContaining(int $companyId, CarbonImmutable $date): array
+    {
+        $closingDay = $this->closingDay($companyId);
+
+        if ($closingDay >= 31 || $date->day <= min($closingDay, $date->daysInMonth)) {
+            return ['year' => $date->year, 'month' => $date->month];
+        }
+
+        $next = $date->startOfMonth()->addMonth();
+
+        return ['year' => $next->year, 'month' => $next->month];
+    }
+
+    /**
+     * 画面で選べる直近の月度（新しい順）
+     *
+     * 先頭は、指定した日が属する月度（進行中の期間）。
+     *
+     * @return array<int, array{year: int, month: int, value: string, label: string, range: string}>
+     */
+    public function recentPeriods(int $companyId, CarbonImmutable $today, int $count = 12): array
+    {
+        $latest = $this->periodMonthContaining($companyId, $today);
+        $base = CarbonImmutable::create($latest['year'], $latest['month'], 1);
+
+        return collect(range(0, $count - 1))
+            ->map(function (int $i) use ($companyId, $base): array {
+                $month = $base->subMonthsNoOverflow($i);
+                [$start, $end] = $this->resolve($companyId, $month->year, $month->month);
+
+                return [
+                    'year' => $month->year,
+                    'month' => $month->month,
+                    'value' => $month->format('Y-m'),
+                    'label' => $month->format('Y年m月'),
+                    'range' => $start->format('n/j').'〜'.$end->format('n/j'),
+                ];
+            })
+            ->all();
+    }
+
+    /**
      * 会社の締日
      */
     private function closingDay(int $companyId): int

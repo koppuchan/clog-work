@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Services\LaborAlertService;
+use App\Services\PayrollPeriodService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,7 +19,8 @@ use Inertia\Response;
 class LaborAlertController extends Controller
 {
     public function __construct(
-        private readonly LaborAlertService $laborAlertService
+        private readonly LaborAlertService $laborAlertService,
+        private readonly PayrollPeriodService $payrollPeriodService
     ) {}
 
     /**
@@ -28,10 +30,14 @@ class LaborAlertController extends Controller
     {
         $companyId = auth()->user()->company_id;
 
-        // リクエストから年月を取得（デフォルトは当月）
+        // リクエストから月度を取得（デフォルトは、今日が属する締め期間の月度）。
+        // 締日が15日なら10/16以降は「11月度」（10/16〜11/15）で、進行中の期間の
+        // アラートをそのまま見られるようにする（クライアント要望: 最新の月度の
+        // リアルタイムのアラートも表示してほしい）。
         $now = CarbonImmutable::now();
-        $year = (int) $request->input('year', $now->year);
-        $month = (int) $request->input('month', $now->month);
+        $current = $this->payrollPeriodService->periodMonthContaining($companyId, $now);
+        $year = (int) $request->input('year', $current['year']);
+        $month = (int) $request->input('month', $current['month']);
 
         // アラートを取得（DB設定に基づく）
         $alerts = $this->laborAlertService->getAlerts($companyId, $year, $month);
@@ -44,6 +50,7 @@ class LaborAlertController extends Controller
             'summary' => $summary,
             'selectedYear' => $year,
             'selectedMonth' => $month,
+            'periodOptions' => $this->payrollPeriodService->recentPeriods($companyId, $now),
         ]);
     }
 

@@ -878,8 +878,6 @@ class DailyWorkSummaryService
             $user->loadMissing('companies');
             $primaryCompany = $user->companies->firstWhere('pivot.is_primary', true) ?? $user->companies->first();
             $dailyWorkingMinutes = (int) (($primaryCompany?->daily_working_hours ?? 8) * 60);
-            // 休憩の自動入力は、その日のシフトが無いと会社の基本シフトで補われる（集計と同じ）
-            $primaryCompany?->loadMissing('defaultShiftPattern');
 
             // 帳票（Excel）と同じく、承認済み申請を日付ごとにまとめておく
             $approvedRequests = $this->requestRepository->findByUserIdAndDateRange(
@@ -903,10 +901,7 @@ class DailyWorkSummaryService
                 $breaks = $raw['breaks'] ?? [];
                 // 休憩の打刻が無い日は、集計で補完された休憩（画面の薄い表示と同じ）を出す
                 if ($breaks === []) {
-                    $filledBreak = $this->autoBreakFillService->periodForOutput(
-                        $shift?->shiftPattern ?? $primaryCompany?->defaultShiftPattern,
-                        $summary
-                    );
+                    $filledBreak = $this->autoBreakFillService->periodForOutput($shift?->shiftPattern, $summary);
                     if ($filledBreak !== null) {
                         $breaks = [$filledBreak];
                     }

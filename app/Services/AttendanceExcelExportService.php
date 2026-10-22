@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Enums\RequestStatusEnum;
-use App\Models\ShiftPattern;
 use App\Models\User;
 use App\Repositories\Contracts\DailyWorkSummaryRepositoryInterface;
 use App\Repositories\Contracts\RequestRepositoryInterface;
@@ -109,6 +108,9 @@ class AttendanceExcelExportService
         }
 
         $spreadsheet->removeSheetByIndex(0);
+        // ブックから外した雛形のシートは、disconnectWorksheets()の対象外になる。
+        // セルを手放さないと、出力のたびに約1MBずつ解放されずに残る
+        $templateSheet->disconnectCells();
         $spreadsheet->setActiveSheetIndex(0);
 
         // 一時ファイルとして保存
@@ -145,8 +147,7 @@ class AttendanceExcelExportService
         $primaryCompany = $user->companies->firstWhere('pivot.is_primary', true) ?? $user->companies->first();
         $dailyWorkingMinutes = (int) (($primaryCompany?->daily_working_hours ?? 8) * 60);
 
-        // 休憩の自動入力で補われた休憩を出すために、その日のシフト（無ければ会社の基本シフト）を使う
-        $primaryCompany?->loadMissing('defaultShiftPattern');
+        // 休憩の自動入力で補われた休憩を出すために、その日のシフトを使う
         $shiftMap = $this->shiftRepository
             ->findByUserIdAndDateRange($companyId, $user->id, $startDate->format('Y-m-d'), $endDate->format('Y-m-d'))
             ->keyBy(fn ($shift) => $shift->shift_date->format('Y-m-d'));
@@ -163,7 +164,7 @@ class AttendanceExcelExportService
         );
 
         // 明細部分を設定
-        $this->setDetailData($sheet, $summaries, $startDate, $endDate, $requestMap, $dailyWorkingMinutes, $rawTimes, $shiftMap, $primaryCompany?->defaultShiftPattern);
+        $this->setDetailData($sheet, $summaries, $startDate, $endDate, $requestMap, $dailyWorkingMinutes, $rawTimes, $shiftMap);
 
         // 合計行（38行目）はテンプレート側のSUM数式（例: M38=SUM(M7:M37)）が
         // そのまま計算する。ここでは明細行と同じ[h]:mm書式を当てて、数式が
@@ -316,7 +317,7 @@ class AttendanceExcelExportService
      * @param  Collection  $requestMap  日付をキーにした承認済み申請マップ
      * @param  int  $dailyWorkingMinutes  1日所定勤務時間（分）
      */
-    private function setDetailData($sheet, Collection $summaries, CarbonImmutable $startDate, CarbonImmutable $endDate, Collection $requestMap, int $dailyWorkingMinutes, array $rawTimes = [], ?Collection $shiftMap = null, ?ShiftPattern $defaultShiftPattern = null): void
+    private function setDetailData($sheet, Collection $summaries, CarbonImmutable $startDate, CarbonImmutable $endDate, Collection $requestMap, int $dailyWorkingMinutes, array $rawTimes = [], ?Collection $shiftMap = null): void
     {
         // 日付をキーにしたマップを作成
         $summaryMap = $summaries->keyBy(fn ($s) => $s->work_date->format('Y-m-d'));
@@ -364,7 +365,7 @@ class AttendanceExcelExportService
                 if ($breaks === []) {
                     // 休憩の打刻が無い日は、集計で補完された休憩（画面の薄い表示と同じ）を出す
                     $filledBreak = $this->autoBreakFillService->periodForOutput(
-                        $shiftMap?->get($dateKey)?->shiftPattern ?? $defaultShiftPattern,
+                        $shiftMap?->get($dateKey)?->shiftPattern,
                         $summary
                     );
                     $breaks = $filledBreak !== null ? [$filledBreak] : [];

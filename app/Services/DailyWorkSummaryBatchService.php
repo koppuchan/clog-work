@@ -332,8 +332,7 @@ class DailyWorkSummaryBatchService
             $workEndTime,
             $isCrossDay,
             $timeRecords,
-            $shift,
-            $company
+            $shift
         );
 
         // 所定労働時間（分）
@@ -410,11 +409,11 @@ class DailyWorkSummaryBatchService
             ->filter(fn (TimeRecord $r) => $r->record_type->isBreakEnd())
             ->values();
 
+        // シフトの無い日（休み）は、休憩を自動で補わない。会社の基本シフトを代わりに
+        // 使うと、休みの日に出勤した場合も基本シフトの休憩（例: 12:00〜13:30）が
+        // 控除されて、休憩の打刻をしていないのに休憩時間が付いていた
+        // （クライアント報告: シフトに無い日（休日）は休憩の打刻が入らないようにしてほしい）。
         $pattern = $shift?->shiftPattern;
-        if (! $pattern) {
-            $company->loadMissing('defaultShiftPattern');
-            $pattern = $company->defaultShiftPattern;
-        }
 
         $hasAnyBreakRecord = $breakStarts->isNotEmpty() || $breakEnds->isNotEmpty();
 
@@ -520,8 +519,7 @@ class DailyWorkSummaryBatchService
         ?\DateTimeInterface $workEnd,
         bool $isCrossDay,
         Collection $timeRecords,
-        ?Shift $shift,
-        Company $company
+        ?Shift $shift
     ): int {
         if (! $workStart || ! $workEnd) {
             return 0;
@@ -538,7 +536,7 @@ class DailyWorkSummaryBatchService
 
         // 実際の休憩時間帯と深夜時間帯の重複分を計算して減算
         $nightBreakMinutes = $this->calculateNightBreakMinutes(
-            $timeRecords, $shift, $company, $startCarbon, $startCarbon, $endCarbon
+            $timeRecords, $shift, $startCarbon, $startCarbon, $endCarbon
         );
         $nightMinutes = max(0, $nightMinutes - $nightBreakMinutes);
 
@@ -564,13 +562,12 @@ class DailyWorkSummaryBatchService
     private function calculateNightBreakMinutes(
         Collection $timeRecords,
         ?Shift $shift,
-        Company $company,
         CarbonImmutable $workDate,
         CarbonImmutable $workStart,
         CarbonImmutable $workEnd
     ): int {
         // 休憩時間帯のペアを収集
-        $breakPeriods = $this->collectBreakPeriods($timeRecords, $shift, $company, $workDate);
+        $breakPeriods = $this->collectBreakPeriods($timeRecords, $shift, $workDate);
 
         // 休憩時間帯が特定できない場合（break_mode=1で分数のみ設定等）は、
         // 深夜帯と重なったかどうかが分からないため減算しない。
@@ -659,14 +656,12 @@ class DailyWorkSummaryBatchService
      *
      * @param  Collection<int, TimeRecord>  $timeRecords  打刻レコード
      * @param  Shift|null  $shift  シフト情報
-     * @param  Company  $company  会社
      * @param  CarbonImmutable  $workDate  勤務日のCarbon（日付基準用）
      * @return array<int, array{start: CarbonImmutable, end: CarbonImmutable}>
      */
     private function collectBreakPeriods(
         Collection $timeRecords,
         ?Shift $shift,
-        Company $company,
         CarbonImmutable $workDate
     ): array {
         $breakPeriods = [];
@@ -691,12 +686,9 @@ class DailyWorkSummaryBatchService
 
         // 休憩打刻がない場合はシフトパターンの休憩時間帯を使用
         // ただし、勤務打刻が手動修正・申請修正されている場合はフォールバックしない
+        // シフトの無い日（休み）は、会社の基本シフトで代用しない（休憩を補わない日のため）
         if (empty($breakPeriods) && ! $this->hasManuallyModifiedWorkRecord($timeRecords)) {
             $pattern = $shift?->shiftPattern;
-            if (! $pattern) {
-                $company->loadMissing('defaultShiftPattern');
-                $pattern = $company->defaultShiftPattern;
-            }
 
             if ($pattern && $pattern->break_start && $pattern->break_end) {
                 $breakStartCarbon = $workDate->copy()->setTimeFromTimeString($pattern->break_start);

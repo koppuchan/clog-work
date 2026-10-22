@@ -47,16 +47,19 @@ class AttendanceExcelExportMemoryTest extends TestCase
             unlink($path);
 
             gc_collect_cycles();
-            $usageAfterEach[] = memory_get_usage(true);
+            $usageAfterEach[] = memory_get_usage();
         }
 
         // 最初の数回はオートロード等のウォームアップで増えうるため、
         // 後半同士（3回目以降）の増分だけを見る。disconnectWorksheets()が
         // 無いと1回あたり数MBずつ単調増加し続けていた。
+        // 確保済みメモリ（2MB刻みで増える）ではなく実際の使用量で測る。
+        // 刻みの境目で結果が変わり、1回あたり約1MBの取りこぼし（ブックから外した
+        // 雛形シートの解放漏れ）が通ったり落ちたりしていた。
         $growth = end($usageAfterEach) - $usageAfterEach[2];
 
         $this->assertLessThan(
-            5 * 1024 * 1024,
+            2 * 1024 * 1024,
             $growth,
             '生成を繰り返すたびにメモリ使用量が増え続けています（Spreadsheetの循環参照が解放されていない疑い）'
         );

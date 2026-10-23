@@ -157,3 +157,11 @@ export interface ExportFormats {
   csv: boolean;
   excel: boolean;
 }
+
+/**
+ * 勤務実績の出力で選べるエラーリスト
+ */
+export interface ExportErrorLists {
+  noBreak: boolean;
+  missingStamp: boolean;
+}

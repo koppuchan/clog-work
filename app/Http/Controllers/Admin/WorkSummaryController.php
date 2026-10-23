@@ -7,8 +7,11 @@ namespace App\Http\Controllers\Admin;
 use App\Enums\RequestStatusEnum;
 use App\Exceptions\NotFoundException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ExportErrorListRequest;
 use App\Http\Requests\StoreWorkSummaryRequest;
 use App\Http\Requests\UpdateWorkSummaryRequest;
+use App\Services\AttendanceErrorListExportService;
+use App\Services\AttendanceErrorListService;
 use App\Services\AttendanceExcelExportService;
 use App\Services\AttendanceIssueService;
 use App\Services\CompanySettingService;
@@ -42,7 +45,9 @@ class WorkSummaryController extends Controller
         private readonly ShiftService $shiftService,
         private readonly CompanySettingService $companySettingService,
         private readonly AttendanceIssueService $attendanceIssueService,
-        private readonly TimeRecordCorrectionRequestService $correctionRequestService
+        private readonly TimeRecordCorrectionRequestService $correctionRequestService,
+        private readonly AttendanceErrorListService $attendanceErrorListService,
+        private readonly AttendanceErrorListExportService $attendanceErrorListExportService
     ) {}
 
     /**
@@ -466,6 +471,55 @@ class WorkSummaryController extends Controller
         }
 
         return response()->download($filePath, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend(true);
+    }
+
+    /**
+     * 勤務実績のエラーリスト（休憩入力無し・打刻漏れ）をExcelでエクスポート
+     *
+     * 出力対象（選択中のスタッフ／全従業員、バッチ）と期間は、勤務実績の出力と同じ指定を使う。
+     */
+    public function exportErrorList(ExportErrorListRequest $request): BinaryFileResponse
+    {
+        $validated = $request->validated();
+        $companyId = auth()->user()->company_id;
+        $startDate = $validated['start_date'];
+        $endDate = $validated['end_date'];
+        $periodLabel = CarbonImmutable::parse($startDate)->format('Y年m月d日').'〜'.CarbonImmutable::parse($endDate)->format('m月d日');
+        $users = $this->userService->findByCompanyId($companyId);
+
+        if (($validated['scope'] ?? 'single') === 'all') {
+            $batch = $this->resolveExportBatch($request, $users->count());
+            $targetUsers = $batch === null
+                ? $users
+                : $users->slice($batch['offset'], $batch['size'])->values();
+            $targetLabel = $batch === null ? '全従業員' : $batch['label'];
+        } else {
+            $availableUserIds = $users->pluck('id');
+            $effectiveUserId = $availableUserIds->contains((int) ($validated['user_id'] ?? 0))
+                ? (int) $validated['user_id']
+                : $availableUserIds->first();
+
+            if (! $effectiveUserId) {
+                abort(404, 'ユーザーが見つかりません');
+            }
+
+            $targetUsers = $users->where('id', $effectiveUserId)->values();
+            $targetLabel = $targetUsers->first()->name;
+        }
+
+        $lists = $this->attendanceErrorListService->build(
+            $companyId,
+            $targetUsers,
+            $startDate,
+            $endDate,
+            array_values(array_unique($validated['lists']))
+        );
+
+        $filePath = $this->attendanceErrorListExportService->generate($lists, $startDate, $endDate);
+
+        return response()->download($filePath, sprintf('エラーリスト_%s_%s.xlsx', $targetLabel, $periodLabel), [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ])->deleteFileAfterSend(true);
     }

@@ -31,6 +31,14 @@ class AttendanceIssueService
     public const MISSING_BREAK_END = 'missing_break_end';
 
     /**
+     * シフトがあるのに、出勤の打刻も休暇などの勤務実績もない
+     *
+     * 出勤を打刻し忘れると、退勤も打刻できない（出勤していない扱いになる）ため、
+     * 打刻データにも勤務実績にも何も残らず、他の検出では見つからない。
+     */
+    public const NO_STAMP_ON_SHIFT_DAY = 'no_stamp_on_shift_day';
+
+    /**
      * 勤務実績（集計済みDailyWorkSummary）から、未集計の日を返す
      *
      * 当日は勤務の途中である可能性が高いため対象外とする。退勤忘れは
@@ -257,6 +265,53 @@ class AttendanceIssueService
         }
 
         $issues[$date] = [self::MISSING_BREAK_END];
+    }
+
+    /**
+     * シフトがあるのに出勤の打刻がなく、勤務実績もない日を検出する
+     *
+     * 勤務実績がある日（打刻の集計結果のほか、有給・欠勤などの休暇や手動入力）は、
+     * すでに何らかの形で扱われているため対象外とする。当日は、これから出勤する
+     * 可能性があるため対象外とする。
+     *
+     * @param  array<int, string>  $shiftDates  シフトのある日（Y-m-d）
+     * @param  Collection<int, \App\Models\TimeRecord>  $timeRecords  打刻データ
+     * @param  Collection<int, array<string, mixed>>|Collection<int, object>  $summaries  勤務実績
+     * @param  string|null  $today  当日（Y-m-d）。省略時は現在日
+     * @return array<string, array<int, string>> 日付をキーとした状態の一覧
+     */
+    public function detectNoStampOnShiftDay(array $shiftDates, Collection $timeRecords, Collection $summaries, ?string $today = null): array
+    {
+        $today ??= CarbonImmutable::now()->format('Y-m-d');
+        $issues = [];
+
+        $stampedDates = [];
+        foreach ($timeRecords as $record) {
+            if ($record->record_type->isWorkStart()) {
+                $stampedDates[$record->record_time->format('Y-m-d')] = true;
+            }
+        }
+
+        $summaryDates = [];
+        foreach ($summaries as $summary) {
+            $date = $this->value($summary, 'work_date');
+            if (is_string($date) && $date !== '') {
+                $summaryDates[substr($date, 0, 10)] = true;
+            }
+        }
+
+        $dates = array_unique($shiftDates);
+        sort($dates);
+
+        foreach ($dates as $date) {
+            if ($date >= $today || isset($stampedDates[$date]) || isset($summaryDates[$date])) {
+                continue;
+            }
+
+            $issues[$date] = [self::NO_STAMP_ON_SHIFT_DAY];
+        }
+
+        return $issues;
     }
 
     /**

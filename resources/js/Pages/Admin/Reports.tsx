@@ -101,6 +101,7 @@ function ReportsPage() {
   const {
     showExportModal,
     exportFormats,
+    exportErrorLists,
     exportScope,
     exportBatch,
     selectedUserId,
@@ -108,6 +109,7 @@ function ReportsPage() {
     getApprovedRequestsForDate,
     handleUserChange,
     handleFormatChange,
+    handleErrorListChange,
     handleScopeChange,
     handleBatchChange,
     openExportModal,
@@ -491,12 +493,14 @@ function ReportsPage() {
       <ReportExportModal
         isOpen={showExportModal}
         exportFormats={exportFormats}
+        exportErrorLists={exportErrorLists}
         exportScope={exportScope}
         exportBatch={exportBatch}
         selectedUserName={selectedUserName}
         userCount={users.length}
         batchSize={exportBatchSize ?? 10}
         onFormatChange={handleFormatChange}
+        onErrorListChange={handleErrorListChange}
         onScopeChange={handleScopeChange}
         onBatchChange={handleBatchChange}
         onExport={handleExport}

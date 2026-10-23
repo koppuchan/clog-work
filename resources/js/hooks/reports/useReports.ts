@@ -5,7 +5,7 @@ import { getHolidayName } from '@/lib/holidays';
 import { formatMinutesToHM } from '@/utils/timeFormat';
 import { resolveAutoFillBreakPeriod } from '@/utils/autoBreakFill';
 import { excludePreviousNightRecords } from '@/utils/attendanceRecords';
-import type { ReportUser, WorkSummary, ApprovedRequest, ExportFormats, TimeRecord, ShiftInfo } from '@/types/reports';
+import type { ReportUser, WorkSummary, ApprovedRequest, ExportFormats, ExportErrorLists, TimeRecord, ShiftInfo } from '@/types/reports';
 import type { ExportScope } from '@/Components/Reports/ReportExportModal';
 
 interface UseReportsProps {
@@ -37,6 +37,10 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
   const [exportFormats, setExportFormats] = useState<ExportFormats>({
     csv: false,
     excel: false,
+  });
+  const [exportErrorLists, setExportErrorLists] = useState<ExportErrorLists>({
+    noBreak: false,
+    missingStamp: false,
   });
   const [exportScope, setExportScope] = useState<ExportScope>('single');
   // 全員一括のときは null。バッチ番号を選ぶと1始まりでその区切りだけを出力する
@@ -203,6 +207,13 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     }));
   }, []);
 
+  const handleErrorListChange = useCallback((listType: keyof ExportErrorLists, checked: boolean) => {
+    setExportErrorLists((prev) => ({
+      ...prev,
+      [listType]: checked,
+    }));
+  }, []);
+
   const openExportModal = useCallback(() => {
     setShowExportModal(true);
   }, []);
@@ -210,6 +221,7 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
   const closeExportModal = useCallback(() => {
     setShowExportModal(false);
     setExportFormats({ csv: false, excel: false });
+    setExportErrorLists({ noBreak: false, missingStamp: false });
     setExportScope('single');
     setExportBatch(null);
   }, []);
@@ -245,9 +257,35 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     window.location.href = `/admin/reports/export/excel?${params.toString()}`;
   }, [filters.start_date, filters.end_date, selectedUserId, exportScope, exportBatch]);
 
+  // エラーリスト（休憩入力無し・打刻漏れ）は1つのExcelファイルで出力する。
+  // CSV・Excelと一緒に選んだとき、先に始めたダウンロードを打ち切らないよう、
+  // ページを移動しない非表示のiframeで取得する
+  const exportErrorListFile = useCallback(() => {
+    const params = new URLSearchParams({
+      start_date: filters.start_date,
+      end_date: filters.end_date,
+      ...(exportScope === 'all'
+        ? { scope: 'all', ...(exportBatch !== null ? { batch: String(exportBatch) } : {}) }
+        : { user_id: String(selectedUserId || '') }),
+    });
+    if (exportErrorLists.noBreak) {
+      params.append('lists[]', 'no_break');
+    }
+    if (exportErrorLists.missingStamp) {
+      params.append('lists[]', 'missing_stamp');
+    }
+
+    const frame = document.createElement('iframe');
+    frame.style.display = 'none';
+    frame.src = `/admin/reports/export/errors?${params.toString()}`;
+    document.body.appendChild(frame);
+    window.setTimeout(() => frame.remove(), 5 * 60 * 1000);
+  }, [filters.start_date, filters.end_date, selectedUserId, exportScope, exportBatch, exportErrorLists]);
+
   const handleExport = useCallback(() => {
-    if (!exportFormats.csv && !exportFormats.excel) {
-      alert('出力形式を選択してください');
+    const hasErrorList = exportErrorLists.noBreak || exportErrorLists.missingStamp;
+    if (!exportFormats.csv && !exportFormats.excel && !hasErrorList) {
+      alert('出力形式またはエラーリストを選択してください');
       return;
     }
     if (exportFormats.csv) {
@@ -256,8 +294,11 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     if (exportFormats.excel) {
       exportToExcel();
     }
+    if (hasErrorList) {
+      exportErrorListFile();
+    }
     closeExportModal();
-  }, [exportFormats.csv, exportFormats.excel, exportToCSV, exportToExcel, closeExportModal]);
+  }, [exportFormats.csv, exportFormats.excel, exportErrorLists, exportToCSV, exportToExcel, exportErrorListFile, closeExportModal]);
 
   // 対象日の打刻 + 日跨ぎ夜勤の場合のみ翌日のレコード(WORK_END_NEXT_DAY と該当時刻以前の休憩)をマージ
   //
@@ -516,6 +557,7 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     // State
     showExportModal,
     exportFormats,
+    exportErrorLists,
     exportScope,
     exportBatch,
     selectedUserId,
@@ -533,6 +575,7 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     handleFormatChange,
     handleScopeChange,
     handleBatchChange,
+    handleErrorListChange,
     openExportModal,
     closeExportModal,
     handleExport,

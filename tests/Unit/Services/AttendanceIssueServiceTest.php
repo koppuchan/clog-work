@@ -405,4 +405,87 @@ class AttendanceIssueServiceTest extends TestCase
 
         $this->assertSame([], $issues);
     }
+
+    /**
+     * @test
+     *
+     * 出勤を打刻し忘れると退勤も打刻できず、打刻データにも勤務実績にも何も残らない。
+     * シフトがあるのに何も無い日は、打刻漏れの疑いとして検出する。
+     */
+    public function シフトがあるのに打刻も勤務実績もない日を検出する(): void
+    {
+        $issues = $this->service->detectNoStampOnShiftDay(['2026-09-08'], collect(), collect(), self::TODAY);
+
+        $this->assertSame(
+            ['2026-09-08' => [AttendanceIssueService::NO_STAMP_ON_SHIFT_DAY]],
+            $issues,
+        );
+    }
+
+    /**
+     * @test
+     */
+    public function 出勤の打刻があれば検出しない(): void
+    {
+        $issues = $this->service->detectNoStampOnShiftDay(
+            ['2026-09-08'],
+            collect([$this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-08 09:00:00')]),
+            collect(),
+            self::TODAY,
+        );
+
+        $this->assertSame([], $issues);
+    }
+
+    /**
+     * @test
+     *
+     * 有給・欠勤などの休暇や手動入力は、打刻が無くても勤務実績として扱われている。
+     */
+    public function 勤務実績があれば打刻が無くても検出しない(): void
+    {
+        $issues = $this->service->detectNoStampOnShiftDay(
+            ['2026-09-08'],
+            collect(),
+            collect([['work_date' => '2026-09-08', 'work_start' => null, 'work_end' => null]]),
+            self::TODAY,
+        );
+
+        $this->assertSame([], $issues);
+    }
+
+    /**
+     * @test
+     *
+     * 前夜の夜勤の退勤は、その日の出勤ではない。
+     */
+    public function 前夜の退勤の打刻だけでは出勤したことにならない(): void
+    {
+        $issues = $this->service->detectNoStampOnShiftDay(
+            ['2026-09-09'],
+            collect([$this->timeRecord(TimeRecordTypeEnum::WORK_END_NEXT_DAY, '2026-09-09 07:00:00')]),
+            collect(),
+            self::TODAY,
+        );
+
+        $this->assertSame(
+            ['2026-09-09' => [AttendanceIssueService::NO_STAMP_ON_SHIFT_DAY]],
+            $issues,
+        );
+    }
+
+    /**
+     * @test
+     */
+    public function シフトの当日と未来日は検出しない(): void
+    {
+        $issues = $this->service->detectNoStampOnShiftDay(
+            [self::TODAY, '2026-09-11'],
+            collect(),
+            collect(),
+            self::TODAY,
+        );
+
+        $this->assertSame([], $issues);
+    }
 }

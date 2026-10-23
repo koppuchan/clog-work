@@ -1,14 +1,18 @@
+import type { ExportErrorLists } from '@/types/reports';
+
 export type ExportScope = 'single' | 'all';
 
 interface ReportExportModalProps {
   isOpen: boolean;
   exportFormats: { csv: boolean; excel: boolean };
+  exportErrorLists: ExportErrorLists;
   exportScope: ExportScope;
   exportBatch: number | null;
   selectedUserName: string;
   userCount: number;
   batchSize: number;
   onFormatChange: (format: 'csv' | 'excel', checked: boolean) => void;
+  onErrorListChange: (list: keyof ExportErrorLists, checked: boolean) => void;
   onScopeChange: (scope: ExportScope) => void;
   onBatchChange: (batch: number | null) => void;
   onExport: () => void;
@@ -21,12 +25,14 @@ interface ReportExportModalProps {
 export default function ReportExportModal({
   isOpen,
   exportFormats,
+  exportErrorLists,
   exportScope,
   exportBatch,
   selectedUserName,
   userCount,
   batchSize,
   onFormatChange,
+  onErrorListChange,
   onScopeChange,
   onBatchChange,
   onExport,
@@ -136,6 +142,41 @@ export default function ReportExportModal({
               <span className="text-sm text-gray-700">Excel形式</span>
             </label>
           </div>
+        </div>
+
+        <div className="mb-6">
+          <p className="text-sm font-medium text-gray-700 mb-2">エラーリスト（Excel形式）</p>
+          <div className="space-y-2">
+            <label className="flex items-start space-x-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={exportErrorLists.noBreak}
+                onChange={(e) => onErrorListChange('noBreak', e.target.checked)}
+                className="mt-0.5 w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+              />
+              <span className="text-sm text-gray-700">
+                休憩入力無しリスト
+                <span className="block text-xs text-gray-500">出勤・退勤があるのに、休憩が0分の日</span>
+              </span>
+            </label>
+            <label className="flex items-start space-x-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={exportErrorLists.missingStamp}
+                onChange={(e) => onErrorListChange('missingStamp', e.target.checked)}
+                className="mt-0.5 w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+              />
+              <span className="text-sm text-gray-700">
+                打刻漏れリスト
+                <span className="block text-xs text-gray-500">
+                  退勤・休憩終了の打刻がない日、シフトがあるのに出勤の打刻がない日（当日分を除く）
+                </span>
+              </span>
+            </label>
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            上の出力対象・期間の設定がそのまま使われます。選んだリストは、1つのExcelファイルにシートを分けて出力します。
+          </p>
         </div>
 
         <div className="flex space-x-3">

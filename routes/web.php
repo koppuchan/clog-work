@@ -90,6 +90,7 @@ Route::middleware(['auth:admin', 'verified', 'admin_or_manager'])->prefix('admin
     Route::get('/reports', [WorkSummaryController::class, 'index'])->name('reports');
     Route::get('/reports/export/csv', [WorkSummaryController::class, 'exportCsv'])->name('reports.export.csv');
     Route::get('/reports/export/excel', [WorkSummaryController::class, 'exportExcel'])->name('reports.export.excel');
+    Route::get('/reports/export/errors', [WorkSummaryController::class, 'exportErrorList'])->name('reports.export.errors');
     Route::post('/reports', [WorkSummaryController::class, 'store'])->name('reports.store');
     Route::put('/reports/{id}', [WorkSummaryController::class, 'update'])->name('reports.update');
     Route::delete('/reports/{id}', [WorkSummaryController::class, 'destroy'])->name('reports.destroy');

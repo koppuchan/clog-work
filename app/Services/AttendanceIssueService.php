@@ -31,12 +31,14 @@ class AttendanceIssueService
     public const MISSING_BREAK_END = 'missing_break_end';
 
     /**
-     * シフトがあるのに、出勤の打刻も休暇などの勤務実績もない
-     *
-     * 出勤を打刻し忘れると、退勤も打刻できない（出勤していない扱いになる）ため、
-     * 打刻データにも勤務実績にも何も残らず、他の検出では見つからない。
+     * 出勤打刻がない（退勤の打刻だけがある）
      */
-    public const NO_STAMP_ON_SHIFT_DAY = 'no_stamp_on_shift_day';
+    public const MISSING_CLOCK_IN = 'missing_clock_in';
+
+    /**
+     * 休憩開始打刻がない（休憩終了の打刻だけがある）
+     */
+    public const MISSING_BREAK_START = 'missing_break_start';
 
     /**
      * 勤務実績（集計済みDailyWorkSummary）から、未集計の日を返す
@@ -268,47 +270,71 @@ class AttendanceIssueService
     }
 
     /**
-     * シフトがあるのに出勤の打刻がなく、勤務実績もない日を検出する
+     * 出勤打刻がない日（退勤の打刻だけがある日）を検出する
      *
-     * 勤務実績がある日（打刻の集計結果のほか、有給・欠勤などの休暇や手動入力）は、
-     * すでに何らかの形で扱われているため対象外とする。当日は、これから出勤する
-     * 可能性があるため対象外とする。
+     * 出勤・退勤の打刻を時系列順に走査し、「開いている出勤がないのに現れた退勤」を
+     * 見つける。日付をまたぐ夜勤の退勤は、前日の出勤と対応するため誤検出しない
+     * （そのため、対象期間の前日の打刻まで渡すこと）。
      *
-     * @param  array<int, string>  $shiftDates  シフトのある日（Y-m-d）
      * @param  Collection<int, \App\Models\TimeRecord>  $timeRecords  打刻データ
-     * @param  Collection<int, array<string, mixed>>|Collection<int, object>  $summaries  勤務実績
-     * @param  string|null  $today  当日（Y-m-d）。省略時は現在日
-     * @return array<string, array<int, string>> 日付をキーとした状態の一覧
+     * @return array<string, array<int, string>> 日付（退勤の日）をキーとした状態の一覧
      */
-    public function detectNoStampOnShiftDay(array $shiftDates, Collection $timeRecords, Collection $summaries, ?string $today = null): array
+    public function detectMissingClockIn(Collection $timeRecords): array
     {
-        $today ??= CarbonImmutable::now()->format('Y-m-d');
         $issues = [];
+        $isWorking = false;
 
-        $stampedDates = [];
-        foreach ($timeRecords as $record) {
+        $workRecords = $timeRecords
+            ->filter(fn ($record) => $record->record_type->isWorkStart() || $record->record_type->isWorkEnd())
+            ->sortBy(fn ($record) => $record->record_time->getTimestamp())
+            ->values();
+
+        foreach ($workRecords as $record) {
             if ($record->record_type->isWorkStart()) {
-                $stampedDates[$record->record_time->format('Y-m-d')] = true;
-            }
-        }
+                $isWorking = true;
 
-        $summaryDates = [];
-        foreach ($summaries as $summary) {
-            $date = $this->value($summary, 'work_date');
-            if (is_string($date) && $date !== '') {
-                $summaryDates[substr($date, 0, 10)] = true;
-            }
-        }
-
-        $dates = array_unique($shiftDates);
-        sort($dates);
-
-        foreach ($dates as $date) {
-            if ($date >= $today || isset($stampedDates[$date]) || isset($summaryDates[$date])) {
                 continue;
             }
 
-            $issues[$date] = [self::NO_STAMP_ON_SHIFT_DAY];
+            if (! $isWorking) {
+                $issues[$record->record_time->format('Y-m-d')] = [self::MISSING_CLOCK_IN];
+            }
+            $isWorking = false;
+        }
+
+        return $issues;
+    }
+
+    /**
+     * 休憩開始打刻がない日（休憩終了の打刻だけがある日）を検出する
+     *
+     * detectMissingBreakEnd()の逆。休憩の打刻を時系列順に走査し、開いている休憩開始が
+     * ないのに現れた休憩終了を見つける。
+     *
+     * @param  Collection<int, \App\Models\TimeRecord>  $timeRecords  打刻データ
+     * @return array<string, array<int, string>> 日付（休憩終了の日）をキーとした状態の一覧
+     */
+    public function detectMissingBreakStart(Collection $timeRecords): array
+    {
+        $issues = [];
+        $isOnBreak = false;
+
+        $breakRecords = $timeRecords
+            ->filter(fn ($record) => $record->record_type->isBreak())
+            ->sortBy(fn ($record) => $record->record_time->getTimestamp())
+            ->values();
+
+        foreach ($breakRecords as $record) {
+            if ($record->record_type->isBreakStart()) {
+                $isOnBreak = true;
+
+                continue;
+            }
+
+            if (! $isOnBreak) {
+                $issues[$record->record_time->format('Y-m-d')] = [self::MISSING_BREAK_START];
+            }
+            $isOnBreak = false;
         }
 
         return $issues;

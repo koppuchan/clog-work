@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Tests\Feature\Controllers\Admin;
 
 use App\Enums\RecordSourceEnum;
+use App\Enums\TimeRecordTypeEnum;
 use App\Models\Company;
 use App\Models\DailyWorkSummary;
+use App\Models\TimeRecord;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Testing\TestResponse;
@@ -123,6 +125,65 @@ class ExportErrorListTest extends TestCase
         $sheet = $this->load($this->exportErrors(['scope' => 'all', 'lists' => ['missing_stamp']]))->getSheetByName('打刻漏れリスト');
 
         $this->assertSame('該当はありません。', $sheet->getCell('A5')->getValue());
+    }
+
+    /**
+     * @test
+     *
+     * クライアント回答: 打刻漏れリストの出力は、出勤時刻と退勤時刻を備考欄ではなく列として表示する。
+     */
+    public function 打刻漏れリストは出勤時刻と退勤時刻が列になる(): void
+    {
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->first->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => '2025-01-06 09:00:00',
+            'rounded_time' => '2025-01-06 09:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $sheet = $this->load($this->exportErrors(['scope' => 'all', 'lists' => ['missing_stamp']]))->getSheetByName('打刻漏れリスト');
+
+        $this->assertSame(
+            ['従業員コード', '氏名', '日付', '曜日', '出勤時刻', '退勤時刻', '内容', 'その日の打刻'],
+            array_map(fn (string $column) => $sheet->getCell($column.'4')->getValue(), ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'])
+        );
+        $this->assertSame('一郎', $sheet->getCell('B5')->getValue());
+        $this->assertSame('2025-01-06', $sheet->getCell('C5')->getValue());
+        $this->assertSame('09:00', $sheet->getCell('E5')->getValue());
+        $this->assertSame('', (string) $sheet->getCell('F5')->getValue());
+        $this->assertSame('退勤の打刻なし', $sheet->getCell('G5')->getValue());
+        $this->assertSame('勤務開始 09:00', $sheet->getCell('H5')->getValue());
+    }
+
+    /**
+     * @test
+     *
+     * クライアント回答: 休憩入力無しリストは、労働時間を条件指定して絞り込めるようにする。
+     */
+    public function 休憩入力無しリストは労働時間の下限を指定して出力できる(): void
+    {
+        // 勤務実績は2人とも9時間（540分）。下限はちょうど9時間なら載り、それを超えると載らない
+        $atLimit = $this->load($this->exportErrors(['scope' => 'all', 'lists' => ['no_break'], 'min_work_minutes' => 540]))
+            ->getSheetByName('休憩入力無しリスト');
+        $this->assertStringContainsString('2件', $atLimit->getCell('A1')->getValue());
+        $this->assertStringContainsString('条件：労働時間9:00以上', $atLimit->getCell('A1')->getValue());
+
+        $overLimit = $this->load($this->exportErrors(['scope' => 'all', 'lists' => ['no_break'], 'min_work_minutes' => 541]))
+            ->getSheetByName('休憩入力無しリスト');
+        $this->assertStringContainsString('0件', $overLimit->getCell('A1')->getValue());
+        $this->assertSame('該当はありません。', $overLimit->getCell('A5')->getValue());
+    }
+
+    /**
+     * @test
+     */
+    public function 労働時間の条件が不正だと出力できない(): void
+    {
+        $this->exportErrors(['scope' => 'all', 'lists' => ['no_break'], 'min_work_minutes' => 'abc'])->assertSessionHasErrors('min_work_minutes');
+        $this->exportErrors(['scope' => 'all', 'lists' => ['no_break'], 'min_work_minutes' => -1])->assertSessionHasErrors('min_work_minutes');
+        $this->exportErrors(['scope' => 'all', 'lists' => ['no_break'], 'min_work_minutes' => 1441])->assertSessionHasErrors('min_work_minutes');
     }
 
     /**

@@ -39,6 +39,7 @@ class ExportErrorListRequest extends FormRequest
             'scope' => ['nullable', Rule::in(['single', 'all'])],
             'user_id' => ['nullable', 'integer'],
             'batch' => ['nullable', 'integer', 'min:1'],
+            'min_work_minutes' => ['nullable', 'integer', 'min:0', 'max:1440'],
         ];
     }
 
@@ -59,6 +60,9 @@ class ExportErrorListRequest extends FormRequest
             'end_date.date_format' => '終了日は YYYY-MM-DD 形式で入力してください。',
             'end_date.after_or_equal' => '終了日は開始日以降の日付を指定してください。',
             'scope.in' => '出力対象の指定が正しくありません。',
+            'min_work_minutes.integer' => '労働時間の条件は、分で指定してください。',
+            'min_work_minutes.min' => '労働時間の条件は、0以上で指定してください。',
+            'min_work_minutes.max' => '労働時間の条件は、24時間以内で指定してください。',
         ];
     }
 }

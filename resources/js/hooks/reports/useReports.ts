@@ -42,6 +42,8 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     noBreak: false,
     missingStamp: false,
   });
+  // 休憩入力無しリストに載せる労働時間の下限（時間・以上）。空欄なら全ての日
+  const [errorListMinHours, setErrorListMinHours] = useState('');
   const [exportScope, setExportScope] = useState<ExportScope>('single');
   // 全員一括のときは null。バッチ番号を選ぶと1始まりでその区切りだけを出力する
   const [exportBatch, setExportBatch] = useState<number | null>(null);
@@ -222,6 +224,7 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     setShowExportModal(false);
     setExportFormats({ csv: false, excel: false });
     setExportErrorLists({ noBreak: false, missingStamp: false });
+    setErrorListMinHours('');
     setExportScope('single');
     setExportBatch(null);
   }, []);
@@ -270,6 +273,10 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     });
     if (exportErrorLists.noBreak) {
       params.append('lists[]', 'no_break');
+      const minHours = Number(errorListMinHours);
+      if (errorListMinHours.trim() !== '' && Number.isFinite(minHours) && minHours > 0) {
+        params.append('min_work_minutes', String(Math.round(minHours * 60)));
+      }
     }
     if (exportErrorLists.missingStamp) {
       params.append('lists[]', 'missing_stamp');
@@ -280,7 +287,7 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     frame.src = `/admin/reports/export/errors?${params.toString()}`;
     document.body.appendChild(frame);
     window.setTimeout(() => frame.remove(), 5 * 60 * 1000);
-  }, [filters.start_date, filters.end_date, selectedUserId, exportScope, exportBatch, exportErrorLists]);
+  }, [filters.start_date, filters.end_date, selectedUserId, exportScope, exportBatch, exportErrorLists, errorListMinHours]);
 
   const handleExport = useCallback(() => {
     const hasErrorList = exportErrorLists.noBreak || exportErrorLists.missingStamp;
@@ -558,6 +565,7 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     showExportModal,
     exportFormats,
     exportErrorLists,
+    errorListMinHours,
     exportScope,
     exportBatch,
     selectedUserId,
@@ -576,6 +584,7 @@ export function useReports({ users, workSummaries, timeRecords, approvedRequests
     handleScopeChange,
     handleBatchChange,
     handleErrorListChange,
+    setErrorListMinHours,
     openExportModal,
     closeExportModal,
     handleExport,

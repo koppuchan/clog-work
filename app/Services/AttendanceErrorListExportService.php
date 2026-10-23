@@ -52,14 +52,16 @@ class AttendanceErrorListExportService
         AttendanceErrorListService::LIST_MISSING_STAMP => [
             'sheet' => '打刻漏れリスト',
             'title' => '打刻漏れリスト',
-            'note' => '退勤・休憩終了の打刻がない日と、シフトがあるのに出勤の打刻も休暇などの勤務実績もない日です。当日分は含みません。勤務実績の画面から、打刻の追加・修正をしてください。',
+            'note' => '出勤・退勤・休憩のどちらか片方の打刻しかない日です。出勤も退勤も打刻がない日は、欠勤とみなして載せません。当日分は含みません。勤務実績の画面から、打刻の追加・修正をしてください。',
             'columns' => [
                 'employee_code' => ['label' => '従業員コード', 'width' => 14],
                 'name' => ['label' => '氏名', 'width' => 18],
                 'date' => ['label' => '日付', 'width' => 13],
                 'weekday' => ['label' => '曜日', 'width' => 6],
-                'issue' => ['label' => '内容', 'width' => 34],
-                'stamps' => ['label' => 'その日の打刻', 'width' => 60],
+                'clock_in' => ['label' => '出勤時刻', 'width' => 11],
+                'clock_out' => ['label' => '退勤時刻', 'width' => 11],
+                'issue' => ['label' => '内容', 'width' => 28],
+                'stamps' => ['label' => 'その日の打刻', 'width' => 56],
             ],
         ],
     ];
@@ -68,9 +70,10 @@ class AttendanceErrorListExportService
      * エラーリストをExcelファイルとして生成する
      *
      * @param  array<string, array<int, array<string, mixed>>>  $lists  AttendanceErrorListService::build() の結果
+     * @param  int|null  $minWorkMinutes  休憩入力無しリストに指定した労働時間の下限（分）。見出しに条件として書く
      * @return string 一時ファイルのパス（ダウンロード後に削除すること）
      */
-    public function generate(array $lists, string $startDate, string $endDate): string
+    public function generate(array $lists, string $startDate, string $endDate, ?int $minWorkMinutes = null): string
     {
         $spreadsheet = new Spreadsheet;
         $spreadsheet->removeSheetByIndex(0);
@@ -83,7 +86,10 @@ class AttendanceErrorListExportService
             }
 
             $sheet = $spreadsheet->createSheet();
-            $this->fillSheet($sheet, $definition, $lists[$key], $period);
+            $condition = $key === AttendanceErrorListService::LIST_NO_BREAK && $minWorkMinutes !== null && $minWorkMinutes > 0
+                ? '労働時間'.$this->formatMinutes($minWorkMinutes).'以上'
+                : null;
+            $this->fillSheet($sheet, $definition, $lists[$key], $period, $condition);
         }
 
         $spreadsheet->setActiveSheetIndex(0);
@@ -95,13 +101,19 @@ class AttendanceErrorListExportService
      * @param  array{sheet: string, title: string, note: string, columns: array<string, array{label: string, width: int}>}  $definition
      * @param  array<int, array<string, mixed>>  $rows
      */
-    private function fillSheet(Worksheet $sheet, array $definition, array $rows, string $period): void
+    private function fillSheet(Worksheet $sheet, array $definition, array $rows, string $period, ?string $condition): void
     {
         $sheet->setTitle($definition['sheet']);
         $columnKeys = array_keys($definition['columns']);
         $lastColumn = chr(ord('A') + count($columnKeys) - 1);
 
-        $sheet->setCellValue('A'.self::TITLE_ROW, sprintf('%s（%s）／%d件', $definition['title'], $period, count($rows)));
+        $sheet->setCellValue('A'.self::TITLE_ROW, sprintf(
+            '%s（%s）%s／%d件',
+            $definition['title'],
+            $period,
+            $condition !== null ? '／条件：'.$condition : '',
+            count($rows)
+        ));
         $sheet->getStyle('A'.self::TITLE_ROW)->getFont()->setBold(true)->setSize(13);
         $sheet->setCellValue('A'.self::NOTE_ROW, $definition['note']);
         $sheet->mergeCells('A'.self::NOTE_ROW.':'.$lastColumn.self::NOTE_ROW);

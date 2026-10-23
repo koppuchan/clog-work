@@ -6,6 +6,7 @@ interface ReportExportModalProps {
   isOpen: boolean;
   exportFormats: { csv: boolean; excel: boolean };
   exportErrorLists: ExportErrorLists;
+  errorListMinHours: string;
   exportScope: ExportScope;
   exportBatch: number | null;
   selectedUserName: string;
@@ -13,6 +14,7 @@ interface ReportExportModalProps {
   batchSize: number;
   onFormatChange: (format: 'csv' | 'excel', checked: boolean) => void;
   onErrorListChange: (list: keyof ExportErrorLists, checked: boolean) => void;
+  onErrorListMinHoursChange: (hours: string) => void;
   onScopeChange: (scope: ExportScope) => void;
   onBatchChange: (batch: number | null) => void;
   onExport: () => void;
@@ -26,6 +28,7 @@ export default function ReportExportModal({
   isOpen,
   exportFormats,
   exportErrorLists,
+  errorListMinHours,
   exportScope,
   exportBatch,
   selectedUserName,
@@ -33,6 +36,7 @@ export default function ReportExportModal({
   batchSize,
   onFormatChange,
   onErrorListChange,
+  onErrorListMinHoursChange,
   onScopeChange,
   onBatchChange,
   onExport,
@@ -159,6 +163,25 @@ export default function ReportExportModal({
                 <span className="block text-xs text-gray-500">出勤・退勤があるのに、休憩が0分の日</span>
               </span>
             </label>
+            {exportErrorLists.noBreak && (
+              <div className="ml-7 flex items-center space-x-2 text-sm text-gray-700">
+                <span>労働時間が</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="24"
+                  step="0.5"
+                  inputMode="decimal"
+                  value={errorListMinHours}
+                  onChange={(e) => onErrorListMinHoursChange(e.target.value)}
+                  placeholder="例: 6"
+                  aria-label="労働時間の下限（時間）"
+                  className="w-20 px-2 py-1 border border-gray-300 rounded-md text-sm focus:ring-green-500 focus:border-green-500"
+                />
+                <span>時間以上の日だけ</span>
+                <span className="text-xs text-gray-500">（空欄はすべての日）</span>
+              </div>
+            )}
             <label className="flex items-start space-x-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -169,7 +192,7 @@ export default function ReportExportModal({
               <span className="text-sm text-gray-700">
                 打刻漏れリスト
                 <span className="block text-xs text-gray-500">
-                  退勤・休憩終了の打刻がない日、シフトがあるのに出勤の打刻がない日（当日分を除く）
+                  出勤・退勤・休憩のどちらか片方の打刻しかない日（出勤も退勤もない日は欠勤とみなして除く。当日分を除く）
                 </span>
               </span>
             </label>

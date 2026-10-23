@@ -409,15 +409,17 @@ class AttendanceIssueServiceTest extends TestCase
     /**
      * @test
      *
-     * 出勤を打刻し忘れると退勤も打刻できず、打刻データにも勤務実績にも何も残らない。
-     * シフトがあるのに何も無い日は、打刻漏れの疑いとして検出する。
+     * クライアント回答: 打刻間違いは、出勤もしくは退勤が無い日（休憩が片方）。
+     * 退勤の打刻だけがある日は「出勤の打刻なし」として検出する。
      */
-    public function シフトがあるのに打刻も勤務実績もない日を検出する(): void
+    public function 退勤の打刻だけがある日を出勤の打刻なしとして検出する(): void
     {
-        $issues = $this->service->detectNoStampOnShiftDay(['2026-09-08'], collect(), collect(), self::TODAY);
+        $issues = $this->service->detectMissingClockIn(collect([
+            $this->timeRecord(TimeRecordTypeEnum::WORK_END, '2026-09-08 18:00:00'),
+        ]));
 
         $this->assertSame(
-            ['2026-09-08' => [AttendanceIssueService::NO_STAMP_ON_SHIFT_DAY]],
+            ['2026-09-08' => [AttendanceIssueService::MISSING_CLOCK_IN]],
             $issues,
         );
     }
@@ -425,14 +427,14 @@ class AttendanceIssueServiceTest extends TestCase
     /**
      * @test
      */
-    public function 出勤の打刻があれば検出しない(): void
+    public function 出勤と退勤が揃っていれば出勤の打刻なしは検出しない(): void
     {
-        $issues = $this->service->detectNoStampOnShiftDay(
-            ['2026-09-08'],
-            collect([$this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-08 09:00:00')]),
-            collect(),
-            self::TODAY,
-        );
+        $issues = $this->service->detectMissingClockIn(collect([
+            $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-08 09:00:00'),
+            $this->timeRecord(TimeRecordTypeEnum::WORK_END, '2026-09-08 18:00:00'),
+            $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-09 09:00:00'),
+            $this->timeRecord(TimeRecordTypeEnum::WORK_END, '2026-09-09 18:00:00'),
+        ]));
 
         $this->assertSame([], $issues);
     }
@@ -440,16 +442,14 @@ class AttendanceIssueServiceTest extends TestCase
     /**
      * @test
      *
-     * 有給・欠勤などの休暇や手動入力は、打刻が無くても勤務実績として扱われている。
+     * 夜勤の退勤は日付が変わった側に打刻されるが、前日の出勤と対応しているため検出しない。
      */
-    public function 勤務実績があれば打刻が無くても検出しない(): void
+    public function 日付越えの退勤は前日の出勤と対応するため検出しない(): void
     {
-        $issues = $this->service->detectNoStampOnShiftDay(
-            ['2026-09-08'],
-            collect(),
-            collect([['work_date' => '2026-09-08', 'work_start' => null, 'work_end' => null]]),
-            self::TODAY,
-        );
+        $issues = $this->service->detectMissingClockIn(collect([
+            $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-08 22:00:00'),
+            $this->timeRecord(TimeRecordTypeEnum::WORK_END_NEXT_DAY, '2026-09-09 06:00:00'),
+        ]));
 
         $this->assertSame([], $issues);
     }
@@ -457,19 +457,19 @@ class AttendanceIssueServiceTest extends TestCase
     /**
      * @test
      *
-     * 前夜の夜勤の退勤は、その日の出勤ではない。
+     * 出勤の後の退勤だけを対応させる。前日の退勤忘れの後に、翌日の退勤だけがある場合は、
+     * 翌日側を「出勤の打刻なし」として検出する。
      */
-    public function 前夜の退勤の打刻だけでは出勤したことにならない(): void
+    public function 前日の出勤の後に退勤だけの日が続けば検出する(): void
     {
-        $issues = $this->service->detectNoStampOnShiftDay(
-            ['2026-09-09'],
-            collect([$this->timeRecord(TimeRecordTypeEnum::WORK_END_NEXT_DAY, '2026-09-09 07:00:00')]),
-            collect(),
-            self::TODAY,
-        );
+        $issues = $this->service->detectMissingClockIn(collect([
+            $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-07 09:00:00'),
+            $this->timeRecord(TimeRecordTypeEnum::WORK_END, '2026-09-07 18:00:00'),
+            $this->timeRecord(TimeRecordTypeEnum::WORK_END, '2026-09-08 18:00:00'),
+        ]));
 
         $this->assertSame(
-            ['2026-09-09' => [AttendanceIssueService::NO_STAMP_ON_SHIFT_DAY]],
+            ['2026-09-08' => [AttendanceIssueService::MISSING_CLOCK_IN]],
             $issues,
         );
     }
@@ -477,14 +477,27 @@ class AttendanceIssueServiceTest extends TestCase
     /**
      * @test
      */
-    public function シフトの当日と未来日は検出しない(): void
+    public function 休憩終了の打刻だけがある日を休憩開始の打刻なしとして検出する(): void
     {
-        $issues = $this->service->detectNoStampOnShiftDay(
-            [self::TODAY, '2026-09-11'],
-            collect(),
-            collect(),
-            self::TODAY,
+        $issues = $this->service->detectMissingBreakStart(collect([
+            $this->timeRecord(TimeRecordTypeEnum::BREAK_END, '2026-09-08 13:00:00'),
+        ]));
+
+        $this->assertSame(
+            ['2026-09-08' => [AttendanceIssueService::MISSING_BREAK_START]],
+            $issues,
         );
+    }
+
+    /**
+     * @test
+     */
+    public function 休憩開始と終了が揃っていれば休憩開始の打刻なしは検出しない(): void
+    {
+        $issues = $this->service->detectMissingBreakStart(collect([
+            $this->timeRecord(TimeRecordTypeEnum::BREAK_START, '2026-09-08 20:53:00'),
+            $this->timeRecord(TimeRecordTypeEnum::BREAK_END, '2026-09-09 00:05:00'),
+        ]));
 
         $this->assertSame([], $issues);
     }

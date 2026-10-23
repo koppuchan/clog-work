@@ -479,6 +479,7 @@ class WorkSummaryController extends Controller
      * 勤務実績のエラーリスト（休憩入力無し・打刻漏れ）をExcelでエクスポート
      *
      * 出力対象（選択中のスタッフ／全従業員、バッチ）と期間は、勤務実績の出力と同じ指定を使う。
+     * 休憩入力無しリストは、労働時間の下限（min_work_minutes、分・以上）で絞り込める。
      */
     public function exportErrorList(ExportErrorListRequest $request): BinaryFileResponse
     {
@@ -509,15 +510,19 @@ class WorkSummaryController extends Controller
             $targetLabel = $targetUsers->first()->name;
         }
 
+        // 休憩入力無しリストに載せる労働時間の下限（分）。指定が無ければ全ての日
+        $minWorkMinutes = isset($validated['min_work_minutes']) ? (int) $validated['min_work_minutes'] : null;
+
         $lists = $this->attendanceErrorListService->build(
             $companyId,
             $targetUsers,
             $startDate,
             $endDate,
-            array_values(array_unique($validated['lists']))
+            array_values(array_unique($validated['lists'])),
+            minWorkMinutes: $minWorkMinutes
         );
 
-        $filePath = $this->attendanceErrorListExportService->generate($lists, $startDate, $endDate);
+        $filePath = $this->attendanceErrorListExportService->generate($lists, $startDate, $endDate, $minWorkMinutes);
 
         return response()->download($filePath, sprintf('エラーリスト_%s_%s.xlsx', $targetLabel, $periodLabel), [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

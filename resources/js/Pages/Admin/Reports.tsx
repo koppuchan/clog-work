@@ -102,6 +102,7 @@ function ReportsPage() {
     showExportModal,
     exportFormats,
     exportErrorLists,
+    errorListMinHours,
     exportScope,
     exportBatch,
     selectedUserId,
@@ -110,6 +111,7 @@ function ReportsPage() {
     handleUserChange,
     handleFormatChange,
     handleErrorListChange,
+    setErrorListMinHours,
     handleScopeChange,
     handleBatchChange,
     openExportModal,
@@ -494,6 +496,7 @@ function ReportsPage() {
         isOpen={showExportModal}
         exportFormats={exportFormats}
         exportErrorLists={exportErrorLists}
+        errorListMinHours={errorListMinHours}
         exportScope={exportScope}
         exportBatch={exportBatch}
         selectedUserName={selectedUserName}
@@ -501,6 +504,7 @@ function ReportsPage() {
         batchSize={exportBatchSize ?? 10}
         onFormatChange={handleFormatChange}
         onErrorListChange={handleErrorListChange}
+        onErrorListMinHoursChange={setErrorListMinHours}
         onScopeChange={handleScopeChange}
         onBatchChange={handleBatchChange}
         onExport={handleExport}

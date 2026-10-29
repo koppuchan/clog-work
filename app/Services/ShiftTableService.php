@@ -45,11 +45,12 @@ class ShiftTableService
      * シフト表のデータを作る
      *
      * @param  array<int, int>  $viewableUserIds  閲覧できるスタッフのID（権限の範囲）
-     * @param  int|null  $departmentId  指定すると、その部署（主所属）のスタッフだけにする
+     * @param  array<int, int>  $departmentIds  指定すると、それらの部署（主所属）のスタッフだけにする。空なら全部署（未所属も含む）
      * @return array{
      *     start_date: string,
      *     end_date: string,
      *     department_name: string|null,
+     *     department_names: array<int, string>,
      *     days: array<int, array{date: string, month: int, day: int, weekday: string, tone: string, holiday_name: string|null}>,
      *     groups: array<int, array{
      *         department_id: int|null,
@@ -61,7 +62,7 @@ class ShiftTableService
      *     patterns: array<int, array{name: string, start_time: string|null, end_time: string|null, background: string, text: string}>
      * }
      */
-    public function build(int $companyId, array $viewableUserIds, string $startDate, string $endDate, ?int $departmentId = null): array
+    public function build(int $companyId, array $viewableUserIds, string $startDate, string $endDate, array $departmentIds = []): array
     {
         $departments = $this->departmentService->findByCompanyId($companyId)->pluck('name', 'id');
 
@@ -76,8 +77,8 @@ class ShiftTableService
             return $primaryId !== null && $departments->has($primaryId) ? $primaryId : 'none';
         });
 
-        if ($departmentId !== null) {
-            $usersByDepartment = $usersByDepartment->only([$departmentId]);
+        if ($departmentIds !== []) {
+            $usersByDepartment = $usersByDepartment->only($departmentIds);
         }
 
         $shiftsByUserDate = $this->shiftService
@@ -112,10 +113,16 @@ class ShiftTableService
             ];
         }
 
+        // 選んだ部署の名前（部署IDの昇順）。全部署のときは空
+        $selectedNames = $departmentIds === []
+            ? []
+            : $departments->only($departmentIds)->sortKeys()->values()->all();
+
         return [
             'start_date' => $startDate,
             'end_date' => $endDate,
-            'department_name' => $departmentId !== null ? $departments->get($departmentId) : null,
+            'department_name' => $selectedNames === [] ? null : implode('・', $selectedNames),
+            'department_names' => $selectedNames,
             'days' => $days,
             'groups' => $groups,
             'totals' => [

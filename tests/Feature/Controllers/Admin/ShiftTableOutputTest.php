@@ -158,7 +158,7 @@ class ShiftTableOutputTest extends TestCase
      */
     public function 印刷用ページは選択した部署だけのシフト表になる(): void
     {
-        $this->request('print', ['department_id' => $this->care->id])->assertInertia(fn (AssertableInertia $page) => $page
+        $this->request('print', ['department_ids' => [$this->care->id]])->assertInertia(fn (AssertableInertia $page) => $page
             ->where('table.department_name', '介護')
             ->has('table.groups', 1)
             ->where('table.groups.0.users.0.name', '田中')
@@ -232,7 +232,7 @@ class ShiftTableOutputTest extends TestCase
      */
     public function excelは選択した部署だけを出力し_全体の合計は出さない(): void
     {
-        $response = $this->request('export/excel', ['department_id' => $this->sales->id]);
+        $response = $this->request('export/excel', ['department_ids' => [$this->sales->id]]);
 
         $this->assertStringContainsString('シフト表_営業_', urldecode($response->headers->get('content-disposition') ?? ''));
 
@@ -271,8 +271,64 @@ class ShiftTableOutputTest extends TestCase
         $this->assertSame([], $this->sheetOf($this->request('export/excel'))->getRowBreaks());
 
         // 部署を選んだ出力は、指定があっても分ける相手がいない
-        $one = $this->sheetOf($this->request('export/excel', ['page_break' => 1, 'department_id' => $this->sales->id]));
+        $one = $this->sheetOf($this->request('export/excel', ['page_break' => 1, 'department_ids' => [$this->sales->id]]));
         $this->assertSame([], $one->getRowBreaks());
+    }
+
+    /**
+     * @test
+     *
+     * クライアント要望: 部署を一つだけでなく、2つ以上選択できるようにしてほしい。
+     */
+    public function 印刷ページは複数の部署を選んで出力できる(): void
+    {
+        $third = Department::factory()->forCompany($this->company->id)->create(['name' => '総務']);
+        $suzuki = User::factory()->forCompany($this->company->id)->employee()->create(['name' => '鈴木', 'employee_code' => '0003', 'is_retired' => false]);
+        $suzuki->departments()->attach($third->id, ['is_primary' => true]);
+
+        $this->request('print', ['department_ids' => [$this->care->id, $this->sales->id]])->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('table.department_name', '営業・介護')
+            ->has('table.groups', 2)
+            ->where('table.groups.0.name', '営業')
+            ->where('table.groups.1.name', '介護')
+        );
+    }
+
+    /**
+     * @test
+     */
+    public function excelは複数の部署を選ぶと_選んだ部署の合計と改ページが入る(): void
+    {
+        $third = Department::factory()->forCompany($this->company->id)->create(['name' => '総務']);
+        $suzuki = User::factory()->forCompany($this->company->id)->employee()->create(['name' => '鈴木', 'employee_code' => '0003', 'is_retired' => false]);
+        $suzuki->departments()->attach($third->id, ['is_primary' => true]);
+
+        $response = $this->request('export/excel', ['department_ids' => [$this->sales->id, $this->care->id], 'page_break' => 1]);
+
+        $this->assertStringContainsString('シフト表_営業・介護_', urldecode($response->headers->get('content-disposition') ?? ''));
+
+        $sheet = $this->sheetOf($response);
+        $this->assertSame('シフト表　2026年10月16日〜10月20日　営業・介護', $sheet->getCell('A1')->getValue());
+        $column = $this->columnA($sheet);
+        $this->assertSame(['営業', '佐藤', '営業 合計', '介護', '田中', '介護 合計', '合計'], array_slice($column, 4, 7));
+        $this->assertNotContains('鈴木', $column);
+        $this->assertSame(['A7'], array_keys($sheet->getRowBreaks()));
+    }
+
+    /**
+     * @test
+     *
+     * 選んだ部署が多いときは、ファイル名が長くなりすぎないよう、部署の数にする。
+     */
+    public function ファイル名は選んだ部署が4つ以上なら部署の数になる(): void
+    {
+        $extra = collect(['総務', '経理', '人事'])->map(fn (string $name) => Department::factory()->forCompany($this->company->id)->create(['name' => $name]));
+
+        $response = $this->request('export/excel', [
+            'department_ids' => [$this->sales->id, $this->care->id, ...$extra->pluck('id')->all()],
+        ]);
+
+        $this->assertStringContainsString('シフト表_5部署_', urldecode($response->headers->get('content-disposition') ?? ''));
     }
 
     /**
@@ -305,8 +361,9 @@ class ShiftTableOutputTest extends TestCase
     {
         $otherDepartment = Department::factory()->forCompany(Company::factory()->create()->id)->create(['name' => '他社の部署']);
 
-        $this->request('print', ['department_id' => $otherDepartment->id])->assertSessionHasErrors('department_id');
-        $this->request('export/excel', ['department_id' => 999999])->assertSessionHasErrors('department_id');
+        $this->request('print', ['department_ids' => [$this->sales->id, $otherDepartment->id]])->assertSessionHasErrors('department_ids.1');
+        $this->request('export/excel', ['department_ids' => [999999]])->assertSessionHasErrors('department_ids.0');
+        $this->request('print', ['department_ids' => 'abc'])->assertSessionHasErrors('department_ids');
         $this->request('print', ['start_date' => '2026-10-20', 'end_date' => '2026-10-16'])->assertSessionHasErrors('end_date');
         $this->request('print', ['start_date' => '2026-01-01', 'end_date' => '2026-12-31'])->assertSessionHasErrors('end_date');
         $this->request('print', ['start_date' => 'abc'])->assertSessionHasErrors('start_date');

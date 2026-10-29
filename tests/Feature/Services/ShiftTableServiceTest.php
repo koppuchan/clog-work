@@ -137,9 +137,9 @@ class ShiftTableServiceTest extends TestCase
     /**
      * @return array<string, mixed>
      */
-    private function build(?array $viewable = null, ?int $departmentId = null): array
+    private function build(?array $viewable = null, array $departmentIds = []): array
     {
-        return $this->service->build($this->company->id, $viewable ?? $this->everyone(), self::START, self::END, $departmentId);
+        return $this->service->build($this->company->id, $viewable ?? $this->everyone(), self::START, self::END, $departmentIds);
     }
 
     /**
@@ -268,12 +268,47 @@ class ShiftTableServiceTest extends TestCase
         $this->shift($this->sato, '2026-09-19', $this->day);
         $this->shift($this->tanaka, '2026-09-19', $this->day);
 
-        $table = $this->build(departmentId: $this->care->id);
+        $table = $this->build(departmentIds: [$this->care->id]);
 
         $this->assertSame('介護', $table['department_name']);
+        $this->assertSame(['介護'], $table['department_names']);
         $this->assertSame(['介護'], array_column($table['groups'], 'name'));
         $this->assertSame(['田中'], array_column($table['groups'][0]['users'], 'name'));
         $this->assertSame(1.0, $table['totals']['counts']['2026-09-19']);
+    }
+
+    /**
+     * @test
+     *
+     * クライアント要望: 部署を一つだけでなく、2つ以上選択できるようにしてほしい。
+     */
+    public function 複数の部署を選ぶと_選んだ部署だけが部署の並び順で出力される(): void
+    {
+        $this->shift($this->sato, '2026-09-19', $this->day);
+        $this->shift($this->tanaka, '2026-09-19', $this->day);
+        $this->shift($this->noDepartment, '2026-09-19', $this->day);
+
+        // 選んだ順（介護 → 営業）ではなく、画面と同じ部署の並び（営業 → 介護）にする。未所属は含めない
+        $table = $this->build(departmentIds: [$this->care->id, $this->sales->id]);
+
+        $this->assertSame(['営業', '介護'], array_column($table['groups'], 'name'));
+        $this->assertSame('営業・介護', $table['department_name']);
+        $this->assertSame(['営業', '介護'], $table['department_names']);
+        $this->assertSame(['佐藤', '鈴木'], array_column($table['groups'][0]['users'], 'name'));
+        // 合計は、選んだ部署のスタッフだけ（営業の佐藤と介護の田中。未所属の1人は含めない）
+        $this->assertSame(2.0, $table['totals']['counts']['2026-09-19']);
+    }
+
+    /**
+     * @test
+     */
+    public function 部署を指定しなければ全部署で_未所属も含まれる(): void
+    {
+        $table = $this->build();
+
+        $this->assertNull($table['department_name']);
+        $this->assertSame([], $table['department_names']);
+        $this->assertSame(['営業', '介護', '未所属'], array_column($table['groups'], 'name'));
     }
 
     /**
@@ -307,7 +342,7 @@ class ShiftTableServiceTest extends TestCase
     {
         $empty = Department::factory()->forCompany($this->company->id)->create(['name' => '空の部署']);
 
-        $table = $this->build(departmentId: $empty->id);
+        $table = $this->build(departmentIds: [$empty->id]);
 
         $this->assertSame([], $table['groups']);
         $this->assertSame('空の部署', $table['department_name']);

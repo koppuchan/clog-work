@@ -38,12 +38,13 @@ class ShiftTableRequest extends FormRequest
         return [
             'start_date' => ['required', 'date_format:Y-m-d'],
             'end_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
-            'department_id' => [
-                'nullable',
+            // 出力する部署（複数可）。指定がなければ全部署
+            'department_ids' => ['nullable', 'array'],
+            'department_ids.*' => [
                 'integer',
                 Rule::exists('departments', 'id')->where('company_id', $this->user()?->company_id),
             ],
-            // 全部署のとき、部署ごとにページを分けるか
+            // 複数の部署を出力するとき、部署ごとにページを分けるか
             'page_break' => ['nullable', 'boolean'],
         ];
     }
@@ -82,8 +83,9 @@ class ShiftTableRequest extends FormRequest
             'end_date.required' => '終了日は必須です。',
             'end_date.date_format' => '終了日は YYYY-MM-DD 形式で入力してください。',
             'end_date.after_or_equal' => '終了日は開始日以降の日付を指定してください。',
-            'department_id.integer' => '部署の指定が正しくありません。',
-            'department_id.exists' => '指定された部署が見つかりません。',
+            'department_ids.array' => '部署の指定が正しくありません。',
+            'department_ids.*.integer' => '部署の指定が正しくありません。',
+            'department_ids.*.exists' => '指定された部署が見つかりません。',
             'page_break.boolean' => '改ページの指定が正しくありません。',
         ];
     }

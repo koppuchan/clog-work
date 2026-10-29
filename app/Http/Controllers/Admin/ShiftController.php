@@ -163,7 +163,8 @@ class ShiftController extends Controller
      * シフト表の印刷用ページを表示
      *
      * 全部署、または選択した部署のシフト表を、印刷しやすい形で表示する。
-     * 全部署のときは、page_break を指定すると部署ごとにページを分ける。
+     * 部署は複数選べる（department_ids。指定がなければ全部署）。
+     * 複数の部署があるときは、page_break を指定すると部署ごとにページを分ける。
      */
     public function print(ShiftTableRequest $request): Response
     {
@@ -177,7 +178,8 @@ class ShiftController extends Controller
      * シフト表をExcelでエクスポート
      *
      * 全部署、または選択した部署のシフト表を、1枚のシートに出力する。
-     * 全部署のときは、page_break を指定すると部署ごとに印刷のページを分ける。
+     * 部署は複数選べる（department_ids。指定がなければ全部署）。
+     * 複数の部署があるときは、page_break を指定すると部署ごとに印刷のページを分ける。
      */
     public function exportExcel(ShiftTableRequest $request): BinaryFileResponse
     {
@@ -186,7 +188,7 @@ class ShiftController extends Controller
 
         $filename = sprintf(
             'シフト表_%s_%s〜%s.xlsx',
-            $table['department_name'] ?? '全部署',
+            $this->departmentLabelForFilename($table['department_names']),
             CarbonImmutable::parse($table['start_date'])->format('Y年m月d日'),
             CarbonImmutable::parse($table['end_date'])->format('m月d日')
         );
@@ -218,8 +220,22 @@ class ShiftController extends Controller
             $accessibleUserIdsForView,
             $validated['start_date'],
             $validated['end_date'],
-            isset($validated['department_id']) ? (int) $validated['department_id'] : null
+            array_map('intval', $validated['department_ids'] ?? [])
         );
+    }
+
+    /**
+     * ファイル名に入れる部署の表記（全部署／部署名／3つまでは名前を並べ、それ以上は部署数）
+     *
+     * @param  array<int, string>  $names  選んだ部署の名前（全部署のときは空）
+     */
+    private function departmentLabelForFilename(array $names): string
+    {
+        return match (true) {
+            $names === [] => '全部署',
+            count($names) <= 3 => implode('・', $names),
+            default => count($names).'部署',
+        };
     }
 
     /**

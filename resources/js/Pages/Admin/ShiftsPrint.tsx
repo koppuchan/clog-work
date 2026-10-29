@@ -206,8 +206,10 @@ export default function ShiftsPrint({ table, pageBreak }: ShiftsPrintPageProps) 
 
   const period = periodLabel(table);
   const title = `シフト表　${period}　${table.department_name ?? '全部署'}`;
-  // 部署を選んだ出力や、部署が1つだけのときは、ページを分ける意味がない
-  const separatePages = pageBreak && table.department_name === null && table.groups.length > 1;
+  // 部署が1つだけのときは、ページを分ける意味がない
+  const separatePages = pageBreak && table.groups.length > 1;
+  // 全体の合計は、複数の部署があるときだけ出す（1つだけなら部署の合計と同じ）
+  const showTotal = table.groups.length > 1;
 
   return (
     <>
@@ -246,7 +248,7 @@ export default function ShiftsPrint({ table, pageBreak }: ShiftsPrintPageProps) 
               >
                 {/* 部署ごとに配れるよう、各ページの先頭に部署名を入れる */}
                 <h1 style={HEADING_STYLE}>{`シフト表　${period}　${group.name}`}</h1>
-                <ShiftTableBlock table={table} groups={[group]} showTotal={index === table.groups.length - 1} />
+                <ShiftTableBlock table={table} groups={[group]} showTotal={showTotal && index === table.groups.length - 1} />
                 {index === table.groups.length - 1 && <Legend table={table} />}
               </section>
             ))}
@@ -254,7 +256,7 @@ export default function ShiftsPrint({ table, pageBreak }: ShiftsPrintPageProps) 
         ) : (
           <>
             <h1 style={HEADING_STYLE}>{title}</h1>
-            <ShiftTableBlock table={table} groups={table.groups} showTotal={table.department_name === null} />
+            <ShiftTableBlock table={table} groups={table.groups} showTotal={showTotal} />
             <Legend table={table} />
           </>
         )}

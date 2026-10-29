@@ -43,7 +43,7 @@ class ShiftExcelExportService
      * シフト表をExcelファイルとして生成する
      *
      * @param  array<string, mixed>  $table  ShiftTableService::build() の結果
-     * @param  bool  $pageBreakByDepartment  全部署のとき、部署ごとに印刷のページを分ける（部署を選んだ出力では無視する）
+     * @param  bool  $pageBreakByDepartment  複数の部署があるとき、部署ごとに印刷のページを分ける（部署が1つだけなら無視する）
      * @return string 一時ファイルのパス（ダウンロード後に削除すること）
      */
     public function generate(array $table, bool $pageBreakByDepartment = false): string
@@ -60,7 +60,7 @@ class ShiftExcelExportService
         $this->writeTitle($sheet, $table, $restColumn);
         $this->writeHeader($sheet, $table['days'], $workColumn, $restColumn);
 
-        $breakByDepartment = $pageBreakByDepartment && $table['department_name'] === null;
+        $breakByDepartment = $pageBreakByDepartment && count($table['groups']) > 1;
 
         $row = self::FIRST_DATA_ROW;
         foreach ($table['groups'] as $index => $group) {
@@ -74,7 +74,8 @@ class ShiftExcelExportService
         if ($table['groups'] === []) {
             $sheet->setCellValue([self::NAME_COLUMN, $row], '対象のスタッフがいません。');
             $row++;
-        } elseif ($table['department_name'] === null) {
+        } elseif (count($table['groups']) > 1) {
+            // 複数の部署があるときだけ、全体の合計を出す（1つだけなら部署の合計と同じ）
             $row = $this->writeTotals($sheet, $table, $row, $workColumn, $restColumn);
         }
 

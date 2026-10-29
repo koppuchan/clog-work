@@ -175,13 +175,15 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
   };
 
   /**
-   * 印刷・Excel出力のURLのクエリ（表示中の期間と、選んだ部署、全部署のときの改ページ）
+   * 印刷・Excel出力のURLのクエリ（表示中の期間と、選んだ部署（複数可）、複数の部署のときの改ページ）
+   *
+   * 部署を指定しない（null）と全部署になる。
    */
-  const buildOutputQuery = (departmentId: number | null, pageBreak: boolean) => {
+  const buildOutputQuery = (departmentIds: number[] | null, pageBreak: boolean) => {
     const params = new URLSearchParams({ start_date: filters.start_date, end_date: filters.end_date });
-    if (departmentId !== null) {
-      params.set('department_id', String(departmentId));
-    } else if (pageBreak) {
+    (departmentIds ?? []).forEach((id) => params.append('department_ids[]', String(id)));
+    const departmentCount = departmentIds === null ? backendDepartments.length : departmentIds.length;
+    if (pageBreak && departmentCount > 1) {
       params.set('page_break', '1');
     }
     return params.toString();
@@ -190,8 +192,8 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
   /**
    * シフト表を印刷用ページ（新しいタブ）で開く。ページを開くと印刷ダイアログが出る
    */
-  const handlePrintShifts = (departmentId: number | null, pageBreak: boolean) => {
-    window.open(`/admin/shifts/print?${buildOutputQuery(departmentId, pageBreak)}`, '_blank');
+  const handlePrintShifts = (departmentIds: number[] | null, pageBreak: boolean) => {
+    window.open(`/admin/shifts/print?${buildOutputQuery(departmentIds, pageBreak)}`, '_blank');
     setShowOutputDialog(false);
   };
 
@@ -199,10 +201,10 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
    * シフト表をExcelでダウンロードする。
    * 編集中のページから離れず（未保存の変更を失わないよう）、非表示のiframeで取得する
    */
-  const handleExportShiftsExcel = (departmentId: number | null, pageBreak: boolean) => {
+  const handleExportShiftsExcel = (departmentIds: number[] | null, pageBreak: boolean) => {
     const frame = document.createElement('iframe');
     frame.style.display = 'none';
-    frame.src = `/admin/shifts/export/excel?${buildOutputQuery(departmentId, pageBreak)}`;
+    frame.src = `/admin/shifts/export/excel?${buildOutputQuery(departmentIds, pageBreak)}`;
     document.body.appendChild(frame);
     window.setTimeout(() => frame.remove(), 5 * 60 * 1000);
     setShowOutputDialog(false);

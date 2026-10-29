@@ -171,7 +171,9 @@ export interface ShiftTablePattern {
 export interface ShiftTable {
   start_date: string;
   end_date: string;
+  /** 選んだ部署の名前（複数のときは「・」でつなぐ）。全部署のときはnull */
   department_name: string | null;
+  department_names: string[];
   days: ShiftTableDay[];
   groups: ShiftTableGroup[];
   totals: { counts: Record<string, number>; work_days: number; rest_days: number };
@@ -180,6 +182,6 @@ export interface ShiftTable {
 
 export interface ShiftsPrintPageProps {
   table: ShiftTable;
-  /** 全部署のとき、部署ごとにページを分けるか */
+  /** 複数の部署があるとき、部署ごとにページを分けるか */
   pageBreak: boolean;
 }

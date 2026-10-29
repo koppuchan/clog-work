@@ -79,9 +79,27 @@ class ExportErrorListTest extends TestCase
         );
     }
 
+    /**
+     * 読み込んだExcelは、テスト全体（同じプロセス）のメモリを使い続けないよう、終了時に解放する
+     *
+     * @var array<int, \PhpOffice\PhpSpreadsheet\Spreadsheet>
+     */
+    private array $loaded = [];
+
+    protected function tearDown(): void
+    {
+        foreach ($this->loaded as $spreadsheet) {
+            $spreadsheet->disconnectWorksheets();
+        }
+        $this->loaded = [];
+        gc_collect_cycles();
+
+        parent::tearDown();
+    }
+
     private function load(TestResponse $response): \PhpOffice\PhpSpreadsheet\Spreadsheet
     {
-        return IOFactory::load($response->baseResponse->getFile()->getPathname());
+        return $this->loaded[] = IOFactory::load($response->baseResponse->getFile()->getPathname());
     }
 
     /**

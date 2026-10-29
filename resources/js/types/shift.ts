@@ -117,3 +117,67 @@ export interface ShiftCalendarProps {
 export interface ShiftLegendProps {
   shiftTypeInfo: ShiftTypeInfo[];
 }
+
+// シフト表の印刷・Excel出力（ShiftTableService の出力）
+export interface ShiftTableLeave {
+  label: string;
+  is_full_day: boolean;
+  deduction: number;
+  background: string;
+  text: string;
+}
+
+export interface ShiftTableCell {
+  is_work: boolean;
+  label: string;
+  background: string;
+  text: string;
+  leave: ShiftTableLeave | null;
+}
+
+export interface ShiftTableDay {
+  date: string;
+  month: number;
+  day: number;
+  weekday: string;
+  tone: 'red' | 'blue' | 'normal';
+  holiday_name: string | null;
+}
+
+export interface ShiftTableUser {
+  id: number;
+  name: string;
+  employee_code: string | null;
+  cells: Record<string, ShiftTableCell>;
+  work_days: number;
+  rest_days: number;
+}
+
+export interface ShiftTableGroup {
+  department_id: number | null;
+  name: string;
+  users: ShiftTableUser[];
+  counts: Record<string, number>;
+}
+
+export interface ShiftTablePattern {
+  name: string;
+  start_time: string | null;
+  end_time: string | null;
+  background: string;
+  text: string;
+}
+
+export interface ShiftTable {
+  start_date: string;
+  end_date: string;
+  department_name: string | null;
+  days: ShiftTableDay[];
+  groups: ShiftTableGroup[];
+  totals: { counts: Record<string, number>; work_days: number; rest_days: number };
+  patterns: ShiftTablePattern[];
+}
+
+export interface ShiftsPrintPageProps {
+  table: ShiftTable;
+}

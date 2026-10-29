@@ -7,6 +7,7 @@ import ShiftPatternDialog from '@/Components/Shift/ShiftPatternDialog';
 import BulkPatternDialog from '@/Components/Shift/BulkPatternDialog';
 import ShiftCalendar from '@/Components/Shift/ShiftCalendar';
 import ShiftLegend from '@/Components/Shift/ShiftLegend';
+import ShiftOutputDialog from '@/Components/Shift/ShiftOutputDialog';
 import MonthSelector from '@/Components/MonthSelector';
 import { useShiftStats } from '@/hooks/shift/useShiftStats';
 import { useShiftOperations } from '@/hooks/shift/useShiftOperations';
@@ -15,7 +16,7 @@ import { getActiveUsersForMonth as filterActiveUsers } from '@/utils/userFilters
 import { router } from '@inertiajs/react';
 import axios from 'axios';
 import InlineFlashMessage from '@/Components/InlineFlashMessage';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Printer } from 'lucide-react';
 import ConfirmDialog from '@/Components/ConfirmDialog';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
 import { useNavigationGuard } from '@/hooks/useNavigationGuard';
@@ -50,6 +51,7 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loadingAction, setLoadingAction] = useState<'saving' | 'applying' | null>(null);
   const [isChangingMonth, setIsChangingMonth] = useState(false);
+  const [showOutputDialog, setShowOutputDialog] = useState(false);
 
   // バックエンドデータを変換
   const initialUsers = useMemo(() => convertBackendUsers(backendUsers, backendDepartments), [backendUsers, backendDepartments]);
@@ -170,6 +172,38 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
         end: endOfMonth(baseDate)
       };
     }
+  };
+
+  /**
+   * 印刷・Excel出力のURLのクエリ（表示中の期間と、選んだ部署）
+   */
+  const buildOutputQuery = (departmentId: number | null) => {
+    const params = new URLSearchParams({ start_date: filters.start_date, end_date: filters.end_date });
+    if (departmentId !== null) {
+      params.set('department_id', String(departmentId));
+    }
+    return params.toString();
+  };
+
+  /**
+   * シフト表を印刷用ページ（新しいタブ）で開く。ページを開くと印刷ダイアログが出る
+   */
+  const handlePrintShifts = (departmentId: number | null) => {
+    window.open(`/admin/shifts/print?${buildOutputQuery(departmentId)}`, '_blank');
+    setShowOutputDialog(false);
+  };
+
+  /**
+   * シフト表をExcelでダウンロードする。
+   * 編集中のページから離れず（未保存の変更を失わないよう）、非表示のiframeで取得する
+   */
+  const handleExportShiftsExcel = (departmentId: number | null) => {
+    const frame = document.createElement('iframe');
+    frame.style.display = 'none';
+    frame.src = `/admin/shifts/export/excel?${buildOutputQuery(departmentId)}`;
+    document.body.appendChild(frame);
+    window.setTimeout(() => frame.remove(), 5 * 60 * 1000);
+    setShowOutputDialog(false);
   };
 
   /**
@@ -460,10 +494,27 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
         onCancel={() => setShowBulkPatternDialog(false)}
       />
 
+      <ShiftOutputDialog
+        isOpen={showOutputDialog}
+        periodLabel={getPeriodLabel(getCurrentPeriodMonth())}
+        departments={backendDepartments}
+        hasUnsavedChanges={isDirty}
+        onPrint={handlePrintShifts}
+        onExcel={handleExportShiftsExcel}
+        onClose={() => setShowOutputDialog(false)}
+      />
+
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">シフト管理</h1>
           <div className="flex items-center gap-2 sm:gap-4">
+            <button
+              onClick={() => setShowOutputDialog(true)}
+              className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex items-center space-x-1.5"
+            >
+              <Printer className="h-4 w-4" />
+              <span>印刷・Excel出力</span>
+            </button>
             <button
               onClick={() => setShowBulkPatternDialog(true)}
               className="bg-green-600 hover:bg-green-700 text-white px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors"

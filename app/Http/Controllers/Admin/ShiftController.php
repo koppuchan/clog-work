@@ -5,19 +5,23 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ShiftTableRequest;
 use App\Http\Requests\UpsertShiftRequest;
 use App\Services\CompanySettingService;
 use App\Services\DepartmentService;
 use App\Services\PermissionService;
+use App\Services\ShiftExcelExportService;
 use App\Services\ShiftLeaveService;
 use App\Services\ShiftPatternService;
 use App\Services\ShiftService;
+use App\Services\ShiftTableService;
 use App\Services\UserService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * 管理者向けシフト管理コントローラー
@@ -31,7 +35,9 @@ class ShiftController extends Controller
         private readonly ShiftPatternService $shiftPatternService,
         private readonly CompanySettingService $companySettingService,
         private readonly PermissionService $permissionService,
-        private readonly ShiftLeaveService $shiftLeaveService
+        private readonly ShiftLeaveService $shiftLeaveService,
+        private readonly ShiftTableService $shiftTableService,
+        private readonly ShiftExcelExportService $shiftExcelExportService
     ) {}
 
     /**
@@ -151,6 +157,66 @@ class ShiftController extends Controller
             'payrollClosingDay' => $payrollClosingDay,
             'editableUserIds' => $accessibleUserIdsForEdit,
         ]);
+    }
+
+    /**
+     * シフト表の印刷用ページを表示
+     *
+     * 全部署、または選択した部署のシフト表を、印刷しやすい形で表示する。
+     */
+    public function print(ShiftTableRequest $request): Response
+    {
+        return Inertia::render('Admin/ShiftsPrint', [
+            'table' => $this->buildShiftTable($request),
+        ]);
+    }
+
+    /**
+     * シフト表をExcelでエクスポート
+     *
+     * 全部署、または選択した部署のシフト表を、1枚のシートに出力する。
+     */
+    public function exportExcel(ShiftTableRequest $request): BinaryFileResponse
+    {
+        $table = $this->buildShiftTable($request);
+        $filePath = $this->shiftExcelExportService->generate($table);
+
+        $filename = sprintf(
+            'シフト表_%s_%s〜%s.xlsx',
+            $table['department_name'] ?? '全部署',
+            CarbonImmutable::parse($table['start_date'])->format('Y年m月d日'),
+            CarbonImmutable::parse($table['end_date'])->format('m月d日')
+        );
+
+        return response()->download($filePath, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend(true);
+    }
+
+    /**
+     * 印刷・Excel出力用のシフト表データを作る
+     *
+     * シフト管理画面と同じ閲覧権限（スコープ）の範囲のスタッフだけを対象にする。
+     *
+     * @return array<string, mixed>
+     */
+    private function buildShiftTable(ShiftTableRequest $request): array
+    {
+        $authUser = auth()->user();
+        $validated = $request->validated();
+
+        $accessibleUserIdsForView = $this->permissionService->getAccessibleUserIds(
+            $authUser,
+            PermissionService::RESOURCE_SHIFT_VIEW
+        );
+
+        return $this->shiftTableService->build(
+            $authUser->company_id,
+            $accessibleUserIdsForView,
+            $validated['start_date'],
+            $validated['end_date'],
+            isset($validated['department_id']) ? (int) $validated['department_id'] : null
+        );
     }
 
     /**

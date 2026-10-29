@@ -58,6 +58,8 @@ Route::get('/', function () {
 Route::middleware(['auth:admin', 'verified', 'admin_or_manager'])->prefix('admin')->name('admin.')->group(function () {
     // シフト管理
     Route::get('/shifts', [AdminShiftController::class, 'index'])->name('shifts');
+    Route::get('/shifts/print', [AdminShiftController::class, 'print'])->name('shifts.print');
+    Route::get('/shifts/export/excel', [AdminShiftController::class, 'exportExcel'])->name('shifts.export.excel');
     Route::post('/shifts/upsert', [AdminShiftController::class, 'upsert'])->name('shifts.upsert');
     Route::delete('/shifts/{shift}', [AdminShiftController::class, 'destroy'])->name('shifts.destroy');
     Route::get('/shifts/users/{user}/info', [AdminShiftController::class, 'getUserShiftInfo'])->name('shifts.user-info');

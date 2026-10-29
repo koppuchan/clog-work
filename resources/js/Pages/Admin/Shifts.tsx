@@ -507,10 +507,10 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">シフト管理</h1>
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
             <button
               onClick={() => setShowOutputDialog(true)}
-              className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex items-center space-x-1.5"
+              className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex items-center space-x-1.5 whitespace-nowrap"
             >
               <Printer className="h-4 w-4" />
               <span>印刷・Excel出力</span>

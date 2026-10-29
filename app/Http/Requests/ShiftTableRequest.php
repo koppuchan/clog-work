@@ -43,6 +43,8 @@ class ShiftTableRequest extends FormRequest
                 'integer',
                 Rule::exists('departments', 'id')->where('company_id', $this->user()?->company_id),
             ],
+            // 全部署のとき、部署ごとにページを分けるか
+            'page_break' => ['nullable', 'boolean'],
         ];
     }
 
@@ -82,6 +84,7 @@ class ShiftTableRequest extends FormRequest
             'end_date.after_or_equal' => '終了日は開始日以降の日付を指定してください。',
             'department_id.integer' => '部署の指定が正しくありません。',
             'department_id.exists' => '指定された部署が見つかりません。',
+            'page_break.boolean' => '改ページの指定が正しくありません。',
         ];
     }
 }

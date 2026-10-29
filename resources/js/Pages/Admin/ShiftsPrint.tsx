@@ -102,20 +102,112 @@ function GroupRows({ group, table }: { group: ShiftTableGroup; table: ShiftTable
   );
 }
 
+interface ShiftTableBlockProps {
+  table: ShiftTable;
+  groups: ShiftTableGroup[];
+  /** 全部署の合計の行を末尾に出すか */
+  showTotal: boolean;
+}
+
+/**
+ * 日付の見出しと、指定した部署のスタッフの行を並べた表
+ *
+ * 見出しは、表がページをまたいでも各ページの先頭に繰り返す。
+ */
+function ShiftTableBlock({ table, groups, showTotal }: ShiftTableBlockProps) {
+  return (
+    <table>
+      <colgroup>
+        <col style={{ width: '24mm' }} />
+        {table.days.map((day) => (
+          <col key={day.date} />
+        ))}
+        <col style={{ width: '9mm' }} />
+        <col style={{ width: '9mm' }} />
+      </colgroup>
+      <thead>
+        <tr>
+          <th rowSpan={2} style={{ background: '#F3F4F6' }}>スタッフ</th>
+          {table.days.map((day, index) => (
+            <th key={day.date} style={TONE_STYLES[day.tone]}>
+              {/* 期間の最初の日と月の1日は、月も添えて月をまたぐことが分かるようにする */}
+              {index === 0 || day.day === 1 ? `${day.month}/${day.day}` : day.day}
+            </th>
+          ))}
+          <th rowSpan={2} style={{ background: '#DCFCE7', color: '#166534' }}>出勤</th>
+          <th rowSpan={2} style={{ background: '#FFEDD5', color: '#9A3412' }}>休日</th>
+        </tr>
+        <tr>
+          {table.days.map((day) => (
+            <th key={day.date} style={TONE_STYLES[day.tone]}>
+              {day.weekday}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {groups.map((group) => (
+          <GroupRows key={group.department_id ?? 'none'} group={group} table={table} />
+        ))}
+        {groups.length === 0 && (
+          <tr>
+            <td colSpan={table.days.length + 3} style={{ padding: '8px' }}>
+              対象のスタッフがいません。
+            </td>
+          </tr>
+        )}
+        {showTotal && groups.length > 0 && (
+          <tr className="total">
+            <td className="name" style={{ background: '#BBF7D0' }}>合計</td>
+            {table.days.map((day) => (
+              <td key={day.date}>{formatCount(table.totals.counts[day.date])}</td>
+            ))}
+            <td>{table.totals.work_days}日</td>
+            <td style={{ background: '#FED7AA', color: '#9A3412' }}>{table.totals.rest_days}日</td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  );
+}
+
+function Legend({ table }: { table: ShiftTable }) {
+  return (
+    <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '4px 10px', fontSize: '8px', alignItems: 'center' }}>
+      <span style={{ fontWeight: 700 }}>凡例</span>
+      {table.patterns.map((pattern) => (
+        <span key={pattern.name} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+          <span style={{ background: pattern.background, color: pattern.text, border: '1px solid #D1D5DB', padding: '0 4px' }}>
+            {pattern.name}
+          </span>
+          {pattern.start_time && pattern.end_time ? `${pattern.start_time}〜${pattern.end_time}` : ''}
+        </span>
+      ))}
+      <span style={{ color: '#4B5563' }}>有：有給休暇　特：特別休暇　半：半日有給　時：時間有給（承認済みの休暇）</span>
+    </div>
+  );
+}
+
+const HEADING_STYLE = { fontSize: '14px', fontWeight: 700, marginBottom: '4px' } as const;
+
 /**
  * シフト表の印刷用ページ（全部署、または選択した部署）
  *
  * シフト管理画面と同じ見え方のシフト表を、A4横の用紙にそのまま印刷できる形で表示する。
- * ページを開くと印刷ダイアログが開く。
+ * ページを開くと印刷ダイアログが開く。全部署のとき、pageBreak が真なら部署ごとにページを分ける
+ * （部署ごとに配るときなどのため）。
  */
-export default function ShiftsPrint({ table }: ShiftsPrintPageProps) {
+export default function ShiftsPrint({ table, pageBreak }: ShiftsPrintPageProps) {
   // 開いたらすぐ印刷できるようにする（表を描画し終えてから）
   useEffect(() => {
     const timer = window.setTimeout(() => window.print(), 400);
     return () => window.clearTimeout(timer);
   }, []);
 
-  const title = `シフト表　${periodLabel(table)}　${table.department_name ?? '全部署'}`;
+  const period = periodLabel(table);
+  const title = `シフト表　${period}　${table.department_name ?? '全部署'}`;
+  // 部署を選んだ出力や、部署が1つだけのときは、ページを分ける意味がない
+  const separatePages = pageBreak && table.department_name === null && table.groups.length > 1;
 
   return (
     <>
@@ -144,73 +236,28 @@ export default function ShiftsPrint({ table }: ShiftsPrintPageProps) {
       </div>
 
       <div className="shift-print shift-print-body overflow-x-auto bg-white p-4">
-        <h1 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '4px' }}>{title}</h1>
-
-        <table>
-          <colgroup>
-            <col style={{ width: '24mm' }} />
-            {table.days.map((day) => (
-              <col key={day.date} />
+        {separatePages ? (
+          <>
+            {table.groups.map((group, index) => (
+              <section
+                key={group.department_id ?? 'none'}
+                className="department-page"
+                style={index > 0 ? { breakBefore: 'page', pageBreakBefore: 'always' } : undefined}
+              >
+                {/* 部署ごとに配れるよう、各ページの先頭に部署名を入れる */}
+                <h1 style={HEADING_STYLE}>{`シフト表　${period}　${group.name}`}</h1>
+                <ShiftTableBlock table={table} groups={[group]} showTotal={index === table.groups.length - 1} />
+                {index === table.groups.length - 1 && <Legend table={table} />}
+              </section>
             ))}
-            <col style={{ width: '9mm' }} />
-            <col style={{ width: '9mm' }} />
-          </colgroup>
-          <thead>
-            <tr>
-              <th rowSpan={2} style={{ background: '#F3F4F6' }}>スタッフ</th>
-              {table.days.map((day, index) => (
-                <th key={day.date} style={TONE_STYLES[day.tone]}>
-                  {/* 期間の最初の日と月の1日は、月も添えて月をまたぐことが分かるようにする */}
-                  {index === 0 || day.day === 1 ? `${day.month}/${day.day}` : day.day}
-                </th>
-              ))}
-              <th rowSpan={2} style={{ background: '#DCFCE7', color: '#166534' }}>出勤</th>
-              <th rowSpan={2} style={{ background: '#FFEDD5', color: '#9A3412' }}>休日</th>
-            </tr>
-            <tr>
-              {table.days.map((day) => (
-                <th key={day.date} style={TONE_STYLES[day.tone]}>
-                  {day.weekday}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {table.groups.map((group) => (
-              <GroupRows key={group.department_id ?? 'none'} group={group} table={table} />
-            ))}
-            {table.groups.length === 0 && (
-              <tr>
-                <td colSpan={table.days.length + 3} style={{ padding: '8px' }}>
-                  対象のスタッフがいません。
-                </td>
-              </tr>
-            )}
-            {table.groups.length > 0 && table.department_name === null && (
-              <tr className="total">
-                <td className="name" style={{ background: '#BBF7D0' }}>合計</td>
-                {table.days.map((day) => (
-                  <td key={day.date}>{formatCount(table.totals.counts[day.date])}</td>
-                ))}
-                <td>{table.totals.work_days}日</td>
-                <td style={{ background: '#FED7AA', color: '#9A3412' }}>{table.totals.rest_days}日</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-
-        <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '4px 10px', fontSize: '8px', alignItems: 'center' }}>
-          <span style={{ fontWeight: 700 }}>凡例</span>
-          {table.patterns.map((pattern) => (
-            <span key={pattern.name} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-              <span style={{ background: pattern.background, color: pattern.text, border: '1px solid #D1D5DB', padding: '0 4px' }}>
-                {pattern.name}
-              </span>
-              {pattern.start_time && pattern.end_time ? `${pattern.start_time}〜${pattern.end_time}` : ''}
-            </span>
-          ))}
-          <span style={{ color: '#4B5563' }}>有：有給休暇　特：特別休暇　半：半日有給　時：時間有給（承認済みの休暇）</span>
-        </div>
+          </>
+        ) : (
+          <>
+            <h1 style={HEADING_STYLE}>{title}</h1>
+            <ShiftTableBlock table={table} groups={table.groups} showTotal={table.department_name === null} />
+            <Legend table={table} />
+          </>
+        )}
       </div>
     </>
   );

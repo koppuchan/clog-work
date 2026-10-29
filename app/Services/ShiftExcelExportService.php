@@ -43,9 +43,10 @@ class ShiftExcelExportService
      * シフト表をExcelファイルとして生成する
      *
      * @param  array<string, mixed>  $table  ShiftTableService::build() の結果
+     * @param  bool  $pageBreakByDepartment  全部署のとき、部署ごとに印刷のページを分ける（部署を選んだ出力では無視する）
      * @return string 一時ファイルのパス（ダウンロード後に削除すること）
      */
-    public function generate(array $table): string
+    public function generate(array $table, bool $pageBreakByDepartment = false): string
     {
         $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
@@ -59,8 +60,14 @@ class ShiftExcelExportService
         $this->writeTitle($sheet, $table, $restColumn);
         $this->writeHeader($sheet, $table['days'], $workColumn, $restColumn);
 
+        $breakByDepartment = $pageBreakByDepartment && $table['department_name'] === null;
+
         $row = self::FIRST_DATA_ROW;
-        foreach ($table['groups'] as $group) {
+        foreach ($table['groups'] as $index => $group) {
+            // 部署ごとに印刷のページを分けるときは、2つ目以降の部署の前（部署名の行の上）で改ページする
+            if ($breakByDepartment && $index > 0) {
+                $sheet->setBreak([self::NAME_COLUMN, $row - 1], Worksheet::BREAK_ROW);
+            }
             $row = $this->writeGroup($sheet, $table, $group, $row, $workColumn, $restColumn);
         }
 

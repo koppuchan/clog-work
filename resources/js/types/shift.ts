@@ -180,4 +180,6 @@ export interface ShiftTable {
 
 export interface ShiftsPrintPageProps {
   table: ShiftTable;
+  /** 全部署のとき、部署ごとにページを分けるか */
+  pageBreak: boolean;
 }

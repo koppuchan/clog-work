@@ -246,6 +246,37 @@ class ShiftTableOutputTest extends TestCase
 
     /**
      * @test
+     *
+     * クライアント要望: 全部署のときは部署ごとに改ページしてほしい。選択できるようにしてほしい。
+     */
+    public function 印刷ページは部署ごとに改ページするかを指定できる(): void
+    {
+        $this->request('print')->assertInertia(fn (AssertableInertia $page) => $page->where('pageBreak', false));
+        $this->request('print', ['page_break' => 1])->assertInertia(fn (AssertableInertia $page) => $page->where('pageBreak', true));
+        $this->request('print', ['page_break' => 0])->assertInertia(fn (AssertableInertia $page) => $page->where('pageBreak', false));
+        $this->request('print', ['page_break' => 'abc'])->assertSessionHasErrors('page_break');
+    }
+
+    /**
+     * @test
+     */
+    public function excelは部署ごとに改ページを入れられる(): void
+    {
+        // 営業（5〜7行目）の次の介護（8行目）から新しいページにする
+        $withBreak = $this->sheetOf($this->request('export/excel', ['page_break' => 1]));
+        $this->assertSame(['営業 合計', '介護'], [(string) $withBreak->getCell('A7')->getValue(), (string) $withBreak->getCell('A8')->getValue()]);
+        $this->assertSame(['A7'], array_keys($withBreak->getRowBreaks()));
+
+        // 指定がなければ、ページは分けない
+        $this->assertSame([], $this->sheetOf($this->request('export/excel'))->getRowBreaks());
+
+        // 部署を選んだ出力は、指定があっても分ける相手がいない
+        $one = $this->sheetOf($this->request('export/excel', ['page_break' => 1, 'department_id' => $this->sales->id]));
+        $this->assertSame([], $one->getRowBreaks());
+    }
+
+    /**
+     * @test
      */
     public function 閲覧できる範囲のスタッフだけが出力される(): void
     {

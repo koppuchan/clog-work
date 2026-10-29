@@ -163,11 +163,13 @@ class ShiftController extends Controller
      * シフト表の印刷用ページを表示
      *
      * 全部署、または選択した部署のシフト表を、印刷しやすい形で表示する。
+     * 全部署のときは、page_break を指定すると部署ごとにページを分ける。
      */
     public function print(ShiftTableRequest $request): Response
     {
         return Inertia::render('Admin/ShiftsPrint', [
             'table' => $this->buildShiftTable($request),
+            'pageBreak' => $request->boolean('page_break'),
         ]);
     }
 
@@ -175,11 +177,12 @@ class ShiftController extends Controller
      * シフト表をExcelでエクスポート
      *
      * 全部署、または選択した部署のシフト表を、1枚のシートに出力する。
+     * 全部署のときは、page_break を指定すると部署ごとに印刷のページを分ける。
      */
     public function exportExcel(ShiftTableRequest $request): BinaryFileResponse
     {
         $table = $this->buildShiftTable($request);
-        $filePath = $this->shiftExcelExportService->generate($table);
+        $filePath = $this->shiftExcelExportService->generate($table, $request->boolean('page_break'));
 
         $filename = sprintf(
             'シフト表_%s_%s〜%s.xlsx',

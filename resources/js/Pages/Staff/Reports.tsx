@@ -192,8 +192,10 @@ function StaffReportsPage() {
               closeApplicationDialog();
               resolve();
             },
-            onError: () => {
-              reject(new Error('申請の送信に失敗しました'));
+            onError: (errors) => {
+              // 入力の問題（休憩が勤務時間の範囲外など）は、その理由を画面に出す
+              const reason = Object.values(errors)[0];
+              reject(new Error(typeof reason === 'string' && reason !== '' ? reason : '申請の送信に失敗しました'));
             },
           }
         );

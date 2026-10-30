@@ -271,6 +271,7 @@ class TimeRecordCorrectionRequestService
         // 二重計上したり、他の人が入れた新しい値を古い申請内容で上書きして
         // しまう（クライアント報告: 休憩打刻修正の承認で休憩が重複して計上された）。
         $this->assertNoStaleConflicts($correctionRequest, $detailsWithExistingRecord, $detailsWithoutRecord, $existingRecords);
+        $this->assertBreakDetailsArePaired($correctionRequest);
 
         // 既存レコードをupsertで一括更新
         $updateRecords = $detailsWithExistingRecord->map(
@@ -373,6 +374,26 @@ class TimeRecordCorrectionRequestService
                 $targetDate,
                 $breakTypesToDelete
             );
+        }
+    }
+
+    /**
+     * 休憩の明細が、開始と終了のセットになっているか確認する
+     *
+     * 片方だけを承認すると、もう片方の既存の休憩の打刻が消えたり、休憩の開始だけが残って
+     * 「休憩漏れ」になったりする。この確認が入る前に出された申請を承認するときの保護
+     * （画面・申請時にも同じ確認をしている）。
+     *
+     * @throws BusinessException 休憩の開始と終了のどちらか一方しかない場合
+     */
+    private function assertBreakDetailsArePaired(TimeRecordCorrectionRequest $correctionRequest): void
+    {
+        $types = $correctionRequest->details->pluck('record_type');
+        $hasBreakStart = $types->contains(TimeRecordTypeEnum::BREAK_START);
+        $hasBreakEnd = $types->contains(TimeRecordTypeEnum::BREAK_END);
+
+        if ($hasBreakStart !== $hasBreakEnd) {
+            throw new BusinessException('休憩の開始と終了のどちらか一方しか申請されていないため、承認できません。承認すると、休憩の打刻が欠けたままになります。却下して、休憩の開始と終了をセットで申請し直してもらってください。');
         }
     }
 
@@ -608,6 +629,8 @@ class TimeRecordCorrectionRequestService
                 }
             }
 
+            $this->assertBreakRequestIsConsistent($data, $existingRecords);
+
             // 打刻修正申請ヘッダーを作成
             $correctionRequest = $this->correctionRequestRepository->create([
                 'company_id' => $companyId,
@@ -728,5 +751,92 @@ class TimeRecordCorrectionRequestService
 
             return $correctionRequest->load('details');
         });
+    }
+
+    /**
+     * 休憩の申請内容に矛盾がないか確認する
+     *
+     * 休憩は開始と終了をセットで申請する。片方だけだと、承認したときに、もう片方の
+     * 既存の休憩の打刻が消えたり、対応する打刻のない休憩だけが残ったりする。
+     * また、勤務時間が分かるときは、休憩が勤務時間の範囲に収まっていることを確認する。
+     * 範囲外の休憩開始は、夜勤の休憩とみなされて翌日の打刻として保存されてしまい、
+     * 勤務の打刻がない日に休憩だけが残ってしまう（クライアント報告: 打刻が無いのに
+     * 休憩漏れの表示が出る）。日勤の勤務で、出勤より前の時刻を休憩として申請した場合などが該当する。
+     *
+     * @param  array<string, mixed>  $data  申請データ
+     * @param  \Illuminate\Support\Collection<int, TimeRecord>  $existingRecords  対象日の既存の打刻
+     *
+     * @throws BusinessException 休憩の申請内容に矛盾がある場合
+     */
+    private function assertBreakRequestIsConsistent(array $data, \Illuminate\Support\Collection $existingRecords): void
+    {
+        $breakStart = $data['break_start_time'] ?? null;
+        $breakEnd = $data['break_end_time'] ?? null;
+
+        if (empty($breakStart) && empty($breakEnd)) {
+            return;
+        }
+
+        if (empty($breakStart) || empty($breakEnd)) {
+            throw new BusinessException('休憩は開始時刻と終了時刻をセットで入力してください。休憩を取っていない場合は、両方を空欄にしてください。');
+        }
+
+        // 勤務時間は、今回の申請にあればそれを、なければ既存の打刻を使う
+        $workStart = ! empty($data['start_time'])
+            ? $data['start_time']
+            : $existingRecords->first(fn ($r) => $r->record_type === TimeRecordTypeEnum::WORK_START)?->record_time->format('H:i');
+        $workEnd = ! empty($data['end_time'])
+            ? $data['end_time']
+            : $existingRecords->filter(fn ($r) => $r->record_type->isWorkEnd())->last()?->record_time->format('H:i');
+
+        if ($workStart === null || $workEnd === null) {
+            return;
+        }
+
+        if (! $this->isBreakWithinWork($workStart, $workEnd, $breakStart, $breakEnd)) {
+            throw new BusinessException(sprintf(
+                '休憩時間が勤務時間の範囲外です。勤務時間内（出勤 %s／退勤 %s）で入力してください。',
+                $workStart,
+                $workEnd
+            ));
+        }
+    }
+
+    /**
+     * 休憩が勤務時間の範囲に収まっているか（勤務終了が開始以前なら、日跨ぎの勤務として扱う）
+     *
+     * 管理画面の勤務実績の編集（ValidatesBreakPeriods）と同じ基準。
+     */
+    private function isBreakWithinWork(string $workStart, string $workEnd, string $breakStart, string $breakEnd): bool
+    {
+        $toMinutes = function (string $time): int {
+            [$hours, $minutes] = array_map('intval', explode(':', $time));
+
+            return $hours * 60 + $minutes;
+        };
+
+        $workStartMinutes = $toMinutes($workStart);
+        $workEndMinutes = $toMinutes($workEnd);
+        if ($workEndMinutes <= $workStartMinutes) {
+            $workEndMinutes += 24 * 60;
+        }
+
+        $breakStartMinutes = $toMinutes($breakStart);
+        $breakEndMinutes = $toMinutes($breakEnd);
+
+        // 開始と終了が同じ時刻の休憩は、24時間の休憩として扱わず、不正とする
+        if ($breakStartMinutes === $breakEndMinutes) {
+            return false;
+        }
+
+        // 勤務開始より前の時刻は、日跨ぎ勤務における翌日分とみなす
+        if ($breakStartMinutes < $workStartMinutes) {
+            $breakStartMinutes += 24 * 60;
+        }
+        if ($breakEndMinutes <= $breakStartMinutes) {
+            $breakEndMinutes += 24 * 60;
+        }
+
+        return $breakStartMinutes >= $workStartMinutes && $breakEndMinutes <= $workEndMinutes;
     }
 }

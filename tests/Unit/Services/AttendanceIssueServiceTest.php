@@ -151,7 +151,46 @@ class AttendanceIssueServiceTest extends TestCase
     public function 休憩開始のみで終了がない日を検出する(): void
     {
         $issues = $this->service->detectMissingBreakEnd(collect([
+            $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-08 09:00:00'),
             $this->timeRecord(TimeRecordTypeEnum::BREAK_START, '2026-09-08 12:00:00'),
+        ]), self::TODAY);
+
+        $this->assertSame(
+            ['2026-09-08' => [AttendanceIssueService::MISSING_BREAK_END]],
+            $issues,
+        );
+    }
+
+    /**
+     * @test
+     *
+     * クライアント報告: 打刻が無いのに「休憩漏れ」と表示される。
+     * 承認された打刻修正で、休憩開始だけが別の日に残る（出勤・退勤が無い日）と、
+     * 画面には何も出ない日に休憩漏れだけが出てしまっていた。
+     * 勤務の外にある休憩開始は、休憩の終了の打刻し忘れではないため検出しない。
+     */
+    public function 勤務の打刻が無い日に残った休憩開始は休憩漏れにしない(): void
+    {
+        $issues = $this->service->detectMissingBreakEnd(collect([
+            $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-07 10:08:00'),
+            $this->timeRecord(TimeRecordTypeEnum::WORK_END, '2026-09-07 15:03:00'),
+            $this->timeRecord(TimeRecordTypeEnum::BREAK_START, '2026-09-08 10:00:00'),
+            $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-09 09:49:00'),
+            $this->timeRecord(TimeRecordTypeEnum::WORK_END, '2026-09-09 15:03:00'),
+        ]), self::TODAY);
+
+        $this->assertSame([], $issues);
+    }
+
+    /**
+     * @test
+     */
+    public function 休憩が終わらないまま退勤した日は休憩漏れとして検出する(): void
+    {
+        $issues = $this->service->detectMissingBreakEnd(collect([
+            $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-08 09:00:00'),
+            $this->timeRecord(TimeRecordTypeEnum::BREAK_START, '2026-09-08 12:00:00'),
+            $this->timeRecord(TimeRecordTypeEnum::WORK_END, '2026-09-08 18:00:00'),
         ]), self::TODAY);
 
         $this->assertSame(
@@ -227,6 +266,7 @@ class AttendanceIssueServiceTest extends TestCase
     public function 休憩終了が日付をまたいでいなくても本当に終了がなければ検出する(): void
     {
         $issues = $this->service->detectMissingBreakEnd(collect([
+            $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-08 09:39:00'),
             $this->timeRecord(TimeRecordTypeEnum::BREAK_START, '2026-09-08 20:53:00'),
             $this->timeRecord(TimeRecordTypeEnum::BREAK_START, '2026-09-09 08:00:00'),
             $this->timeRecord(TimeRecordTypeEnum::BREAK_END, '2026-09-09 08:30:00'),
@@ -480,6 +520,7 @@ class AttendanceIssueServiceTest extends TestCase
     public function 休憩終了の打刻だけがある日を休憩開始の打刻なしとして検出する(): void
     {
         $issues = $this->service->detectMissingBreakStart(collect([
+            $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-08 09:00:00'),
             $this->timeRecord(TimeRecordTypeEnum::BREAK_END, '2026-09-08 13:00:00'),
         ]));
 
@@ -492,11 +533,25 @@ class AttendanceIssueServiceTest extends TestCase
     /**
      * @test
      */
+    public function 勤務の打刻が無い日の休憩終了は休憩開始の打刻なしにしない(): void
+    {
+        $issues = $this->service->detectMissingBreakStart(collect([
+            $this->timeRecord(TimeRecordTypeEnum::BREAK_END, '2026-09-08 13:00:00'),
+        ]));
+
+        $this->assertSame([], $issues);
+    }
+
+    /**
+     * @test
+     */
     public function 休憩開始と終了が揃っていれば休憩開始の打刻なしは検出しない(): void
     {
         $issues = $this->service->detectMissingBreakStart(collect([
+            $this->timeRecord(TimeRecordTypeEnum::WORK_START, '2026-09-08 17:00:00'),
             $this->timeRecord(TimeRecordTypeEnum::BREAK_START, '2026-09-08 20:53:00'),
             $this->timeRecord(TimeRecordTypeEnum::BREAK_END, '2026-09-09 00:05:00'),
+            $this->timeRecord(TimeRecordTypeEnum::WORK_END_NEXT_DAY, '2026-09-09 02:00:00'),
         ]));
 
         $this->assertSame([], $issues);

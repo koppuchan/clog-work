@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Staff;
 
+use App\Exceptions\BusinessException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Staff\StoreRequestRequest;
 use App\Models\User;
@@ -36,18 +37,23 @@ class RequestController extends Controller
 
         // 打刻間違いの場合はtime_record_correction_requestsに登録
         if ($validated['type'] === self::CLOCK_ERROR_TYPE) {
-            $this->correctionRequestService->createClockErrorRequest(
-                $companyId,
-                $user->id,
-                [
-                    'target_date' => $validated['target_date'],
-                    'reason' => $validated['reason'],
-                    'start_time' => $validated['start_time'] ?? null,
-                    'end_time' => $validated['end_time'] ?? null,
-                    'break_start_time' => $validated['break_start_time'] ?? null,
-                    'break_end_time' => $validated['break_end_time'] ?? null,
-                ]
-            );
+            try {
+                $this->correctionRequestService->createClockErrorRequest(
+                    $companyId,
+                    $user->id,
+                    [
+                        'target_date' => $validated['target_date'],
+                        'reason' => $validated['reason'],
+                        'start_time' => $validated['start_time'] ?? null,
+                        'end_time' => $validated['end_time'] ?? null,
+                        'break_start_time' => $validated['break_start_time'] ?? null,
+                        'break_end_time' => $validated['break_end_time'] ?? null,
+                    ]
+                );
+            } catch (BusinessException $e) {
+                // 休憩が勤務時間の範囲外など、申請内容の矛盾は、画面に理由を出して申請し直してもらう
+                return redirect()->back()->withErrors(['break_start_time' => $e->getMessage()]);
+            }
 
             return redirect()->back()->with('success', '打刻修正申請が完了しました');
         }

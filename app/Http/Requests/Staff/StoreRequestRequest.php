@@ -87,6 +87,20 @@ class StoreRequestRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator) {
+            // 打刻間違いの申請では、休憩は開始と終了をセットで入力する（片方だけだと、
+            // 承認したときに休憩の打刻が欠けたままになる）
+            if ($this->input('type') === 'clock-error') {
+                $breakStart = $this->input('break_start_time');
+                $breakEnd = $this->input('break_end_time');
+
+                if (filled($breakStart) !== filled($breakEnd)) {
+                    $validator->errors()->add(
+                        filled($breakStart) ? 'break_end_time' : 'break_start_time',
+                        '休憩は開始時刻と終了時刻をセットで入力してください。休憩を取っていない場合は、両方を空欄にしてください。'
+                    );
+                }
+            }
+
             if ($this->input('type') !== 'hourly-leave') {
                 return;
             }

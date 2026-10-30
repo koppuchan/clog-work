@@ -205,15 +205,20 @@ class AttendanceIssueService
     }
 
     /**
-     * 休憩打刻漏れ（休憩開始のみで終了がない）を検出する
+     * 休憩打刻漏れ（勤務中に休憩を開始したのに、終了がない）を検出する
      *
      * 当日は休憩中である可能性が高いため対象外とする。
      *
      * 日付ごとにグループ化して開始・終了の数を比較すると、日跨ぎ勤務で
      * 休憩終了が日付をまたいだ場合（例: 20:53休憩開始→翌09:05休憩終了）に、
-     * 開始側の日付では終了が0件に見えてしまい誤って休憩漏れと判定して
+     * 開始側の日付では終了が0件に見えて誤って休憩漏れと判定して
      * しまう。detectMissingClockOut()と同様、打刻を時系列順に走査して
      * 開始→終了を1組ずつ対応させることで、日付をまたぐ休憩も正しく判定する。
+     *
+     * 勤務の外にある休憩開始（出勤の打刻がない日に残った、休憩だけの打刻）は
+     * 「休憩の終了を打刻し忘れた」わけではなく、画面にも勤務の打刻が出ないため、
+     * 休憩漏れとしない（クライアント報告: 打刻が無いのに休憩漏れと表示される）。
+     * 勤務の途中かどうかは、出勤・退勤の打刻も合わせて走査して判定する。
      *
      * @param  Collection<int, \App\Models\TimeRecord>  $timeRecords  打刻データ
      * @param  string|null  $today  当日（Y-m-d）。省略時は現在日
@@ -224,15 +229,30 @@ class AttendanceIssueService
         $today ??= CarbonImmutable::now()->format('Y-m-d');
         $issues = [];
 
-        $breakRecords = $timeRecords
-            ->filter(fn ($record) => $record->record_type->isBreak())
+        $records = $timeRecords
+            ->filter(fn ($record) => $record->record_type->isBreak() || $record->record_type->isWorkStart() || $record->record_type->isWorkEnd())
             ->sortBy(fn ($record) => $record->record_time->getTimestamp())
             ->values();
 
+        $isWorking = false;
         $openBreakStart = null;
 
-        foreach ($breakRecords as $record) {
+        foreach ($records as $record) {
+            if ($record->record_type->isWorkStart() || $record->record_type->isWorkEnd()) {
+                // 休憩が終わらないまま、勤務が終わった（または次の勤務が始まった）
+                if ($openBreakStart !== null) {
+                    $this->flagMissingBreakEnd($issues, $openBreakStart, $today);
+                    $openBreakStart = null;
+                }
+                $isWorking = $record->record_type->isWorkStart();
+
+                continue;
+            }
+
             if ($record->record_type->isBreakStart()) {
+                if (! $isWorking) {
+                    continue;
+                }
                 if ($openBreakStart !== null) {
                     $this->flagMissingBreakEnd($issues, $openBreakStart, $today);
                 }
@@ -306,10 +326,10 @@ class AttendanceIssueService
     }
 
     /**
-     * 休憩開始打刻がない日（休憩終了の打刻だけがある日）を検出する
+     * 休憩開始打刻がない日（勤務中に、休憩終了の打刻だけがある日）を検出する
      *
-     * detectMissingBreakEnd()の逆。休憩の打刻を時系列順に走査し、開いている休憩開始が
-     * ないのに現れた休憩終了を見つける。
+     * detectMissingBreakEnd()の逆。勤務中に、開いている休憩開始がないのに現れた休憩終了を
+     * 見つける。勤務の外にある休憩終了は、検出しない（理由は detectMissingBreakEnd() と同じ）。
      *
      * @param  Collection<int, \App\Models\TimeRecord>  $timeRecords  打刻データ
      * @return array<string, array<int, string>> 日付（休憩終了の日）をキーとした状態の一覧
@@ -317,21 +337,29 @@ class AttendanceIssueService
     public function detectMissingBreakStart(Collection $timeRecords): array
     {
         $issues = [];
+        $isWorking = false;
         $isOnBreak = false;
 
-        $breakRecords = $timeRecords
-            ->filter(fn ($record) => $record->record_type->isBreak())
+        $records = $timeRecords
+            ->filter(fn ($record) => $record->record_type->isBreak() || $record->record_type->isWorkStart() || $record->record_type->isWorkEnd())
             ->sortBy(fn ($record) => $record->record_time->getTimestamp())
             ->values();
 
-        foreach ($breakRecords as $record) {
-            if ($record->record_type->isBreakStart()) {
-                $isOnBreak = true;
+        foreach ($records as $record) {
+            if ($record->record_type->isWorkStart() || $record->record_type->isWorkEnd()) {
+                $isWorking = $record->record_type->isWorkStart();
+                $isOnBreak = false;
 
                 continue;
             }
 
-            if (! $isOnBreak) {
+            if ($record->record_type->isBreakStart()) {
+                $isOnBreak = $isWorking;
+
+                continue;
+            }
+
+            if ($isWorking && ! $isOnBreak) {
                 $issues[$record->record_time->format('Y-m-d')] = [self::MISSING_BREAK_START];
             }
             $isOnBreak = false;

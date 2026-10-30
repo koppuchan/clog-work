@@ -112,6 +112,12 @@ export function ApplicationDialog({ isOpen, onClose, onSubmit, date, leaveSettin
         let submitType = applicationType;
 
         if (applicationType === 'clock-error') {
+          // 休憩は開始と終了をセットで入力する（片方だけだと、承認したときに休憩の打刻が欠けたままになる）
+          if (Boolean(correctBreakStart) !== Boolean(correctBreakEnd)) {
+            setError('休憩は開始時刻と終了時刻をセットで入力してください。休憩を取っていない場合は、両方を空欄にしてください。');
+            setIsSubmitting(false);
+            return;
+          }
           clockErrorData = {
             startTime: correctClockIn || undefined,
             endTime: correctClockOut || undefined,
@@ -140,8 +146,9 @@ export function ApplicationDialog({ isOpen, onClose, onSubmit, date, leaveSettin
         await onSubmit(submitType, reason, clockErrorData);
         resetForm();
         onClose();
-      } catch {
-        setError('申請の送信に失敗しました。もう一度お試しください。');
+      } catch (err) {
+        // サーバーから理由（休憩が勤務時間の範囲外など）が返ってきたときは、それを表示する
+        setError(err instanceof Error && err.message ? err.message : '申請の送信に失敗しました。もう一度お試しください。');
       } finally {
         setIsSubmitting(false);
       }

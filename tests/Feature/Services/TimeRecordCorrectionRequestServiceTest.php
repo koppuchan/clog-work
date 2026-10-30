@@ -948,6 +948,13 @@ class TimeRecordCorrectionRequestServiceTest extends TestCase
             'record_time' => '2025-01-15 09:39:00',
             'record_source' => RecordSourceEnum::AUTO,
         ]);
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::BREAK_START,
+            'record_time' => '2025-01-15 15:00:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
         $existingBreakEnd = TimeRecord::query()->create([
             'company_id' => $this->company->id,
             'user_id' => $this->user->id,
@@ -963,12 +970,13 @@ class TimeRecordCorrectionRequestServiceTest extends TestCase
             'record_source' => RecordSourceEnum::AUTO,
         ]);
 
+        // 休憩は開始と終了をセットで申請する（画面は、既存の休憩開始を入力済みで出す）
         $request = $this->service->createClockErrorRequest($this->company->id, $this->user->id, [
             'target_date' => '2025-01-15',
             'reason' => '打刻間違い',
             'start_time' => null,
             'end_time' => '18:00',
-            'break_start_time' => null,
+            'break_start_time' => '15:00',
             'break_end_time' => '16:11',
         ]);
 
@@ -977,9 +985,9 @@ class TimeRecordCorrectionRequestServiceTest extends TestCase
 
         // Assert: 既存レコードが更新され、新しいレコードは追加されていない
         $this->assertSame(
-            3,
+            4,
             TimeRecord::query()->where('user_id', $this->user->id)->count(),
-            '新規追加ではなく既存3件（出勤・休憩終了・退勤）が更新されるだけのはず'
+            '新規追加ではなく既存4件（出勤・休憩開始・休憩終了・退勤）が更新されるだけのはず'
         );
 
         $existingWorkEnd->refresh();
@@ -1050,6 +1058,7 @@ class TimeRecordCorrectionRequestServiceTest extends TestCase
         $data = [
             'target_date' => '2025-01-15',
             'reason' => '休憩終了打刻を忘れました',
+            'break_start_time' => '12:00',
             'break_end_time' => '13:00',
         ];
 
@@ -1061,11 +1070,119 @@ class TimeRecordCorrectionRequestServiceTest extends TestCase
         );
 
         // Assert
-        $this->assertCount(1, $result->details);
+        $this->assertCount(2, $result->details);
 
-        $detail = $result->details->first();
-        $this->assertEquals(TimeRecordTypeEnum::BREAK_END, $detail->record_type);
+        $detail = $result->details->firstWhere('record_type', TimeRecordTypeEnum::BREAK_END);
         $this->assertEquals('2025-01-15 13:00:00', $detail->corrected_record_time->format('Y-m-d H:i:s'));
+        $this->assertEquals(
+            '2025-01-15 12:00:00',
+            $result->details->firstWhere('record_type', TimeRecordTypeEnum::BREAK_START)->corrected_record_time->format('Y-m-d H:i:s')
+        );
+    }
+
+    /**
+     * @test
+     *
+     * クライアント報告: 打刻が無いのに休憩漏れと表示される。
+     * 休憩の開始だけ（または終了だけ）を申請して承認すると、対応する打刻のない休憩だけが残る。
+     * 申請の時点で、開始と終了をセットで入力するよう弾く。
+     */
+    public function create_clock_error_request_rejects_break_with_only_one_side(): void
+    {
+        $before = TimeRecordCorrectionRequest::query()->count();
+
+        foreach (['break_start_time' => '10:00', 'break_end_time' => '13:00'] as $field => $time) {
+            try {
+                $this->service->createClockErrorRequest($this->company->id, $this->user->id, [
+                    'target_date' => '2025-01-15',
+                    'reason' => '打刻間違い',
+                    'start_time' => '10:08',
+                    'end_time' => '15:03',
+                    $field => $time,
+                ]);
+                $this->fail($field.'だけの申請は弾かれるはず');
+            } catch (BusinessException $e) {
+                $this->assertStringContainsString('セットで', $e->getMessage());
+            }
+        }
+
+        $this->assertSame($before, TimeRecordCorrectionRequest::query()->count(), '弾いた申請は残らない');
+    }
+
+    /**
+     * @test
+     *
+     * クライアント報告の事例: 出勤10:08・退勤15:03の日勤に、出勤より前の10:00を休憩開始として
+     * 申請して承認すると、夜勤の休憩とみなされて翌日の打刻として保存され、
+     * 勤務の打刻がない翌日に休憩だけが残っていた。範囲外の休憩は、申請の時点で弾く。
+     */
+    public function create_clock_error_request_rejects_break_outside_work_hours(): void
+    {
+        $this->expectException(BusinessException::class);
+        $this->expectExceptionMessage('勤務時間の範囲外');
+
+        $this->service->createClockErrorRequest($this->company->id, $this->user->id, [
+            'target_date' => '2025-01-15',
+            'reason' => '税務署直行',
+            'start_time' => '10:08',
+            'end_time' => '15:03',
+            'break_start_time' => '10:00',
+            'break_end_time' => '12:00',
+        ]);
+    }
+
+    /**
+     * @test
+     *
+     * 出勤・退勤を申請に入れなくても、既に打刻されている勤務時間と照らして確認する。
+     */
+    public function create_clock_error_request_checks_break_against_existing_work_stamps(): void
+    {
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_START,
+            'record_time' => '2025-01-15 10:08:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+        TimeRecord::query()->create([
+            'company_id' => $this->company->id,
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::WORK_END,
+            'record_time' => '2025-01-15 15:03:00',
+            'record_source' => RecordSourceEnum::AUTO,
+        ]);
+
+        $this->expectException(BusinessException::class);
+
+        $this->service->createClockErrorRequest($this->company->id, $this->user->id, [
+            'target_date' => '2025-01-15',
+            'reason' => '休憩の打刻間違い',
+            'break_start_time' => '10:00',
+            'break_end_time' => '10:30',
+        ]);
+    }
+
+    /**
+     * @test
+     *
+     * 夜勤の休憩（日付をまたぐ休憩）は、これまでどおり申請できる。
+     */
+    public function create_clock_error_request_accepts_break_after_midnight_in_night_shift(): void
+    {
+        $result = $this->service->createClockErrorRequest($this->company->id, $this->user->id, [
+            'target_date' => '2025-01-15',
+            'reason' => '夜勤の休憩',
+            'start_time' => '22:00',
+            'end_time' => '06:00',
+            'break_start_time' => '02:00',
+            'break_end_time' => '03:00',
+        ]);
+
+        $this->assertEquals(
+            '2025-01-16 02:00:00',
+            $result->details->firstWhere('record_type', TimeRecordTypeEnum::BREAK_START)->corrected_record_time->format('Y-m-d H:i:s')
+        );
     }
 
     /**
@@ -1116,6 +1233,7 @@ class TimeRecordCorrectionRequestServiceTest extends TestCase
             'reason' => '全ての打刻を忘れました',
             'start_time' => '09:00',
             'end_time' => '18:00',
+            'break_start_time' => '12:00',
             'break_end_time' => '13:00',
         ];
 
@@ -1127,11 +1245,12 @@ class TimeRecordCorrectionRequestServiceTest extends TestCase
         );
 
         // Assert
-        $this->assertCount(3, $result->details);
+        $this->assertCount(4, $result->details);
 
         $recordTypes = $result->details->pluck('record_type')->toArray();
         $this->assertContains(TimeRecordTypeEnum::WORK_START, $recordTypes);
         $this->assertContains(TimeRecordTypeEnum::WORK_END, $recordTypes);
+        $this->assertContains(TimeRecordTypeEnum::BREAK_START, $recordTypes);
         $this->assertContains(TimeRecordTypeEnum::BREAK_END, $recordTypes);
     }
 
@@ -1576,6 +1695,14 @@ class TimeRecordCorrectionRequestServiceTest extends TestCase
             TimeRecordTypeEnum::BREAK_START,
             '12:00:00'
         );
+        // 休憩は開始と終了のセットで申請される
+        TimeRecordCorrectionRequestDetail::query()->create([
+            'correction_request_id' => $correctionRequest->id,
+            'time_record_id' => null,
+            'record_type' => TimeRecordTypeEnum::BREAK_END,
+            'corrected_record_time' => $targetDate.' 13:00:00',
+            'corrected_rounded_time' => $targetDate.' 13:00:00',
+        ]);
 
         // Act
         $result = $this->service->approveCorrectionRequest($correctionRequest->id, $this->approver->id);
@@ -1587,6 +1714,33 @@ class TimeRecordCorrectionRequestServiceTest extends TestCase
             'record_type' => TimeRecordTypeEnum::BREAK_START->value,
             'record_time' => $targetDate.' 12:00:00',
         ]);
+        $this->assertDatabaseHas('time_records', [
+            'user_id' => $this->user->id,
+            'record_type' => TimeRecordTypeEnum::BREAK_END->value,
+            'record_time' => $targetDate.' 13:00:00',
+        ]);
+    }
+
+    /**
+     * @test
+     *
+     * 休憩の開始だけの申請は、承認すると休憩の開始だけが残って「休憩漏れ」になる
+     * （クライアント報告）。このチェックが入る前に出された申請を承認しようとしても、承認させない。
+     */
+    public function approve_correction_request_rejects_break_start_without_break_end(): void
+    {
+        $correctionRequest = $this->createCorrectionRequestWithDetail('2025-01-15', null, TimeRecordTypeEnum::BREAK_START, '12:00:00');
+
+        try {
+            $this->service->approveCorrectionRequest($correctionRequest->id, $this->approver->id);
+            $this->fail('休憩の開始だけの申請は承認できないはず');
+        } catch (BusinessException $e) {
+            $this->assertStringContainsString('どちらか一方', $e->getMessage());
+        }
+
+        // 承認は取り消され、打刻も作られない
+        $this->assertEquals(RequestStatusEnum::PENDING, $correctionRequest->fresh()->status);
+        $this->assertDatabaseMissing('time_records', ['user_id' => $this->user->id, 'record_type' => TimeRecordTypeEnum::BREAK_START->value]);
     }
 
     // ========================================

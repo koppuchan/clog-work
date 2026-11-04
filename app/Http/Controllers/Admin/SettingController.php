@@ -73,6 +73,7 @@ class SettingController extends Controller
                 'paid_leave_hourly' => $company->paid_leave_hourly,
                 'daily_working_hours' => $company->daily_working_hours,
                 'is_stamp_hidden' => $company->is_stamp_hidden,
+                'records_stamp_location' => $company->records_stamp_location,
                 'public_stamp_url' => $publicStampUrl,
             ],
             'companyRegularHolidays' => $companyRegularHolidays,
@@ -140,6 +141,14 @@ class SettingController extends Controller
             $this->companySettingService->updateStampHiddenSetting(
                 $companyId,
                 (bool) $data['isStampHidden']
+            );
+        }
+
+        // スマホ打刻の位置情報記録設定の更新
+        if (array_key_exists('recordsStampLocation', $data)) {
+            $this->companySettingService->updateStampLocationSetting(
+                $companyId,
+                (bool) $data['recordsStampLocation']
             );
         }
 

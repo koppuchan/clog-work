@@ -41,13 +41,14 @@ class StampService
      * @param  int  $companyId  会社ID
      * @param  int  $userId  ユーザーID
      * @param  CarbonImmutable|null  $recordTime  打刻時刻（指定がない場合は現在時刻）
+     * @param  StampLocation|null  $location  打刻したときの位置情報（保存するのは、会社が記録する設定で、本人が同意しているときだけ）
      * @return TimeRecord 作成された打刻レコード
      *
      * @throws BusinessException 既に出勤中の場合
      */
-    public function clockIn(int $companyId, int $userId, ?CarbonImmutable $recordTime = null): TimeRecord
+    public function clockIn(int $companyId, int $userId, ?CarbonImmutable $recordTime = null, ?StampLocation $location = null): TimeRecord
     {
-        return DB::transaction(function () use ($companyId, $userId, $recordTime): TimeRecord {
+        return DB::transaction(function () use ($companyId, $userId, $recordTime, $location): TimeRecord {
             $recordTime = $recordTime ?? CarbonImmutable::now();
 
             // ビジネスルールチェック: 既に出勤中でないか
@@ -69,6 +70,7 @@ class StampService
                 'record_time' => $recordTime,
                 'rounded_time' => $this->timeRoundingService->roundTime($companyId, $recordTime, TimeRecordTypeEnum::WORK_START),
                 'record_source' => RecordSourceEnum::AUTO,
+                ...$this->locationAttributes($companyId, $userId, $location),
             ]);
         });
     }
@@ -79,13 +81,14 @@ class StampService
      * @param  int  $companyId  会社ID
      * @param  int  $userId  ユーザーID
      * @param  CarbonImmutable|null  $recordTime  打刻時刻（指定がない場合は現在時刻）
+     * @param  StampLocation|null  $location  打刻したときの位置情報（保存するのは、会社が記録する設定で、本人が同意しているときだけ）
      * @return TimeRecord 作成された打刻レコード
      *
      * @throws BusinessException 出勤していない場合、または休憩中の場合
      */
-    public function clockOut(int $companyId, int $userId, ?CarbonImmutable $recordTime = null): TimeRecord
+    public function clockOut(int $companyId, int $userId, ?CarbonImmutable $recordTime = null, ?StampLocation $location = null): TimeRecord
     {
-        $record = DB::transaction(function () use ($companyId, $userId, $recordTime): TimeRecord {
+        $record = DB::transaction(function () use ($companyId, $userId, $recordTime, $location): TimeRecord {
             $recordTime = $recordTime ?? CarbonImmutable::now();
 
             // 出勤中か・休憩中かは同じ「現在のセッション」から判定できるため、
@@ -127,6 +130,7 @@ class StampService
                 'record_time' => $recordTime,
                 'rounded_time' => $this->timeRoundingService->roundTime($companyId, $recordTime, $recordType),
                 'record_source' => RecordSourceEnum::AUTO,
+                ...$this->locationAttributes($companyId, $userId, $location),
             ]);
         });
 
@@ -156,13 +160,14 @@ class StampService
      * @param  int  $companyId  会社ID
      * @param  int  $userId  ユーザーID
      * @param  CarbonImmutable|null  $recordTime  打刻時刻（指定がない場合は現在時刻）
+     * @param  StampLocation|null  $location  打刻したときの位置情報（保存するのは、会社が記録する設定で、本人が同意しているときだけ）
      * @return TimeRecord 作成された打刻レコード
      *
      * @throws BusinessException 出勤していない場合、または既に休憩中の場合
      */
-    public function breakStart(int $companyId, int $userId, ?CarbonImmutable $recordTime = null): TimeRecord
+    public function breakStart(int $companyId, int $userId, ?CarbonImmutable $recordTime = null, ?StampLocation $location = null): TimeRecord
     {
-        return DB::transaction(function () use ($companyId, $userId, $recordTime): TimeRecord {
+        return DB::transaction(function () use ($companyId, $userId, $recordTime, $location): TimeRecord {
             $recordTime = $recordTime ?? CarbonImmutable::now();
 
             // 出勤中か・休憩中かは同じ「現在のセッション」から判定できるため、
@@ -199,6 +204,7 @@ class StampService
                 'record_time' => $recordTime,
                 'rounded_time' => $this->timeRoundingService->roundTime($companyId, $recordTime, TimeRecordTypeEnum::BREAK_START),
                 'record_source' => RecordSourceEnum::AUTO,
+                ...$this->locationAttributes($companyId, $userId, $location),
             ]);
         });
     }
@@ -209,13 +215,14 @@ class StampService
      * @param  int  $companyId  会社ID
      * @param  int  $userId  ユーザーID
      * @param  CarbonImmutable|null  $recordTime  打刻時刻（指定がない場合は現在時刻）
+     * @param  StampLocation|null  $location  打刻したときの位置情報（保存するのは、会社が記録する設定で、本人が同意しているときだけ）
      * @return TimeRecord 作成された打刻レコード
      *
      * @throws BusinessException 休憩中でない場合
      */
-    public function breakEnd(int $companyId, int $userId, ?CarbonImmutable $recordTime = null): TimeRecord
+    public function breakEnd(int $companyId, int $userId, ?CarbonImmutable $recordTime = null, ?StampLocation $location = null): TimeRecord
     {
-        return DB::transaction(function () use ($companyId, $userId, $recordTime): TimeRecord {
+        return DB::transaction(function () use ($companyId, $userId, $recordTime, $location): TimeRecord {
             $recordTime = $recordTime ?? CarbonImmutable::now();
 
             // ビジネスルールチェック: 休憩中か
@@ -230,6 +237,7 @@ class StampService
                 'record_time' => $recordTime,
                 'rounded_time' => $this->timeRoundingService->roundTime($companyId, $recordTime, TimeRecordTypeEnum::BREAK_END),
                 'record_source' => RecordSourceEnum::AUTO,
+                ...$this->locationAttributes($companyId, $userId, $location),
             ]);
         });
     }
@@ -440,6 +448,64 @@ class StampService
     private function isOnBreak(int $companyId, int $userId): bool
     {
         return $this->getCurrentWorkSession($companyId, $userId)['isOnBreak'];
+    }
+
+    /**
+     * 打刻に保存する位置情報の列を返す
+     *
+     * 位置情報は、会社が「位置情報を記録する」設定にしていて、本人が取得に同意している
+     * ときだけ保存する。画面側の判定に頼らず、サーバー側でも確かめる
+     * （同意していない人の位置を、画面の不具合や直接のリクエストで保存してしまわないため）。
+     *
+     * @return array{latitude?: float, longitude?: float, location_accuracy?: int|null}
+     */
+    private function locationAttributes(int $companyId, int $userId, ?StampLocation $location): array
+    {
+        if ($location === null || ! $this->canRecordLocation($companyId, $userId)) {
+            return [];
+        }
+
+        return [
+            'latitude' => $location->latitude,
+            'longitude' => $location->longitude,
+            'location_accuracy' => $location->accuracy,
+        ];
+    }
+
+    private function canRecordLocation(int $companyId, int $userId): bool
+    {
+        $status = $this->getLocationRecordingStatus($companyId, $userId);
+
+        return $status['enabled'] && $status['consented'];
+    }
+
+    /**
+     * 位置情報の記録の状態（打刻画面で、位置情報を取るか・同意を求めるかの判断に使う）
+     *
+     * @return array{enabled: bool, consented: bool}
+     */
+    public function getLocationRecordingStatus(int $companyId, int $userId): array
+    {
+        $enabled = (bool) $this->companyRepository->findById($companyId)?->records_stamp_location;
+
+        return [
+            'enabled' => $enabled,
+            'consented' => $enabled && $this->userRepository->findById($userId)?->location_consented_at !== null,
+        ];
+    }
+
+    /**
+     * 打刻時の位置情報の取得に同意したことを記録する
+     *
+     * 位置情報を記録しない会社では何もしない。
+     */
+    public function recordLocationConsent(int $companyId, int $userId): void
+    {
+        if (! $this->getLocationRecordingStatus($companyId, $userId)['enabled']) {
+            return;
+        }
+
+        $this->userRepository->update($userId, ['location_consented_at' => CarbonImmutable::now()]);
     }
 
     /**

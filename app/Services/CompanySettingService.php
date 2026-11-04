@@ -32,6 +32,7 @@ class CompanySettingService
      *   includeNationalHolidays: bool,
      *   payrollClosingDay: int|null,
      *   isStampHidden: bool,
+     *   recordsStampLocation: bool,
      *   paidLeave: array{halfDay: bool, hourly: bool, dailyWorkingHours: float|null},
      *   shiftDisplay: array{periodId: int|null},
      *   clockRounding: array{roundingUnitId: int|null}
@@ -65,6 +66,7 @@ class CompanySettingService
             'payrollClosingDay' => $company->payroll_closing_day,
             'defaultShiftPatternId' => $company->default_shift_pattern_id,
             'isStampHidden' => $company->is_stamp_hidden ?? false,
+            'recordsStampLocation' => $company->records_stamp_location ?? false,
             'paidLeave' => [
                 'halfDay' => $company->paid_leave_half_day ?? false,
                 'hourly' => $company->paid_leave_hourly ?? false,
@@ -216,6 +218,19 @@ class CompanySettingService
     }
 
     /**
+     * スマホ打刻の位置情報記録設定を更新
+     *
+     * @param  int  $companyId  会社ID
+     * @param  bool  $recordsStampLocation  スタッフ画面の打刻時に位置情報を記録するかどうか
+     */
+    public function updateStampLocationSetting(int $companyId, bool $recordsStampLocation): Company
+    {
+        return $this->companyRepository->update($companyId, [
+            'records_stamp_location' => $recordsStampLocation,
+        ]);
+    }
+
+    /**
      * 定休日を更新
      *
      * @param  int  $companyId  会社ID
@@ -246,6 +261,7 @@ class CompanySettingService
      *   includeNationalHolidays: bool,
      *   payrollClosingDay: int|null,
      *   isStampHidden: bool,
+     *   recordsStampLocation: bool,
      *   paidLeave: array{halfDay: bool, hourly: bool, dailyWorkingHours: float|null},
      *   shiftDisplay: array{periodId: int|null},
      *   clockRounding: array{roundingUnitId: int|null}
@@ -260,6 +276,7 @@ class CompanySettingService
             'payrollClosingDay' => null,
             'defaultShiftPatternId' => null,
             'isStampHidden' => false,
+            'recordsStampLocation' => false,
             'paidLeave' => [
                 'halfDay' => false,
                 'hourly' => false,

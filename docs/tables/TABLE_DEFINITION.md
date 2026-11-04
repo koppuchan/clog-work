@@ -132,6 +132,7 @@
 | paid_leave_half_day | BOOLEAN | NO | FALSE | 半日単位の有給を付与する場合TRUE |
 | paid_leave_hourly | BOOLEAN | NO | FALSE | 時間単位の有給を付与する場合TRUE |
 | daily_working_hours | DECIMAL(4,1) | YES | NULL | 1日あたりの所定労働時間（時間有給の計算に使用） |
+| records_stamp_location | BOOLEAN | NO | FALSE | スタッフ画面（スマホ）の打刻時に位置情報を記録する場合TRUE |
 | created_at | TIMESTAMP | YES | NULL | 作成日時 |
 | updated_at | TIMESTAMP | YES | NULL | 更新日時 |
 
@@ -229,6 +230,7 @@
 | must_change_password | BOOLEAN | NO | FALSE | 初回ログイン時パスワード変更必須フラグ |
 | is_retired | BOOLEAN | NO | FALSE | 退職済みフラグ |
 | retirement_date | DATE | YES | NULL | 退職日 |
+| location_consented_at | TIMESTAMP | YES | NULL | 打刻時の位置情報の取得に同意した日時 |
 | remember_token | VARCHAR(100) | YES | NULL | ログイン保持トークン |
 | created_at | TIMESTAMP | YES | NULL | 作成日時 |
 | updated_at | TIMESTAMP | YES | NULL | 更新日時 |
@@ -409,6 +411,9 @@
 | rounded_time | DATETIME | YES | NULL | 丸め処理後の打刻日時 |
 | record_source | TINYINT UNSIGNED | NO | 1 | 記録元（下記参照） |
 | note | VARCHAR(255) | YES | NULL | 備考 |
+| latitude | DECIMAL(10,7) | YES | NULL | 打刻したときの緯度（位置情報を記録する設定の会社のスマホ打刻のみ） |
+| longitude | DECIMAL(10,7) | YES | NULL | 打刻したときの経度 |
+| location_accuracy | INT UNSIGNED | YES | NULL | 位置情報の精度（メートル） |
 | created_at | TIMESTAMP | YES | NULL | 作成日時 |
 | updated_at | TIMESTAMP | YES | NULL | 更新日時 |
 

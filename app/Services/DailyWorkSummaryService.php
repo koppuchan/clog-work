@@ -870,8 +870,15 @@ class DailyWorkSummaryService
         $endDate = CarbonImmutable::parse($periodEnd);
         $weekdays = ['日', '月', '火', '水', '木', '金', '土'];
 
+        // スマホ打刻で位置情報を記録する設定の会社だけ、出社・退社の位置（地図のURL）の列を末尾に付ける
+        $recordsLocation = (bool) $this->companyRepository->findById($companyId)?->records_stamp_location;
+
         $lines = [];
-        $lines[] = ['コード', '氏名', '日付', '勤務区分', 'シフト開始', 'シフト終了', 'シフト休憩入', 'シフト休憩出', '出勤時刻', '退勤時刻', '休憩入①', '休憩出①', '休憩入②', '休憩出②', '労働時間', '時間外', '休日', '深夜', '遅刻早退', '備考/申請'];
+        $lines[] = [
+            'コード', '氏名', '日付', '勤務区分', 'シフト開始', 'シフト終了', 'シフト休憩入', 'シフト休憩出', '出勤時刻', '退勤時刻',
+            '休憩入①', '休憩出①', '休憩入②', '休憩出②', '労働時間', '時間外', '休日', '深夜', '遅刻早退', '備考/申請',
+            ...($recordsLocation ? ['出社位置', '退社位置'] : []),
+        ];
 
         foreach ($users as $user) {
             $rawTimes = $this->rawStampTimeService->mapByDate(
@@ -880,6 +887,15 @@ class DailyWorkSummaryService
                 $startDate->format('Y-m-d'),
                 $endDate->format('Y-m-d'),
             );
+
+            $locations = $recordsLocation
+                ? $this->rawStampTimeService->locationsByDate(
+                    $companyId,
+                    $user->id,
+                    $startDate->format('Y-m-d'),
+                    $endDate->format('Y-m-d'),
+                )
+                : [];
 
             $summaries = $this->getByUserIdAndDateRange(
                 $companyId,
@@ -964,6 +980,10 @@ class DailyWorkSummaryService
                         + $this->lateEarlyLeaveDisplay->earlyLeaveMinutes($summary)
                     ),
                     $this->buildNoteAndRequestColumn($summary, $requestMap->get($dateKey, collect()), $dailyWorkingMinutes, $effectiveWorkStart),
+                    ...($recordsLocation ? [
+                        $this->mapUrl($locations[$dateKey]['start'] ?? null),
+                        $this->mapUrl($locations[$dateKey]['end'] ?? null),
+                    ] : []),
                 ];
 
                 $currentDate = $currentDate->addDay();
@@ -976,6 +996,22 @@ class DailyWorkSummaryService
         }
 
         return $output;
+    }
+
+    /**
+     * 打刻した位置を、地図で開けるURLにする（位置が無ければ空）
+     *
+     * @param  array{latitude: float, longitude: float}|null  $location  打刻した位置
+     */
+    private function mapUrl(?array $location): string
+    {
+        if ($location === null) {
+            return '';
+        }
+
+        $format = fn (float $degrees): string => rtrim(rtrim(number_format($degrees, 7, '.', ''), '0'), '.');
+
+        return 'https://www.google.com/maps?q='.$format($location['latitude']).','.$format($location['longitude']);
     }
 
     /**

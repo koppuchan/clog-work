@@ -144,6 +144,7 @@ Route::middleware(['auth:staff', EnsurePasswordIsChanged::class])->prefix('staff
         Route::post('/stamp/clock-out', [StampController::class, 'clockOut'])->name('stamp.clock-out');
         Route::post('/stamp/break-start', [StampController::class, 'breakStart'])->name('stamp.break-start');
         Route::post('/stamp/break-end', [StampController::class, 'breakEnd'])->name('stamp.break-end');
+        Route::post('/stamp/location-consent', [StampController::class, 'consentToLocation'])->name('stamp.location-consent');
         Route::get('/stamp/status', [StampController::class, 'status'])->name('stamp.status');
     });
 

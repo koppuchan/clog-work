@@ -7,8 +7,10 @@ interface CompanySettingsCardProps {
   publicStampUrl: string;
   companyName: string;
   isStampHidden: boolean;
+  recordsStampLocation: boolean;
   onCompanyNameChange: (name: string) => void;
   onStampHiddenChange: (checked: boolean) => void;
+  onRecordsStampLocationChange: (checked: boolean) => void;
 }
 
 export default function CompanySettingsCard({
@@ -16,8 +18,10 @@ export default function CompanySettingsCard({
   publicStampUrl,
   companyName,
   isStampHidden,
+  recordsStampLocation,
   onCompanyNameChange,
   onStampHiddenChange,
+  onRecordsStampLocationChange,
 }: CompanySettingsCardProps) {
   const [copied, setCopied] = useState(false);
 
@@ -122,6 +126,25 @@ export default function CompanySettingsCard({
               <span className="text-sm font-medium text-gray-700">スタッフ打刻画面を非表示にする</span>
               <p className="text-xs text-gray-500 mt-1">
                 チェックを入れると、全スタッフの打刻画面が非表示になります。部署・スタッフ単位での設定も可能です。
+              </p>
+            </div>
+          </label>
+        </div>
+
+        {/* スマホ打刻の位置情報記録設定 */}
+        <div className="pt-4 border-t">
+          <label className="flex items-start cursor-pointer">
+            <input
+              type="checkbox"
+              checked={recordsStampLocation}
+              onChange={(e) => onRecordsStampLocationChange(e.target.checked)}
+              className="mt-1 mr-3 h-4 w-4"
+            />
+            <div>
+              <span className="text-sm font-medium text-gray-700">スマホ打刻のときに位置情報を記録する</span>
+              <p className="text-xs text-gray-500 mt-1">
+                チェックを入れると、スタッフ画面で打刻したときの位置情報（緯度・経度）を記録し、勤務実績のCSVに出社・退社の地図のURLを出力します。
+                スタッフが初めて打刻するときに、位置情報の取得についての案内と同意の確認を表示します。位置情報が取得できない場合も、打刻はできます。
               </p>
             </div>
           </label>

@@ -30,6 +30,7 @@ class Company extends Model
         'paid_leave_hourly',
         'daily_working_hours',
         'is_stamp_hidden',
+        'records_stamp_location',
         'default_shift_pattern_id',
     ];
 
@@ -58,6 +59,7 @@ class Company extends Model
         'paid_leave_half_day' => 'boolean',
         'paid_leave_hourly' => 'boolean',
         'is_stamp_hidden' => 'boolean',
+        'records_stamp_location' => 'boolean',
         'default_shift_pattern_id' => 'integer',
     ];
 

@@ -36,6 +36,9 @@ class UpdateCompanySettingsRequest extends FormRequest
             // 打刻画面非表示設定
             'isStampHidden' => ['boolean'],
 
+            // スマホ打刻の位置情報記録設定
+            'recordsStampLocation' => ['boolean'],
+
             // 給与締め日
             'payrollClosingDay' => ['nullable', 'string', 'max:10'],
 

@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Staff;
 
 use App\Exceptions\BusinessException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Staff\StampRequest;
 use App\Services\StampService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,18 +40,19 @@ class StampController extends Controller
         return Inertia::render('Staff/Stamp', [
             'currentStatus' => $currentStatus,
             'todayRecords' => $todayRecords,
+            'locationRecording' => $this->stampService->getLocationRecordingStatus($companyId, $userId),
         ]);
     }
 
     /**
      * 出勤打刻を行う
      */
-    public function clockIn(Request $request): JsonResponse
+    public function clockIn(StampRequest $request): JsonResponse
     {
         $user = $request->user();
 
         try {
-            $record = $this->stampService->clockIn($user->company_id, $user->id);
+            $record = $this->stampService->clockIn($user->company_id, $user->id, null, $request->location());
 
             return response()->json([
                 'success' => true,
@@ -60,6 +62,7 @@ class StampController extends Controller
                     'type' => $record->record_type->name,
                     'typeLabel' => $record->record_type->label(),
                     'time' => $record->record_time->format('H:i'),
+                    'hasLocation' => $record->latitude !== null,
                 ],
                 'currentStatus' => $this->stampService->getCurrentStatus($user->company_id, $user->id),
             ]);
@@ -74,12 +77,12 @@ class StampController extends Controller
     /**
      * 退勤打刻を行う
      */
-    public function clockOut(Request $request): JsonResponse
+    public function clockOut(StampRequest $request): JsonResponse
     {
         $user = $request->user();
 
         try {
-            $record = $this->stampService->clockOut($user->company_id, $user->id);
+            $record = $this->stampService->clockOut($user->company_id, $user->id, null, $request->location());
 
             return response()->json([
                 'success' => true,
@@ -89,6 +92,7 @@ class StampController extends Controller
                     'type' => $record->record_type->name,
                     'typeLabel' => $record->record_type->label(),
                     'time' => $record->record_time->format('H:i'),
+                    'hasLocation' => $record->latitude !== null,
                 ],
                 'currentStatus' => $this->stampService->getCurrentStatus($user->company_id, $user->id),
             ]);
@@ -103,12 +107,12 @@ class StampController extends Controller
     /**
      * 休憩開始打刻を行う
      */
-    public function breakStart(Request $request): JsonResponse
+    public function breakStart(StampRequest $request): JsonResponse
     {
         $user = $request->user();
 
         try {
-            $record = $this->stampService->breakStart($user->company_id, $user->id);
+            $record = $this->stampService->breakStart($user->company_id, $user->id, null, $request->location());
 
             return response()->json([
                 'success' => true,
@@ -118,6 +122,7 @@ class StampController extends Controller
                     'type' => $record->record_type->name,
                     'typeLabel' => $record->record_type->label(),
                     'time' => $record->record_time->format('H:i'),
+                    'hasLocation' => $record->latitude !== null,
                 ],
                 'currentStatus' => $this->stampService->getCurrentStatus($user->company_id, $user->id),
             ]);
@@ -132,12 +137,12 @@ class StampController extends Controller
     /**
      * 休憩終了打刻を行う
      */
-    public function breakEnd(Request $request): JsonResponse
+    public function breakEnd(StampRequest $request): JsonResponse
     {
         $user = $request->user();
 
         try {
-            $record = $this->stampService->breakEnd($user->company_id, $user->id);
+            $record = $this->stampService->breakEnd($user->company_id, $user->id, null, $request->location());
 
             return response()->json([
                 'success' => true,
@@ -147,6 +152,7 @@ class StampController extends Controller
                     'type' => $record->record_type->name,
                     'typeLabel' => $record->record_type->label(),
                     'time' => $record->record_time->format('H:i'),
+                    'hasLocation' => $record->latitude !== null,
                 ],
                 'currentStatus' => $this->stampService->getCurrentStatus($user->company_id, $user->id),
             ]);
@@ -156,6 +162,21 @@ class StampController extends Controller
                 'message' => $e->getMessage(),
             ], 422);
         }
+    }
+
+    /**
+     * 打刻時の位置情報の取得に同意したことを記録する
+     */
+    public function consentToLocation(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $this->stampService->recordLocationConsent($user->company_id, $user->id);
+
+        return response()->json([
+            'success' => true,
+            'locationRecording' => $this->stampService->getLocationRecordingStatus($user->company_id, $user->id),
+        ]);
     }
 
     /**

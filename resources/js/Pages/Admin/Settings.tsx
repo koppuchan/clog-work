@@ -106,6 +106,8 @@ function SettingsPage({
       defaultShiftPatternId: companySettingsHook.defaultShiftPatternId,
       // 打刻画面非表示設定
       isStampHidden: companySettingsHook.isStampHidden,
+      // スマホ打刻の位置情報記録設定
+      recordsStampLocation: companySettingsHook.recordsStampLocation,
       // 有給休暇設定
       paidLeaveHalfDay: companySettingsHook.paidLeaveHalfDay,
       paidLeaveHourly: companySettingsHook.paidLeaveHourly,
@@ -168,6 +170,8 @@ function SettingsPage({
           isStampHidden={companySettingsHook.isStampHidden}
           onCompanyNameChange={companySettingsHook.setCompanyName}
           onStampHiddenChange={companySettingsHook.setIsStampHidden}
+          recordsStampLocation={companySettingsHook.recordsStampLocation}
+          onRecordsStampLocationChange={companySettingsHook.setRecordsStampLocation}
         />
 
         {/* 部署設定 */}

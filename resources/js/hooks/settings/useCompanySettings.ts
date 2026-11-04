@@ -53,6 +53,7 @@ export function useCompanySettings(
   const clockRoundingInit = roundingUnitIdToValue(companySettings?.clockRounding?.roundingUnitId ?? null);
   const defaultShiftPatternIdInit: number | null = companySettings?.defaultShiftPatternId ?? null;
   const isStampHiddenInit = company?.is_stamp_hidden ?? false;
+  const recordsStampLocationInit = company?.records_stamp_location ?? false;
   const paidLeaveHalfDayInit = company?.paid_leave_half_day ?? false;
   const paidLeaveHourlyInit = company?.paid_leave_hourly ?? false;
   // daily_working_hoursはDBがDECIMAL(4,1)のため、DB保存後は"8.0"のような
@@ -71,6 +72,7 @@ export function useCompanySettings(
   const [clockRounding, setClockRounding] = useState(clockRoundingInit);
   const [defaultShiftPatternId, setDefaultShiftPatternId] = useState<number | null>(defaultShiftPatternIdInit);
   const [isStampHidden, setIsStampHidden] = useState(isStampHiddenInit);
+  const [recordsStampLocation, setRecordsStampLocation] = useState(recordsStampLocationInit);
   const [paidLeaveHalfDay, setPaidLeaveHalfDay] = useState(paidLeaveHalfDayInit);
   const [paidLeaveHourly, setPaidLeaveHourly] = useState(paidLeaveHourlyInit);
   const [dailyWorkingHours, setDailyWorkingHours] = useState(dailyWorkingHoursInit);
@@ -88,6 +90,7 @@ export function useCompanySettings(
     clockRounding: clockRoundingInit,
     defaultShiftPatternId: defaultShiftPatternIdInit,
     isStampHidden: isStampHiddenInit,
+    recordsStampLocation: recordsStampLocationInit,
     paidLeaveHalfDay: paidLeaveHalfDayInit,
     paidLeaveHourly: paidLeaveHourlyInit,
     dailyWorkingHours: dailyWorkingHoursInit,
@@ -106,11 +109,12 @@ export function useCompanySettings(
       clockRounding !== init.clockRounding ||
       defaultShiftPatternId !== init.defaultShiftPatternId ||
       isStampHidden !== init.isStampHidden ||
+      recordsStampLocation !== init.recordsStampLocation ||
       paidLeaveHalfDay !== init.paidLeaveHalfDay ||
       paidLeaveHourly !== init.paidLeaveHourly ||
       dailyWorkingHours !== init.dailyWorkingHours
     );
-  }, [companyName, weekendDays, includeNationalHolidays, payrollClosingDay, shiftDisplayPeriod, clockRounding, defaultShiftPatternId, isStampHidden, paidLeaveHalfDay, paidLeaveHourly, dailyWorkingHours, dirtyResetVersion]);
+  }, [companyName, weekendDays, includeNationalHolidays, payrollClosingDay, shiftDisplayPeriod, clockRounding, defaultShiftPatternId, isStampHidden, recordsStampLocation, paidLeaveHalfDay, paidLeaveHourly, dailyWorkingHours, dirtyResetVersion]);
 
   return {
     // 会社基本設定
@@ -134,6 +138,9 @@ export function useCompanySettings(
     // 打刻画面非表示設定
     isStampHidden,
     setIsStampHidden,
+    // スマホ打刻の位置情報記録設定
+    recordsStampLocation,
+    setRecordsStampLocation,
     // 有給設定
     paidLeaveHalfDay,
     setPaidLeaveHalfDay,
@@ -153,11 +160,12 @@ export function useCompanySettings(
         clockRounding,
         defaultShiftPatternId,
         isStampHidden,
+        recordsStampLocation,
         paidLeaveHalfDay,
         paidLeaveHourly,
         dailyWorkingHours,
       };
       setDirtyResetVersion(v => v + 1);
-    }, [companyName, weekendDays, includeNationalHolidays, payrollClosingDay, shiftDisplayPeriod, clockRounding, defaultShiftPatternId, isStampHidden, paidLeaveHalfDay, paidLeaveHourly, dailyWorkingHours]),
+    }, [companyName, weekendDays, includeNationalHolidays, payrollClosingDay, shiftDisplayPeriod, clockRounding, defaultShiftPatternId, isStampHidden, recordsStampLocation, paidLeaveHalfDay, paidLeaveHourly, dailyWorkingHours]),
   };
 }

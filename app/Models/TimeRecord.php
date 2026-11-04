@@ -38,6 +38,9 @@ class TimeRecord extends Model
         'rounded_time',
         'record_source',
         'note',
+        'latitude',
+        'longitude',
+        'location_accuracy',
     ];
 
     /**
@@ -53,6 +56,9 @@ class TimeRecord extends Model
             'rounded_time' => 'datetime',
             'record_source' => RecordSourceEnum::class,
             'note' => 'string',
+            'latitude' => 'float',
+            'longitude' => 'float',
+            'location_accuracy' => 'integer',
         ];
     }
 

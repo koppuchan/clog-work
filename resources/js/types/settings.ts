@@ -15,6 +15,7 @@ export interface Company {
   paid_leave_hourly: boolean;
   daily_working_hours: number | null;
   is_stamp_hidden: boolean;
+  records_stamp_location: boolean;
   public_stamp_url: string;
 }
 
@@ -28,6 +29,7 @@ export interface CompanySettingsData {
   payrollClosingDay: number | null;
   defaultShiftPatternId: number | null;
   isStampHidden: boolean;
+  recordsStampLocation?: boolean;
   paidLeave: {
     halfDay: boolean;
     hourly: boolean;

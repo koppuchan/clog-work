@@ -48,8 +48,10 @@ export function useShiftPatterns(
       setSelectedColorId(shift.colorId ?? null);
       setShowForm(true);
 
-      setBreakStart(shift.breakStart ?? DEFAULT_BREAK_SETTINGS.start);
-      setBreakEnd(shift.breakEnd ?? DEFAULT_BREAK_SETTINGS.end);
+      // 休憩の時刻が未設定のパターンは、初期値（12:00〜13:00）を入れず空欄のまま出す。
+      // 入れてしまうと、休憩なしのパターンを開いて更新するだけで休憩が付いてしまう。
+      setBreakStart(shift.breakStart ?? '');
+      setBreakEnd(shift.breakEnd ?? '');
 
       // 始業・終業時刻を設定
       setTimeout(() => {
@@ -84,13 +86,20 @@ export function useShiftPatterns(
     const startTime = (document.getElementById('shiftStartTime') as HTMLInputElement)?.value || null;
     const endTime = (document.getElementById('shiftEndTime') as HTMLInputElement)?.value || null;
 
+    // 休憩の時刻を入れていない、分数だけで休憩を持つパターン（休憩の時刻を入れる画面が
+    // なかった頃のもの）は、更新しても休憩の分数を残す。時刻を入れていたものを空にした場合は、休憩なしにする。
+    const editingPattern = editingId !== null ? shiftPatterns.find((s) => s.id === editingId) : undefined;
+    const hadBreakTimes = !!(editingPattern?.breakStart && editingPattern?.breakEnd);
+    const keepBreakMinutes = !!editingPattern && !hadBreakTimes && !breakStart && !breakEnd;
+
     const requestData = {
       name: formData.name,
       startTime: formatTime(startTime),
       endTime: formatTime(endTime),
-      workMinutes: formData.workMinutes,
+      // 始業・終業・休憩から、サーバー側で所定労働時間を計算し直す
+      workMinutes: null,
       breakMode: BREAK_MODE.RANGE,
-      breakMinutes: null,
+      breakMinutes: keepBreakMinutes ? editingPattern.breakMinutes : null,
       breakStart: formatTime(breakStart),
       breakEnd: formatTime(breakEnd),
       autoFillBreak: formData.autoFillBreak ?? false,
@@ -123,7 +132,7 @@ export function useShiftPatterns(
     } finally {
       setIsSubmitting(false);
     }
-  }, [editingId, formData, breakStart, breakEnd, selectedColorId, closeForm]);
+  }, [editingId, formData, shiftPatterns, breakStart, breakEnd, selectedColorId, closeForm]);
 
   const handleDelete = useCallback(async (id: number) => {
     try {

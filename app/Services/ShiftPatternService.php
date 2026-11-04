@@ -256,15 +256,22 @@ class ShiftPatternService
             'breakEnd' => $updateData['break_end'] ?? null,
         ];
 
-        // 更新データに含まれていないフィールドは既存のパターンから取得
+        // 更新データに含まれていないフィールドは既存のパターンから取得する。
+        // 含まれていて空（null）のものは、空にする指定なので既存の値で埋め戻さない
+        // （埋め戻すと、休憩の時刻を空にして保存しても、既存の休憩時間で
+        // break_minutes が再計算され、休憩が消えなかった）。
         $existingPattern = $this->shiftPatternRepository->findById($id);
         $valuesBefore = $existingPattern ? $this->summaryAffectingValues($existingPattern) : null;
         if ($existingPattern) {
-            $calcData['startTime'] = $calcData['startTime'] ?? (string) $existingPattern->start_time;
-            $calcData['endTime'] = $calcData['endTime'] ?? (string) $existingPattern->end_time;
-            $calcData['breakStart'] = $calcData['breakStart'] ?? ($existingPattern->break_start ? (string) $existingPattern->break_start : null);
-            $calcData['breakEnd'] = $calcData['breakEnd'] ?? ($existingPattern->break_end ? (string) $existingPattern->break_end : null);
+            $calcData['startTime'] = array_key_exists('startTime', $data) ? $calcData['startTime'] : (string) $existingPattern->start_time;
+            $calcData['endTime'] = array_key_exists('endTime', $data) ? $calcData['endTime'] : (string) $existingPattern->end_time;
+            $calcData['breakStart'] = array_key_exists('breakStart', $data) ? $calcData['breakStart'] : ($existingPattern->break_start ? (string) $existingPattern->break_start : null);
+            $calcData['breakEnd'] = array_key_exists('breakEnd', $data) ? $calcData['breakEnd'] : ($existingPattern->break_end ? (string) $existingPattern->break_end : null);
         }
+
+        // 休憩の開始・終了を両方とも空にして、休憩の分数も指定しなかった場合は、休憩なしにする
+        $isBreakCleared = array_key_exists('breakStart', $data) && array_key_exists('breakEnd', $data)
+            && empty($data['breakStart']) && empty($data['breakEnd']) && empty($breakMinutes);
 
         // 始業・終業や休憩の時刻から break_minutes/work_minutes を算出する。
         // 既存パターンの値へフォールバックするのは、算出後もなお未確定
@@ -275,10 +282,12 @@ class ShiftPatternService
         // 変更後も変わらなかった（No.50報告）。
         $this->autoCalculateMinutes($calcData, $breakMinutes, $workMinutes);
         if ($existingPattern) {
-            $breakMinutes = $breakMinutes ?? $existingPattern->break_minutes;
+            if (! $isBreakCleared) {
+                $breakMinutes = $breakMinutes ?? $existingPattern->break_minutes;
+            }
             $workMinutes = $workMinutes ?? $existingPattern->work_minutes;
         }
-        $updateData['break_minutes'] = $breakMinutes;
+        $updateData['break_minutes'] = $isBreakCleared ? null : $breakMinutes;
         $updateData['work_minutes'] = $workMinutes;
 
         $pattern = $this->shiftPatternRepository->update($id, $updateData);

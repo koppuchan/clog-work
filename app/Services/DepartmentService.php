@@ -55,7 +55,7 @@ class DepartmentService
      * 会社の部署一覧を取得（フロントエンド用にフォーマット）
      *
      * @param  int  $companyId  会社ID
-     * @return SupportCollection<int, array{id: int, name: string, userCount: int, isStampHidden: bool}>
+     * @return SupportCollection<int, array{id: int, name: string, userCount: int, isStampHidden: bool, recordsStampLocation: bool}>
      */
     public function getDepartmentsForSettings(int $companyId): SupportCollection
     {
@@ -67,6 +67,7 @@ class DepartmentService
                 'name' => $department->name,
                 'userCount' => $department->users_count ?? 0,
                 'isStampHidden' => $department->is_stamp_hidden ?? false,
+                'recordsStampLocation' => $department->records_stamp_location ?? false,
             ];
         });
     }
@@ -75,7 +76,7 @@ class DepartmentService
      * 部署を取得（フロントエンド用にフォーマット）
      *
      * @param  int  $id  部署ID
-     * @return array{id: int, name: string, userCount: int, isStampHidden: bool}|null
+     * @return array{id: int, name: string, userCount: int, isStampHidden: bool, recordsStampLocation: bool}|null
      */
     public function getDepartmentForSettings(int $id): ?array
     {
@@ -90,6 +91,7 @@ class DepartmentService
             'name' => $department->name,
             'userCount' => $department->users->count(),
             'isStampHidden' => $department->is_stamp_hidden ?? false,
+            'recordsStampLocation' => $department->records_stamp_location ?? false,
         ];
     }
 
@@ -97,8 +99,8 @@ class DepartmentService
      * 部署を作成
      *
      * @param  int  $companyId  会社ID
-     * @param  array{name: string, is_stamp_hidden?: bool}  $data  部署データ
-     * @return array{id: int, name: string, userCount: int, isStampHidden: bool}
+     * @param  array{name: string, is_stamp_hidden?: bool, records_stamp_location?: bool}  $data  部署データ
+     * @return array{id: int, name: string, userCount: int, isStampHidden: bool, recordsStampLocation: bool}
      */
     public function createDepartment(int $companyId, array $data): array
     {
@@ -106,6 +108,7 @@ class DepartmentService
             'company_id' => $companyId,
             'name' => $data['name'],
             'is_stamp_hidden' => $data['is_stamp_hidden'] ?? false,
+            'records_stamp_location' => $data['records_stamp_location'] ?? false,
         ]);
 
         return [
@@ -113,6 +116,7 @@ class DepartmentService
             'name' => $department->name,
             'userCount' => 0,
             'isStampHidden' => $department->is_stamp_hidden,
+            'recordsStampLocation' => $department->records_stamp_location,
         ];
     }
 
@@ -120,8 +124,8 @@ class DepartmentService
      * 部署を更新
      *
      * @param  int  $id  部署ID
-     * @param  array{name: string, is_stamp_hidden?: bool}  $data  更新データ
-     * @return array{id: int, name: string, userCount: int, isStampHidden: bool}
+     * @param  array{name: string, is_stamp_hidden?: bool, records_stamp_location?: bool}  $data  更新データ
+     * @return array{id: int, name: string, userCount: int, isStampHidden: bool, recordsStampLocation: bool}
      */
     public function updateDepartment(int $id, array $data): array
     {
@@ -131,6 +135,10 @@ class DepartmentService
             $updateData['is_stamp_hidden'] = $data['is_stamp_hidden'];
         }
 
+        if (array_key_exists('records_stamp_location', $data)) {
+            $updateData['records_stamp_location'] = $data['records_stamp_location'];
+        }
+
         $department = $this->departmentRepository->update($id, $updateData);
 
         return [
@@ -138,6 +146,7 @@ class DepartmentService
             'name' => $department->name,
             'userCount' => $department->users()->count(),
             'isStampHidden' => $department->is_stamp_hidden,
+            'recordsStampLocation' => $department->records_stamp_location,
         ];
     }
 

@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import axios from 'axios';
 import { SettingsDepartment, NewDepartmentForm } from '@/types/settings';
 
-const INITIAL_DEPARTMENT: NewDepartmentForm = { id: 0, name: '', isStampHidden: false };
+const INITIAL_DEPARTMENT: NewDepartmentForm = { id: 0, name: '', isStampHidden: false, recordsStampLocation: false };
 
 export function useDepartments(initialDepartments: SettingsDepartment[] = []) {
   const [departments, setDepartments] = useState<SettingsDepartment[]>(initialDepartments);
@@ -22,7 +22,7 @@ export function useDepartments(initialDepartments: SettingsDepartment[] = []) {
   const openEditForm = useCallback((id: number) => {
     const dept = departments.find((d) => d.id === id);
     if (dept) {
-      setFormData({ id: dept.id, name: dept.name, isStampHidden: dept.isStampHidden });
+      setFormData({ id: dept.id, name: dept.name, isStampHidden: dept.isStampHidden, recordsStampLocation: dept.recordsStampLocation });
       setEditingId(id);
       setError(null);
       setShowForm(true);
@@ -47,6 +47,7 @@ export function useDepartments(initialDepartments: SettingsDepartment[] = []) {
         const response = await axios.put(`/admin/settings/departments/${editingId}`, {
           name: formData.name,
           is_stamp_hidden: formData.isStampHidden,
+          records_stamp_location: formData.recordsStampLocation,
         });
         setDepartments((prev) =>
           prev.map((dept) =>
@@ -58,6 +59,7 @@ export function useDepartments(initialDepartments: SettingsDepartment[] = []) {
         const response = await axios.post('/admin/settings/departments', {
           name: formData.name,
           is_stamp_hidden: formData.isStampHidden,
+          records_stamp_location: formData.recordsStampLocation,
         });
         setDepartments((prev) => [...prev, response.data]);
       }
@@ -75,7 +77,7 @@ export function useDepartments(initialDepartments: SettingsDepartment[] = []) {
     } finally {
       setIsSubmitting(false);
     }
-  }, [editingId, formData.name, formData.isStampHidden, closeForm]);
+  }, [editingId, formData.name, formData.isStampHidden, formData.recordsStampLocation, closeForm]);
 
   const handleDelete = useCallback(async (id: number) => {
     try {

@@ -29,6 +29,7 @@ class StoreDepartmentRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:100'],
             'is_stamp_hidden' => ['nullable', 'boolean'],
+            'records_stamp_location' => ['nullable', 'boolean'],
         ];
     }
 

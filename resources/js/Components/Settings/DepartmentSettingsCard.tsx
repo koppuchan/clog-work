@@ -1,4 +1,4 @@
-import { Building, Plus, Edit, Trash2, EyeOff } from 'lucide-react';
+import { Building, Plus, Edit, Trash2, EyeOff, MapPin } from 'lucide-react';
 import SettingsCard from './SettingsCard';
 import { SettingsDepartment } from '@/types/settings';
 
@@ -41,6 +41,12 @@ export default function DepartmentSettingsCard({
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">
                   <EyeOff className="h-3 w-3" />
                   打刻非表示
+                </span>
+              )}
+              {dept.recordsStampLocation && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                  <MapPin className="h-3 w-3" />
+                  位置情報を記録
                 </span>
               )}
             </div>

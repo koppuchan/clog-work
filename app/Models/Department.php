@@ -22,6 +22,7 @@ class Department extends Model
         'company_id',
         'name',
         'is_stamp_hidden',
+        'records_stamp_location',
     ];
 
     /**
@@ -32,6 +33,7 @@ class Department extends Model
     protected $casts = [
         'company_id' => 'integer',
         'is_stamp_hidden' => 'boolean',
+        'records_stamp_location' => 'boolean',
     ];
 
     /**

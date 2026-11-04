@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Controllers\Staff;
 
 use App\Models\Company;
+use App\Models\Department;
 use App\Models\TimeRecord;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -200,6 +201,89 @@ class StampLocationTest extends TestCase
                 ->component('Staff/Stamp')
                 ->where('locationRecording.enabled', true)
                 ->where('locationRecording.consented', false)
+        );
+    }
+
+    private function attachDepartment(bool $recordsLocation): Department
+    {
+        $department = Department::query()->create([
+            'company_id' => $this->company->id,
+            'name' => '加古川店',
+            'records_stamp_location' => $recordsLocation,
+        ]);
+        $this->staff->departments()->attach($department->id, ['is_primary' => true]);
+
+        return $department;
+    }
+
+    /**
+     * @test
+     */
+    public function 会社全体の設定がオフでも本人の設定がオンなら対象になる(): void
+    {
+        $this->staff->forceFill(['records_stamp_location' => true, 'location_consented_at' => now()])->save();
+
+        $this->stamp('clock-in', $this->location())->assertOk()->assertJsonPath('record.hasLocation', true);
+    }
+
+    /**
+     * @test
+     */
+    public function 会社全体の設定がオフでも所属部署の設定がオンなら対象になる(): void
+    {
+        $this->attachDepartment(true);
+        $this->staff->forceFill(['location_consented_at' => now()])->save();
+
+        $this->stamp('clock-in', $this->location())->assertOk()->assertJsonPath('record.hasLocation', true);
+    }
+
+    /**
+     * @test
+     */
+    public function 会社も部署も本人もオフなら位置情報も同意の画面も出ない(): void
+    {
+        $this->attachDepartment(false);
+        $this->staff->forceFill(['location_consented_at' => now()])->save();
+
+        $this->stamp('clock-in', $this->location())->assertOk()->assertJsonPath('record.hasLocation', false);
+        $this->actingAs($this->staff, 'staff')->get('/staff/stamp')->assertInertia(
+            fn (Assert $page) => $page->where('locationRecording.enabled', false)->where('locationRecording.consented', false)
+        );
+    }
+
+    /**
+     * @test
+     */
+    public function 対象の部署に所属していないスタッフは対象にならない(): void
+    {
+        $this->attachDepartment(true);
+        $other = User::factory()->forCompany($this->company->id)->employee()->create(['is_retired' => false]);
+        $other->forceFill(['location_consented_at' => now()])->save();
+
+        $response = $this->actingAs($other, 'staff')->postJson('/staff/stamp/clock-in', $this->location());
+
+        $response->assertOk()->assertJsonPath('record.hasLocation', false);
+    }
+
+    /**
+     * @test
+     */
+    public function 対象でないスタッフが同意の記録を送っても保存されない(): void
+    {
+        $this->actingAs($this->staff, 'staff')->postJson('/staff/stamp/location-consent')->assertOk();
+
+        $this->assertNull($this->staff->fresh()->location_consented_at);
+    }
+
+    /**
+     * @test
+     */
+    public function 本人の設定がオンなら打刻画面に同意の状態つきで渡される(): void
+    {
+        $this->staff->forceFill(['records_stamp_location' => true])->save();
+
+        $this->actingAs($this->staff, 'staff')->get('/staff/stamp')->assertInertia(
+            fn (Assert $page) => $page->where('locationRecording.enabled', true)->where('locationRecording.consented', false)
         );
     }
 }

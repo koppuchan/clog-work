@@ -56,7 +56,8 @@ class DailyWorkSummaryService
         private readonly WorkTypeAndNoteService $workTypeAndNoteService,
         private readonly ShiftRepositoryInterface $shiftRepository,
         private readonly AutoBreakFillService $autoBreakFillService,
-        private readonly WorkSessionAttribution $workSessionAttribution
+        private readonly WorkSessionAttribution $workSessionAttribution,
+        private readonly StampLocationRecordingService $locationRecordingService
     ) {}
 
     /**
@@ -870,8 +871,9 @@ class DailyWorkSummaryService
         $endDate = CarbonImmutable::parse($periodEnd);
         $weekdays = ['日', '月', '火', '水', '木', '金', '土'];
 
-        // スマホ打刻で位置情報を記録する設定の会社だけ、出社・退社の位置（地図のURL）の列を末尾に付ける
-        $recordsLocation = (bool) $this->companyRepository->findById($companyId)?->records_stamp_location;
+        // スマホ打刻で位置情報を記録する対象（会社・部署・スタッフ）がいる会社だけ、
+        // 出社・退社の位置（地図のURL）の列を、全員分の末尾に付ける
+        $recordsLocation = $this->locationRecordingService->isUsedInCompany($companyId);
 
         $lines = [];
         $lines[] = [

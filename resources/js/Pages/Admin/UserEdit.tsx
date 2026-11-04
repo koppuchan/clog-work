@@ -110,6 +110,7 @@ export default function EditUserPage({
     approval_permission: 'department' | 'company';
     shift_edit_permission: 'department' | 'company';
     is_stamp_hidden: boolean;
+    records_stamp_location: boolean;
     is_shift_hidden: boolean;
     felica_idm: string;
     is_retired: boolean;
@@ -138,6 +139,7 @@ export default function EditUserPage({
     approval_permission: (validatedData?.approval_permission || serverUser?.approval_permission || 'department') as 'department' | 'company',
     shift_edit_permission: (validatedData?.shift_edit_permission || serverUser?.shift_edit_permission || 'department') as 'department' | 'company',
     is_stamp_hidden: validatedData?.is_stamp_hidden !== undefined ? validatedData.is_stamp_hidden : (serverUser?.is_stamp_hidden || false),
+    records_stamp_location: validatedData?.records_stamp_location !== undefined ? validatedData.records_stamp_location : (serverUser?.records_stamp_location || false),
     is_shift_hidden: validatedData?.is_shift_hidden !== undefined ? validatedData.is_shift_hidden : (serverUser?.is_shift_hidden || false),
     felica_idm: validatedData?.felica_idm ?? serverUser?.felica_idm ?? '',
     is_retired: validatedData?.is_retired !== undefined ? validatedData.is_retired : (serverUser?.is_retired || false),
@@ -254,6 +256,26 @@ export default function EditUserPage({
                   <span className="text-sm font-medium text-gray-700">打刻画面を非表示にする</span>
                   <p className="text-xs text-gray-500 mt-1">
                     このスタッフの打刻画面を非表示にします。
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            <div className="mt-4">
+              <label className="flex items-start cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={data.records_stamp_location}
+                  onChange={(e) => setData('records_stamp_location', e.target.checked)}
+                  className="mt-1 mr-3 h-4 w-4"
+                  disabled={processing}
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">スマホ打刻のときに位置情報を記録する</span>
+                  <p className="text-xs text-gray-500 mt-1">
+                    このスタッフが、スタッフ画面（スマホ）で打刻したときの位置情報を記録します。
+                    初めて打刻するときに、位置情報の取得についての案内と同意の確認を表示します。
+                    会社全体や所属部署で記録する設定になっている場合は、このチェックに関係なく記録します。
                   </p>
                 </div>
               </label>

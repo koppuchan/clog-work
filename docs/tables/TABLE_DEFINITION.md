@@ -192,6 +192,7 @@
 | id | INT UNSIGNED | NO | AUTO_INCREMENT | 部署ID |
 | company_id | INT UNSIGNED | NO | - | 所属会社ID（FK: companies.id） |
 | name | VARCHAR(100) | NO | - | 部署名 |
+| records_stamp_location | BOOLEAN | NO | FALSE | この部署のスタッフのスマホ打刻時に位置情報を記録する場合TRUE |
 | created_at | TIMESTAMP | YES | NULL | 作成日時 |
 | updated_at | TIMESTAMP | YES | NULL | 更新日時 |
 
@@ -230,6 +231,7 @@
 | must_change_password | BOOLEAN | NO | FALSE | 初回ログイン時パスワード変更必須フラグ |
 | is_retired | BOOLEAN | NO | FALSE | 退職済みフラグ |
 | retirement_date | DATE | YES | NULL | 退職日 |
+| records_stamp_location | BOOLEAN | NO | FALSE | このスタッフのスマホ打刻時に位置情報を記録する場合TRUE（会社・所属部署の設定がオンでも記録する） |
 | location_consented_at | TIMESTAMP | YES | NULL | 打刻時の位置情報の取得に同意した日時 |
 | remember_token | VARCHAR(100) | YES | NULL | ログイン保持トークン |
 | created_at | TIMESTAMP | YES | NULL | 作成日時 |

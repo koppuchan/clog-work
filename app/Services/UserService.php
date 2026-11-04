@@ -363,6 +363,7 @@ class UserService
                     'password',
                     'stamp_password',
                     'is_stamp_hidden',
+                    'records_stamp_location',
                     'is_shift_hidden',
                     'felica_idm',
                     'is_retired',

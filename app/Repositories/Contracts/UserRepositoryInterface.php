@@ -107,6 +107,13 @@ interface UserRepositoryInterface
     public function update(int $id, array $data): User;
 
     /**
+     * 位置情報を記録する設定のスタッフが、会社にいるか
+     *
+     * @param  int  $companyId  会社ID
+     */
+    public function existsWithLocationRecording(int $companyId): bool;
+
+    /**
      * ユーザーを削除
      *
      * @param  int  $id  ユーザーID

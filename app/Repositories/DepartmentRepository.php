@@ -112,4 +112,17 @@ class DepartmentRepository implements DepartmentRepositoryInterface
 
         return $department->delete();
     }
+
+    /**
+     * 位置情報を記録する設定の部署が、会社にあるか
+     *
+     * @param  int  $companyId  会社ID
+     */
+    public function existsWithLocationRecording(int $companyId): bool
+    {
+        return $this->department->query()
+            ->where('company_id', $companyId)
+            ->where('records_stamp_location', true)
+            ->exists();
+    }
 }

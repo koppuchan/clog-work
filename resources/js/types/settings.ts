@@ -50,6 +50,7 @@ export interface SettingsDepartment {
   name: string;
   userCount: number;
   isStampHidden: boolean;
+  recordsStampLocation: boolean;
 }
 
 /**
@@ -135,6 +136,7 @@ export interface NewDepartmentForm {
   id: number;
   name: string;
   isStampHidden: boolean;
+  recordsStampLocation: boolean;
 }
 
 /**

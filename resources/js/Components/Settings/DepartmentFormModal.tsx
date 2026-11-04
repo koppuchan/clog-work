@@ -67,6 +67,24 @@ export default function DepartmentFormModal({
               </div>
             </label>
           </div>
+          <div>
+            <label className="flex items-start cursor-pointer">
+              <input
+                type="checkbox"
+                checked={department.recordsStampLocation}
+                onChange={(e) => onDepartmentChange({ ...department, recordsStampLocation: e.target.checked })}
+                className="mt-1 mr-3 h-4 w-4"
+                disabled={isSubmitting}
+              />
+              <div>
+                <span className="text-sm font-medium text-gray-700">スマホ打刻のときに位置情報を記録する</span>
+                <p className="text-xs text-gray-500 mt-1">
+                  この部署のスタッフが、スタッフ画面（スマホ）で打刻したときの位置情報を記録します。
+                  対象のスタッフには、初めて打刻するときに位置情報の取得についての案内と同意の確認を表示します。
+                </p>
+              </div>
+            </label>
+          </div>
           <div className="flex space-x-3 pt-4">
             <button
               type="submit"

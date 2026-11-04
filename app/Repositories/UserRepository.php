@@ -219,6 +219,19 @@ class UserRepository implements UserRepositoryInterface
     }
 
     /**
+     * 位置情報を記録する設定のスタッフが、会社にいるか
+     *
+     * @param  int  $companyId  会社ID
+     */
+    public function existsWithLocationRecording(int $companyId): bool
+    {
+        return $this->user->query()
+            ->where('records_stamp_location', true)
+            ->whereHas('companies', fn ($query) => $query->where('companies.id', $companyId))
+            ->exists();
+    }
+
+    /**
      * ユーザーを削除
      *
      * @param  int  $id  ユーザーID

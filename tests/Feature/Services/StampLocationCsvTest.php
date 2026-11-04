@@ -7,6 +7,7 @@ namespace Tests\Feature\Services;
 use App\Enums\RecordSourceEnum;
 use App\Enums\TimeRecordTypeEnum;
 use App\Models\Company;
+use App\Models\Department;
 use App\Models\TimeRecord;
 use App\Models\User;
 use App\Services\DailyWorkSummaryService;
@@ -143,5 +144,46 @@ class StampLocationCsvTest extends TestCase
 
         $this->assertSame(['https://www.google.com/maps?q=34.1,135.1', 'https://www.google.com/maps?q=34.2,135.2'], array_slice($rows[1], -2));
         $this->assertSame(['https://www.google.com/maps?q=34.3,135.3', 'https://www.google.com/maps?q=34.4,135.4'], array_slice($rows[2], -2));
+    }
+
+    /**
+     * @test
+     */
+    public function 部署の設定がオンの会社でも位置の列が付く(): void
+    {
+        Department::query()->create(['company_id' => $this->company->id, 'name' => '芦屋店', 'records_stamp_location' => true]);
+        $this->record(TimeRecordTypeEnum::WORK_START, '2026-11-03 09:00:00', 34.7, 135.5);
+
+        $rows = $this->csvRows();
+
+        $this->assertSame(['出社位置', '退社位置'], array_slice($rows[0], -2));
+        $this->assertSame('https://www.google.com/maps?q=34.7,135.5', $rows[1][20]);
+    }
+
+    /**
+     * @test
+     */
+    public function スタッフ本人の設定がオンの会社でも位置の列が付く(): void
+    {
+        User::factory()->forCompany($this->company->id)->employee()->create(['is_retired' => false, 'records_stamp_location' => true]);
+        $this->record(TimeRecordTypeEnum::WORK_START, '2026-11-03 09:00:00');
+
+        $rows = $this->csvRows();
+
+        $this->assertCount(22, $rows[0]);
+    }
+
+    /**
+     * @test
+     */
+    public function 他の会社が記録する設定でも、この会社の_cs_vには位置の列が付かない(): void
+    {
+        $otherCompany = Company::factory()->create(['records_stamp_location' => true]);
+        Department::query()->create(['company_id' => $otherCompany->id, 'name' => '他社の部署', 'records_stamp_location' => true]);
+        $this->record(TimeRecordTypeEnum::WORK_START, '2026-11-03 09:00:00');
+
+        $rows = $this->csvRows();
+
+        $this->assertCount(20, $rows[0]);
     }
 }

@@ -280,6 +280,7 @@ class UserController extends Controller
                 'email' => $user->email,
                 'department_id' => $user->primaryDepartment()?->first()?->id,
                 'is_stamp_hidden' => $user->is_stamp_hidden,
+                'records_stamp_location' => $user->records_stamp_location,
                 'is_shift_hidden' => $user->is_shift_hidden,
                 'felica_idm' => $user->felica_idm,
                 'felica_registered_at' => $user->felica_registered_at?->format('Y-m-d H:i'),

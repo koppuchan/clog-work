@@ -43,6 +43,7 @@ class UpdateUserRequest extends FormRequest
             'department_id' => ['nullable', 'integer', 'exists:departments,id'],
             'shift_patterns' => ['nullable', 'array'],
             'is_stamp_hidden' => ['nullable', 'boolean'],
+            'records_stamp_location' => ['nullable', 'boolean'],
             'is_shift_hidden' => ['nullable', 'boolean'],
             'felica_idm' => [
                 'nullable',

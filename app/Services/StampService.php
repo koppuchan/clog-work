@@ -32,7 +32,8 @@ class StampService
         private readonly CompanyRepositoryInterface $companyRepository,
         private readonly UserRepositoryInterface $userRepository,
         private readonly ShiftRepositoryInterface $shiftRepository,
-        private readonly WorkSessionAttribution $workSessionAttribution
+        private readonly WorkSessionAttribution $workSessionAttribution,
+        private readonly StampLocationRecordingService $locationRecordingService
     ) {}
 
     /**
@@ -453,8 +454,8 @@ class StampService
     /**
      * 打刻に保存する位置情報の列を返す
      *
-     * 位置情報は、会社が「位置情報を記録する」設定にしていて、本人が取得に同意している
-     * ときだけ保存する。画面側の判定に頼らず、サーバー側でも確かめる
+     * 位置情報は、そのスタッフが「位置情報を記録する」対象（会社・部署・スタッフのいずれかの設定）で、
+     * 本人が取得に同意しているときだけ保存する。画面側の判定に頼らず、サーバー側でも確かめる
      * （同意していない人の位置を、画面の不具合や直接のリクエストで保存してしまわないため）。
      *
      * @return array{latitude?: float, longitude?: float, location_accuracy?: int|null}
@@ -486,18 +487,19 @@ class StampService
      */
     public function getLocationRecordingStatus(int $companyId, int $userId): array
     {
-        $enabled = (bool) $this->companyRepository->findById($companyId)?->records_stamp_location;
+        $user = $this->userRepository->findById($userId);
+        $enabled = $user !== null && $this->locationRecordingService->isEnabled($companyId, $user);
 
         return [
             'enabled' => $enabled,
-            'consented' => $enabled && $this->userRepository->findById($userId)?->location_consented_at !== null,
+            'consented' => $enabled && $user->location_consented_at !== null,
         ];
     }
 
     /**
      * 打刻時の位置情報の取得に同意したことを記録する
      *
-     * 位置情報を記録しない会社では何もしない。
+     * 位置情報を記録する対象でないスタッフでは何もしない（同意を求める画面も出ない）。
      */
     public function recordLocationConsent(int $companyId, int $userId): void
     {

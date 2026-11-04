@@ -50,7 +50,8 @@ class DailyWorkSummaryBatchService
         private readonly WorkTimeCalculator $workTimeCalculator,
         private readonly AutoBreakFillService $autoBreakFillService,
         private readonly CompanyShiftRoundingSettingRepositoryInterface $roundingSettingRepository,
-        private readonly PreviousNightTimeRecords $previousNightTimeRecords
+        private readonly PreviousNightTimeRecords $previousNightTimeRecords,
+        private readonly WorkSessionAttribution $workSessionAttribution
     ) {}
 
     /**
@@ -169,13 +170,12 @@ class DailyWorkSummaryBatchService
         // これは前日の勤務のものなので、当日の集計からは除く。含めたままだと、
         // 前夜の休憩が当日の休憩時間として控除され、休憩の打刻があるものとして
         // シフトの休憩の自動入力も効かなくなる。
-        $timeRecords = $this->previousNightTimeRecords->excludeFrom(
-            $this->timeRecordRepository->findByUserIdAndDate(
-                $company->id,
-                $user->id,
-                $dateString
-            )
+        $dayRecords = $this->timeRecordRepository->findByUserIdAndDate(
+            $company->id,
+            $user->id,
+            $dateString
         );
+        $timeRecords = $this->previousNightTimeRecords->excludeFrom($dayRecords);
 
         // 翌日の日付越え退勤レコードと、夜勤の翌日休憩レコードも取得して結合
         // 翌日休憩は WORK_END_NEXT_DAY が存在する夜勤の場合のみ対象（翌日が独立勤務日の場合は混入させない）
@@ -202,6 +202,9 @@ class DailyWorkSummaryBatchService
                 $timeRecords = $timeRecords->merge($nextDayBreakRecords);
             }
         }
+
+        // 同じ日に2回目の出勤をして日付をまたいだ勤務は、翌日の勤務として集計する
+        $timeRecords = $this->applyMovedSessions($company->id, $user->id, $targetDate, $dayRecords, $timeRecords);
 
         // シフト情報を取得
         $shifts = $this->shiftRepository->findByUserIdAndDateRange(
@@ -236,6 +239,54 @@ class DailyWorkSummaryBatchService
 
             return 'created';
         });
+    }
+
+    /**
+     * 勤務日が出勤した日と違う勤務（翌日の勤務として扱う勤務）を、対象日の打刻に反映する
+     *
+     * 対象日の打刻から、他の日の勤務として扱う打刻を除き、前日に出勤して対象日の勤務として
+     * 扱う打刻を加える。該当する勤務がなければ、打刻はそのまま返す
+     * （理由は WorkSessionAttribution を参照）。
+     *
+     * 対象日の打刻に、出勤が2回ある日か、前夜の日付越え退勤がある日でなければ、該当する勤務は
+     * ないため、前後の日の打刻は読まない。
+     *
+     * @param  Collection<int, TimeRecord>  $dayRecords  対象日の日付の打刻（前夜の分を除く前のもの）
+     * @param  Collection<int, TimeRecord>  $timeRecords  対象日の勤務の打刻
+     * @return Collection<int, TimeRecord>
+     */
+    private function applyMovedSessions(int $companyId, int $userId, CarbonImmutable $targetDate, Collection $dayRecords, Collection $timeRecords): Collection
+    {
+        $mayHaveMovedSession = $dayRecords->filter(fn (TimeRecord $r) => $r->record_type->isWorkStart())->count() >= 2
+            || $dayRecords->contains(fn (TimeRecord $r) => $r->record_type === TimeRecordTypeEnum::WORK_END_NEXT_DAY);
+        if (! $mayHaveMovedSession) {
+            return $timeRecords;
+        }
+
+        $surroundingRecords = $this->timeRecordRepository->findByUserIdAndDateTimeRange(
+            $companyId,
+            $userId,
+            $targetDate->subDay()->startOfDay()->format('Y-m-d H:i:s'),
+            $targetDate->addDay()->endOfDay()->format('Y-m-d H:i:s')
+        );
+
+        $moved = $this->workSessionAttribution->movedWorkDates($surroundingRecords);
+        if ($moved === []) {
+            return $timeRecords;
+        }
+
+        $dateString = $targetDate->format('Y-m-d');
+        $ownRecords = $timeRecords->reject(
+            fn (TimeRecord $r) => isset($moved[$r->id]) && $moved[$r->id] !== $dateString
+        );
+        $movedInRecords = $surroundingRecords->filter(
+            fn (TimeRecord $r) => ($moved[$r->id] ?? null) === $dateString && ! $ownRecords->contains('id', $r->id)
+        );
+
+        return $ownRecords
+            ->merge($movedInRecords)
+            ->sortBy(fn (TimeRecord $r) => [$r->record_time->getTimestamp(), $r->id])
+            ->values();
     }
 
     /**

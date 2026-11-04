@@ -25,7 +25,8 @@ class TimeRecordService
 
     public function __construct(
         private readonly TimeRecordRepositoryInterface $timeRecordRepository,
-        private readonly TimeRoundingService $timeRoundingService
+        private readonly TimeRoundingService $timeRoundingService,
+        private readonly WorkSessionAttribution $workSessionAttribution
     ) {}
 
     /**
@@ -58,6 +59,51 @@ class TimeRecordService
     public function getTimeRecordsByUserIdAndDateTimeRange(int $companyId, int $userId, string $startDateTime, string $endDateTime): Collection
     {
         return $this->timeRecordRepository->findByUserIdAndDateTimeRange($companyId, $userId, $startDateTime, $endDateTime);
+    }
+
+    /**
+     * 打刻を、勤務実績の画面に渡す形にする
+     *
+     * 同じ日に2回目の出勤をして日付をまたいだ勤務（翌日の勤務として扱う勤務）は、
+     * 勤務日の打刻として渡す。日付は勤務日にそろえ、日付越えの退勤は、その勤務日の中の退勤
+     * （出勤時刻より前の時刻になる退勤）として渡す。画面は、日付越えの退勤を前日の勤務の
+     * 退勤として扱うため、そのままだと翌日の勤務が出勤のない退勤に見えてしまう。
+     *
+     * @param  Collection<int, TimeRecord>  $records  同じ従業員の打刻
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    public function toScreenRecords(Collection $records): \Illuminate\Support\Collection
+    {
+        $movedWorkDates = $this->workSessionAttribution->movedWorkDates($records);
+
+        return $records->map(function (TimeRecord $record) use ($movedWorkDates) {
+            $workDate = $movedWorkDates[$record->id] ?? null;
+            $type = $workDate !== null && $record->record_type === TimeRecordTypeEnum::WORK_END_NEXT_DAY
+                ? TimeRecordTypeEnum::WORK_END
+                : $record->record_type;
+
+            return [
+                'id' => $record->id,
+                'user_id' => $record->user_id,
+                'record_date' => $workDate ?? $record->record_time->format('Y-m-d'),
+                'record_time' => $record->record_time->format('H:i'),
+                'record_type' => [
+                    'value' => $type->value,
+                    'label' => $type->label(),
+                    'is_work_start' => $type->isWorkStart(),
+                    'is_work_end' => $type->isWorkEnd(),
+                    'is_break' => $type->isBreak(),
+                ],
+                'record_source' => [
+                    'value' => $record->record_source->value,
+                    'label' => $record->record_source->label(),
+                    'badge_color' => $record->record_source->badgeColor(),
+                    'can_edit' => $record->record_source->canEdit(),
+                ],
+                'note' => $record->note,
+                'rounded_time' => $record->rounded_time?->format('H:i'),
+            ];
+        });
     }
 
     /**

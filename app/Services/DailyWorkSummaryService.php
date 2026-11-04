@@ -8,6 +8,7 @@ use App\Enums\LeaveTypeEnum;
 use App\Enums\RecordSourceEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\TimeRecordTypeEnum;
+use App\Exceptions\BusinessException;
 use App\Exceptions\NotFoundException;
 use App\Models\DailyWorkSummary;
 use App\Models\Request as LeaveRequest;
@@ -54,7 +55,8 @@ class DailyWorkSummaryService
         private readonly PreviousNightTimeRecords $previousNightTimeRecords,
         private readonly WorkTypeAndNoteService $workTypeAndNoteService,
         private readonly ShiftRepositoryInterface $shiftRepository,
-        private readonly AutoBreakFillService $autoBreakFillService
+        private readonly AutoBreakFillService $autoBreakFillService,
+        private readonly WorkSessionAttribution $workSessionAttribution
     ) {}
 
     /**
@@ -260,6 +262,29 @@ class DailyWorkSummaryService
     }
 
     /**
+     * 同じ日に2回出勤して日付をまたいだ勤務を含む日は、編集・削除させない
+     *
+     * この日の打刻は、翌日の勤務として扱う勤務を含み、1日1回の出勤を前提にした
+     * 編集・削除の処理では、別の勤務の打刻まで書き換えてしまう（WorkSessionAttribution）。
+     *
+     * @throws BusinessException 対象日がそのような勤務を含む場合
+     */
+    private function assertNoMovedSessionOn(int $companyId, int $userId, string $workDate): void
+    {
+        $date = CarbonImmutable::parse($workDate);
+        $records = $this->timeRecordRepository->findByUserIdAndDateTimeRange(
+            $companyId,
+            $userId,
+            $date->subDay()->startOfDay()->format('Y-m-d H:i:s'),
+            $date->addDay()->endOfDay()->format('Y-m-d H:i:s')
+        );
+
+        if ($this->workSessionAttribution->isInvolved($records, $workDate)) {
+            throw new BusinessException(WorkSessionAttribution::EDIT_BLOCKED_MESSAGE);
+        }
+    }
+
+    /**
      * 勤務実績を削除（打刻レコードと勤務サマリーを削除）
      *
      * 対象日のtime_records（出勤・退勤・休憩・日跨ぎ退勤）を一括削除し、
@@ -275,6 +300,8 @@ class DailyWorkSummaryService
         $companyId = $summary->company_id;
         $userId = $summary->user_id;
         $workDate = $summary->work_date->format('Y-m-d');
+
+        $this->assertNoMovedSessionOn($companyId, $userId, $workDate);
 
         DB::transaction(function () use ($companyId, $userId, $workDate, $summary) {
             // 対象日の打刻レコード（前夜の日付越え勤務の分は前日のものなので削除対象にしない）
@@ -337,6 +364,8 @@ class DailyWorkSummaryService
         $companyId = $summary->company_id;
         $userId = $summary->user_id;
         $workDate = $summary->work_date->format('Y-m-d');
+
+        $this->assertNoMovedSessionOn($companyId, $userId, $workDate);
 
         DB::transaction(function () use ($companyId, $userId, $workDate, $workStart, $workEnd, $breakPeriods, $summary, $correctedBy) {
             // 当日の日付には前夜の日付越え勤務の退勤・休憩が混在することがある。

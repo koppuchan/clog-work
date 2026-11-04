@@ -9,6 +9,7 @@ use App\Enums\TimeRecordTypeEnum;
 use App\Exceptions\BusinessException;
 use App\Models\TimeRecord;
 use App\Repositories\Contracts\CompanyRepositoryInterface;
+use App\Repositories\Contracts\ShiftRepositoryInterface;
 use App\Repositories\Contracts\TimeRecordRepositoryInterface;
 use App\Repositories\Contracts\UserRepositoryInterface;
 use Carbon\CarbonImmutable;
@@ -29,7 +30,9 @@ class StampService
         private readonly TimeRoundingService $timeRoundingService,
         private readonly DailyWorkSummaryBatchService $dailyWorkSummaryBatchService,
         private readonly CompanyRepositoryInterface $companyRepository,
-        private readonly UserRepositoryInterface $userRepository
+        private readonly UserRepositoryInterface $userRepository,
+        private readonly ShiftRepositoryInterface $shiftRepository,
+        private readonly WorkSessionAttribution $workSessionAttribution
     ) {}
 
     /**
@@ -53,7 +56,9 @@ class StampService
             }
 
             // ビジネスルールチェック: 本日既に出勤打刻済みでないか
-            if ($this->hasClockInToday($companyId, $userId, $recordTime)) {
+            // （翌日の勤務に日付が変わる前に早めに出勤する場合は、2回目の出勤を受け付ける）
+            if ($this->hasClockInToday($companyId, $userId, $recordTime)
+                && ! $this->canClockInForNextDayShift($companyId, $userId, $recordTime)) {
                 throw new BusinessException('本日は出勤と退勤の打刻ができております。打刻時間を変更する場合は申請してください。');
             }
 
@@ -133,6 +138,14 @@ class StampService
             ? CarbonImmutable::parse($record->record_time)->subDay()
             : CarbonImmutable::parse($record->record_time);
         $this->dailyWorkSummaryBatchService->aggregateByUser($company, $user, $targetDate->startOfDay());
+
+        // 同じ日に2回目の出勤をした日付越え勤務は、翌日の勤務として集計する
+        $workDate = $record->record_type === TimeRecordTypeEnum::WORK_END_NEXT_DAY
+            ? $this->movedWorkDateOf($companyId, $userId, $record)
+            : null;
+        if ($workDate !== null && $workDate !== $targetDate->format('Y-m-d')) {
+            $this->dailyWorkSummaryBatchService->aggregateByUser($company, $user, CarbonImmutable::parse($workDate));
+        }
 
         return $record;
     }
@@ -270,6 +283,12 @@ class StampService
             fn (TimeRecord $record) => $record->record_type === TimeRecordTypeEnum::WORK_END
                 || $record->record_type === TimeRecordTypeEnum::WORK_END_NEXT_DAY
         );
+
+        // 翌日の勤務に早めに出勤できる時間帯は、出勤前の状態として扱う（2回目の出勤を打刻できる）
+        if ($hasClockInToday && ! $isWorking && $this->canClockInForNextDayShift($companyId, $userId, $now)) {
+            $hasClockInToday = false;
+            $hasClockOutToday = false;
+        }
 
         // 出勤時刻と休憩回数: 現在のセッションのWORK_STARTとそれ以降のBREAK_STARTから算出
         $clockInTime = null;
@@ -421,6 +440,64 @@ class StampService
     private function isOnBreak(int $companyId, int $userId): bool
     {
         return $this->getCurrentWorkSession($companyId, $userId)['isOnBreak'];
+    }
+
+    /**
+     * 翌日の勤務に向けた出勤として、同じ日に2回目の出勤を受け付けられるか
+     *
+     * 日付が変わった直後に始まる勤務（0:00〜8:00 のシフトに 0:10 出勤、など）をした日の夜に、
+     * 翌日の同じ勤務へ日付が変わる前に出勤する（23:45 出勤 → 翌日 7:45 退勤、など）ことがある。
+     * 出勤は1日1回までだが、これは打刻のしすぎを防ぐための制限なので、
+     * 翌日のシフトの開始が attendance.next_day_shift_clock_in_hours 以内に迫っているときだけ、
+     * 2回目の出勤を受け付ける。シフトが登録されていなければ受け付けない。
+     * この出勤は、翌日の勤務として集計される（WorkSessionAttribution）。
+     *
+     * @param  int  $companyId  会社ID
+     * @param  int  $userId  ユーザーID
+     * @param  CarbonImmutable  $recordTime  打刻時刻
+     */
+    private function canClockInForNextDayShift(int $companyId, int $userId, CarbonImmutable $recordTime): bool
+    {
+        $windowHours = (int) config('attendance.next_day_shift_clock_in_hours', 4);
+        if ($windowHours <= 0) {
+            return false;
+        }
+
+        $nextDate = $recordTime->addDay()->format('Y-m-d');
+        $startTime = $this->shiftRepository
+            ->findByUserIdAndDateRange($companyId, $userId, $nextDate, $nextDate)
+            ->first()
+            ?->shiftPattern
+            ?->start_time;
+
+        if ($startTime === null) {
+            return false;
+        }
+
+        $secondsUntilShift = CarbonImmutable::parse($nextDate.' '.$startTime)->getTimestamp() - $recordTime->getTimestamp();
+
+        return $secondsUntilShift > 0 && $secondsUntilShift <= $windowHours * 3600;
+    }
+
+    /**
+     * 打刻が、翌日の勤務として扱う勤務のものであれば、その勤務日を返す
+     *
+     * @param  int  $companyId  会社ID
+     * @param  int  $userId  ユーザーID
+     * @param  TimeRecord  $record  打刻レコード
+     * @return string|null 勤務日（Y-m-d）。出勤した日の勤務として扱う場合はnull
+     */
+    private function movedWorkDateOf(int $companyId, int $userId, TimeRecord $record): ?string
+    {
+        $recordDate = CarbonImmutable::parse($record->record_time);
+        $surroundingRecords = $this->timeRecordRepository->findByUserIdAndDateTimeRange(
+            $companyId,
+            $userId,
+            $recordDate->subDays(2)->startOfDay()->format('Y-m-d H:i:s'),
+            $recordDate->endOfDay()->format('Y-m-d H:i:s')
+        );
+
+        return $this->workSessionAttribution->movedWorkDates($surroundingRecords)[$record->id] ?? null;
     }
 
     /**

@@ -7,6 +7,7 @@ namespace App\Services;
 use App\Enums\TimeRecordTypeEnum;
 use App\Models\TimeRecord;
 use App\Repositories\Contracts\TimeRecordRepositoryInterface;
+use Carbon\CarbonImmutable;
 
 /**
  * 実際に打刻された時刻を日付ごとに取り出す
@@ -22,7 +23,8 @@ use App\Repositories\Contracts\TimeRecordRepositoryInterface;
 class RawStampTimeService
 {
     public function __construct(
-        private readonly TimeRecordRepositoryInterface $timeRecordRepository
+        private readonly TimeRecordRepositoryInterface $timeRecordRepository,
+        private readonly WorkSessionAttribution $workSessionAttribution
     ) {}
 
     /**
@@ -36,16 +38,28 @@ class RawStampTimeService
      */
     public function mapByDate(int $companyId, int $userId, string $startDate, string $endDate): array
     {
+        // 期間の前後1日も読む。前日に出勤した勤務を翌日の勤務として扱うかどうかの判定に必要。
         $records = $this->timeRecordRepository->findByUserIdsAndDateRange(
             $companyId,
             [$userId],
-            $startDate,
-            $endDate,
+            CarbonImmutable::parse($startDate)->subDay()->format('Y-m-d'),
+            CarbonImmutable::parse($endDate)->addDay()->format('Y-m-d'),
         );
+
+        // 同じ日に2回目の出勤をして日付をまたいだ勤務は、翌日の勤務として扱う
+        $movedWorkDates = $this->workSessionAttribution->movedWorkDates($records);
 
         $result = [];
 
-        foreach ($records->groupBy(fn (TimeRecord $r) => $r->record_time->format('Y-m-d')) as $date => $dayRecords) {
+        $recordsByWorkDate = $records->groupBy(
+            fn (TimeRecord $r) => $movedWorkDates[$r->id] ?? $r->record_time->format('Y-m-d')
+        );
+
+        foreach ($recordsByWorkDate as $date => $dayRecords) {
+            if ($date < $startDate || $date > $endDate) {
+                continue;
+            }
+
             $sorted = $dayRecords->sortBy(fn (TimeRecord $r) => $r->record_time->getTimestamp())->values();
 
             $breakStarts = $sorted->filter(

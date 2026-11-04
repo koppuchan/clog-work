@@ -15,6 +15,7 @@ use App\Services\LaborAlertService;
 use App\Services\RequestService;
 use App\Services\ShiftService;
 use App\Services\TimeRecordCorrectionRequestService;
+use App\Services\TimeRecordService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -33,7 +34,8 @@ class ReportController extends Controller
         private readonly CompanySettingService $companySettingService,
         private readonly LaborAlertService $laborAlertService,
         private readonly AttendanceIssueService $attendanceIssueService,
-        private readonly TimeRecordCorrectionRequestService $correctionRequestService
+        private readonly TimeRecordCorrectionRequestService $correctionRequestService,
+        private readonly TimeRecordService $timeRecordService
     ) {}
 
     /**
@@ -247,29 +249,7 @@ class ReportController extends Controller
             $endDate->endOfDay()->format('Y-m-d H:i:s')
         );
 
-        $timeRecordsData = $timeRecords->map(function ($record) {
-            return [
-                'id' => $record->id,
-                'user_id' => $record->user_id,
-                'record_date' => $record->record_time->format('Y-m-d'),
-                'record_time' => $record->record_time->format('H:i'),
-                'record_type' => [
-                    'value' => $record->record_type->value,
-                    'label' => $record->record_type->label(),
-                    'is_work_start' => $record->record_type->isWorkStart(),
-                    'is_work_end' => $record->record_type->isWorkEnd(),
-                    'is_break' => $record->record_type->isBreak(),
-                ],
-                'record_source' => [
-                    'value' => $record->record_source->value,
-                    'label' => $record->record_source->label(),
-                    'badge_color' => $record->record_source->badgeColor(),
-                    'can_edit' => $record->record_source->canEdit(),
-                ],
-                'note' => $record->note,
-                'rounded_time' => $record->rounded_time?->format('H:i'),
-            ];
-        });
+        $timeRecordsData = $this->timeRecordService->toScreenRecords($timeRecords);
 
         // 打刻修正履歴を取得
         $correctionsData = $this->dailyWorkSummaryService->getCorrectionsByUserIdAndDateRange(

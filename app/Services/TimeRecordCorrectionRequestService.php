@@ -40,7 +40,8 @@ class TimeRecordCorrectionRequestService
         private readonly CompanyRepositoryInterface $companyRepository,
         private readonly UserRepositoryInterface $userRepository,
         private readonly TimeRoundingService $timeRoundingService,
-        private readonly PreviousNightTimeRecords $previousNightTimeRecords
+        private readonly PreviousNightTimeRecords $previousNightTimeRecords,
+        private readonly WorkSessionAttribution $workSessionAttribution
     ) {}
 
     /**
@@ -580,6 +581,28 @@ class TimeRecordCorrectionRequestService
     }
 
     /**
+     * 同じ日に2回出勤して日付をまたいだ勤務を含む日は、打刻修正を申請させない
+     *
+     * 理由は DailyWorkSummaryService::assertNoMovedSessionOn() と同じ。
+     *
+     * @throws BusinessException 対象日がそのような勤務を含む場合
+     */
+    private function assertNoMovedSessionOn(int $companyId, int $userId, string $targetDate): void
+    {
+        $date = CarbonImmutable::parse($targetDate);
+        $records = $this->timeRecordRepository->findByUserIdAndDateTimeRange(
+            $companyId,
+            $userId,
+            $date->subDay()->startOfDay()->format('Y-m-d H:i:s'),
+            $date->addDay()->endOfDay()->format('Y-m-d H:i:s')
+        );
+
+        if ($this->workSessionAttribution->isInvolved($records, $date->format('Y-m-d'))) {
+            throw new BusinessException(WorkSessionAttribution::EDIT_BLOCKED_MESSAGE);
+        }
+    }
+
+    /**
      * 打刻間違い申請を作成（ヘッダーと明細を一括で作成）
      *
      * @param  int  $companyId  会社ID
@@ -590,6 +613,8 @@ class TimeRecordCorrectionRequestService
     {
         return DB::transaction(function () use ($companyId, $userId, $data) {
             $targetDate = $data['target_date'];
+
+            $this->assertNoMovedSessionOn($companyId, $userId, $targetDate);
 
             // 既存の打刻データを検索
             //

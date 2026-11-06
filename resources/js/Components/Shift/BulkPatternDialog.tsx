@@ -61,7 +61,7 @@ export default function BulkPatternDialog({
 
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 mb-4">
           <p className="text-xs text-yellow-800">
-            各スタッフに設定されているシフトパターンが反映されます。既存のシフトがある場合は上書きされます。
+            各スタッフに設定されているシフトパターンが反映されます。既存のシフトがある場合は上書きされます。シフトパターンを1つも設定していないスタッフは対象外で、入力済みのシフトはそのままです。
           </p>
         </div>
 

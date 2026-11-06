@@ -382,6 +382,8 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
     try {
       // 全スタッフのシフトパターンを取得
       const updatedUsers = [...users];
+      // 曜日別のシフトパターンを1つも設定していないスタッフ（反映しても、手入力したシフトをそのままにする）
+      const usersWithoutPattern = new Set<string>();
 
       for (const user of activeUsers) {
         try {
@@ -399,6 +401,10 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
               if (shiftType) shiftPatterns[dayKey] = shiftType;
             }
           });
+
+          if (Object.keys(shiftPatterns).length === 0) {
+            usersWithoutPattern.add(user.id);
+          }
 
           // スタッフ情報を更新
           const userIndex = updatedUsers.findIndex(u => u.id === user.id);
@@ -422,6 +428,8 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
 
       updatedUsers.forEach(user => {
         if (!user.shiftPatterns) return;
+        // パターン未設定のスタッフは、反映の対象にしない（手入力したシフトを消さない）
+        if (usersWithoutPattern.has(user.id)) return;
 
         let currentDate = periodStartDate;
         while (currentDate <= periodEndDate) {
@@ -456,8 +464,13 @@ export default function ShiftsPage({ users: backendUsers, departments: backendDe
       });
 
       setShifts(newShifts);
-      setSuccessMessage(`全員（${activeUsers.length}名）のシフトパターンを${getPeriodLabel(getCurrentPeriodMonth())}に適用しました`);
-      setTimeout(() => setSuccessMessage(null), 3000);
+      const appliedCount = activeUsers.length - usersWithoutPattern.size;
+      setSuccessMessage(
+        usersWithoutPattern.size > 0
+          ? `${appliedCount}名のシフトパターンを${getPeriodLabel(getCurrentPeriodMonth())}に適用しました（シフトパターン未設定の${usersWithoutPattern.size}名は、そのままにしています）`
+          : `全員（${activeUsers.length}名）のシフトパターンを${getPeriodLabel(getCurrentPeriodMonth())}に適用しました`
+      );
+      setTimeout(() => setSuccessMessage(null), 6000);
     } catch (error) {
       console.error('Failed to apply patterns to all users:', error);
       setErrorMessage('全員のシフトパターンの適用に失敗しました');

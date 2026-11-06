@@ -1,0 +1,66 @@
+import { Volume2, VolumeX } from 'lucide-react';
+import type { StampSoundSettings } from '@/utils/stampSound';
+
+interface StampSoundControlProps {
+  settings: StampSoundSettings;
+  /** 音を出したいのに、ブラウザがまだ音を許していない */
+  isBlocked: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+  onVolumeChange: (volume: number) => void;
+  onTest: () => void;
+}
+
+/**
+ * 打刻画面の効果音の入切と音量
+ *
+ * 設定はこのPC（ブラウザ）だけに保存される。
+ */
+export default function StampSoundControl({
+  settings,
+  isBlocked,
+  onEnabledChange,
+  onVolumeChange,
+  onTest,
+}: StampSoundControlProps) {
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onEnabledChange(!settings.enabled)}
+          className={`flex items-center gap-1 rounded-md border px-2 py-1 text-sm ${
+            settings.enabled ? 'border-blue-600 text-blue-700 bg-blue-50' : 'border-gray-300 text-gray-500 bg-white'
+          }`}
+          aria-pressed={settings.enabled}
+          aria-label={settings.enabled ? '打刻音を切る' : '打刻音を入れる'}
+        >
+          {settings.enabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+          <span>{settings.enabled ? '音あり' : '音なし'}</span>
+        </button>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={5}
+          value={Math.round(settings.volume * 100)}
+          onChange={(e) => onVolumeChange(Number(e.target.value) / 100)}
+          disabled={!settings.enabled}
+          className="w-24 disabled:opacity-40"
+          aria-label="打刻音の大きさ"
+        />
+        <button
+          type="button"
+          onClick={onTest}
+          className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700 hover:bg-gray-50"
+        >
+          試し聴き
+        </button>
+      </div>
+      {settings.enabled && isBlocked && (
+        <p className="text-xs text-yellow-800 bg-yellow-100 border border-yellow-300 rounded px-2 py-1">
+          音を鳴らすには、この画面を一度クリックしてください。
+        </p>
+      )}
+    </div>
+  );
+}

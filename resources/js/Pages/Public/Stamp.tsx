@@ -5,6 +5,8 @@ import { ja } from 'date-fns/locale';
 import { AlertCircle, CheckCircle, User, ChevronLeft, ChevronDown, Lock, Coffee, X } from 'lucide-react';
 import axios from 'axios';
 import { useCurrentTime } from '@/hooks/useCurrentTime';
+import { useStampSound } from '@/hooks/useStampSound';
+import StampSoundControl from '@/Components/Stamp/StampSoundControl';
 
 /**
  * FeliCaカードによる打刻の試行結果（サーバー側でログ化されたもの）
@@ -65,6 +67,8 @@ interface Props {
 
 export default function PublicStampPage({ company, users }: Props) {
   const currentTime = useCurrentTime();
+  const sound = useStampSound();
+  const playSound = sound.play;
   const [selectedUser, setSelectedUser] = useState<UserItem | null>(null);
   // 一覧は初期表示では畳んでおく。検索すると自動で開く
   const [nameQuery, setNameQuery] = useState('');
@@ -158,6 +162,8 @@ export default function PublicStampPage({ company, users }: Props) {
   // FeliCaカードの打刻結果（常駐アプリからサーバーへ直接届く）をトースト表示する
   const [felicaEvents, setFelicaEvents] = useState<FelicaEvent[]>([]);
   const felicaSinceIdRef = useRef<number | null>(null);
+  // 音を鳴らした打刻結果（同じ結果で2回鳴らさない）
+  const soundedFelicaEventIdsRef = useRef<Set<number>>(new Set());
 
   // 数秒おきに新しいFeliCa打刻結果をポーリングする
   useEffect(() => {
@@ -171,6 +177,7 @@ export default function PublicStampPage({ company, users }: Props) {
       isPolling = true;
 
       try {
+        const isFirstPoll = felicaSinceIdRef.current === null;
         const params = felicaSinceIdRef.current === null
           ? {}
           : { since_id: felicaSinceIdRef.current };
@@ -180,6 +187,15 @@ export default function PublicStampPage({ company, users }: Props) {
         felicaSinceIdRef.current = response.data.lastId;
 
         const newEvents: FelicaEvent[] = response.data.events;
+
+        // 新しく届いた打刻結果で音を鳴らす（画面を開いた直後の過去の結果では鳴らさない）。
+        // 複数まとめて届いても重ならないよう1回だけ鳴らし、1件でも失敗・要確認があれば警告の音にする
+        const unsounded = newEvents.filter((e) => !soundedFelicaEventIdsRef.current.has(e.id));
+        unsounded.forEach((e) => soundedFelicaEventIdsRef.current.add(e.id));
+        if (!isFirstPoll && unsounded.length > 0) {
+          playSound(unsounded.some((e) => e.status !== 'success') ? 'warning' : 'success');
+        }
+
         if (newEvents.length > 0) {
           // idの重複を除いてから追加する（何らかの理由で同じイベントが
           // 2回取得された場合に、トーストが2つ出るのを防ぐ）
@@ -203,7 +219,7 @@ export default function PublicStampPage({ company, users }: Props) {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [company.uuid]);
+  }, [company.uuid, playSound]);
 
   // トーストは種類ごとの時間で自動的に消す
   useEffect(() => {
@@ -250,6 +266,7 @@ export default function PublicStampPage({ company, users }: Props) {
         setPassword('');
       }
     } catch (error: unknown) {
+      playSound('warning');
       if (axios.isAxiosError(error) && error.response?.data?.message) {
         setMessage({ type: 'error', text: error.response.data.message });
       } else {
@@ -283,6 +300,7 @@ export default function PublicStampPage({ company, users }: Props) {
         verify_token: tokenToUse ?? verifyToken,
       });
       if (response.data.success) {
+        playSound('success');
         setMessage({ type: 'success', text: response.data.message });
         setCurrentStatus(response.data.currentStatus);
         if (response.data.record) {
@@ -309,6 +327,7 @@ export default function PublicStampPage({ company, users }: Props) {
         }, 1500);
       }
     } catch (error: unknown) {
+      playSound('warning');
       if (axios.isAxiosError(error) && error.response?.data?.message) {
         setMessage({ type: 'error', text: error.response.data.message });
       } else {
@@ -367,8 +386,15 @@ export default function PublicStampPage({ company, users }: Props) {
       >
         {/* ヘッダー */}
         <header className="bg-white shadow">
-          <div className="max-w-4xl mx-auto px-4 py-4">
+          <div className="max-w-4xl mx-auto px-4 py-4 flex items-start justify-between gap-4 flex-wrap">
             <h1 className="text-xl font-bold text-gray-900">{company.name}</h1>
+            <StampSoundControl
+              settings={sound.settings}
+              isBlocked={sound.isBlocked}
+              onEnabledChange={sound.setEnabled}
+              onVolumeChange={sound.setVolume}
+              onTest={sound.playTest}
+            />
           </div>
         </header>
 

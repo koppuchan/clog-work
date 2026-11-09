@@ -49,6 +49,7 @@ class PublicStampController extends Controller
                 'uuid' => $company->uuid,
             ],
             'users' => $users->toArray(),
+            'departments' => $this->publicStampService->getDepartmentsForStamp($company->id),
         ]);
     }
 
@@ -58,6 +59,9 @@ class PublicStampController extends Controller
      * 常駐アプリから /felica にPOSTされた打刻結果は、常駐アプリ自身にしか
      * 返せない。打刻専用画面（ブラウザ）はこのエンドポイントを数秒おきに
      * ポーリングし、新しい試行があればトースト表示する。
+     *
+     * department_id を付けると、その事業所（部署）のスタッフの打刻だけを返す
+     * （事業所ごとに打刻専用画面を置いている会社で、他の事業所の打刻を出さないため）。
      */
     public function felicaEvents(Request $request, string $uuid): JsonResponse
     {
@@ -79,7 +83,8 @@ class PublicStampController extends Controller
         }
 
         $sinceId = (int) $request->query('since_id', 0);
-        $events = $this->publicStampService->getFelicaEventsSince($company->id, $sinceId);
+        $departmentId = is_numeric($request->query('department_id')) ? (int) $request->query('department_id') : null;
+        $events = $this->publicStampService->getFelicaEventsSince($company->id, $sinceId, $departmentId);
         $lastId = $events === [] ? $sinceId : (int) end($events)['id'];
 
         return response()->json([

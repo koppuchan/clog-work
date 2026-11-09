@@ -7,6 +7,7 @@ namespace App\Services;
 use App\Models\Company;
 use App\Models\User;
 use App\Repositories\Contracts\CompanyRepositoryInterface;
+use App\Repositories\Contracts\DepartmentRepositoryInterface;
 use App\Repositories\Contracts\FelicaStampAttemptRepositoryInterface;
 use App\Repositories\Contracts\UserRepositoryInterface;
 use Carbon\CarbonImmutable;
@@ -73,7 +74,8 @@ class PublicStampService
         private readonly CompanyRepositoryInterface $companyRepository,
         private readonly UserRepositoryInterface $userRepository,
         private readonly StampService $stampService,
-        private readonly FelicaStampAttemptRepositoryInterface $felicaStampAttemptRepository
+        private readonly FelicaStampAttemptRepositoryInterface $felicaStampAttemptRepository,
+        private readonly DepartmentRepositoryInterface $departmentRepository
     ) {}
 
     /**
@@ -606,12 +608,18 @@ class PublicStampService
      *
      * @param  int  $companyId  会社ID
      * @param  int  $sinceId  この ID より大きい試行のみ取得
+     * @param  int|null  $departmentId  指定すると、その事業所（部署）のスタッフの試行と、スタッフを特定できない試行だけにする。
+     *                                  会社に無い部署が指定された場合は、絞り込まない
      * @return array<int, array{id: int, status: string, message: string, detail: string|null, userName: string|null, time: string, maskedIdm: string}>
      */
-    public function getFelicaEventsSince(int $companyId, int $sinceId): array
+    public function getFelicaEventsSince(int $companyId, int $sinceId, ?int $departmentId = null): array
     {
+        if ($departmentId !== null && ! $this->isDepartmentInCompany($departmentId, $companyId)) {
+            $departmentId = null;
+        }
+
         return $this->felicaStampAttemptRepository
-            ->findRecentByCompanyId($companyId, $sinceId)
+            ->findRecentByCompanyId($companyId, $sinceId, 20, $departmentId)
             ->map(fn (\App\Models\FelicaStampAttempt $attempt) => [
                 'id' => $attempt->id,
                 'status' => $attempt->status,
@@ -622,5 +630,23 @@ class PublicStampService
                 'maskedIdm' => $attempt->maskedIdm(),
             ])
             ->all();
+    }
+
+    /**
+     * 打刻専用画面で、表示する事業所として選べる部署の一覧
+     *
+     * @return array<int, array{id: int, name: string}>
+     */
+    public function getDepartmentsForStamp(int $companyId): array
+    {
+        return $this->departmentRepository->findByCompanyId($companyId)
+            ->map(fn (\App\Models\Department $department) => ['id' => $department->id, 'name' => $department->name])
+            ->values()
+            ->all();
+    }
+
+    private function isDepartmentInCompany(int $departmentId, int $companyId): bool
+    {
+        return $this->departmentRepository->findById($departmentId)?->company_id === $companyId;
     }
 }

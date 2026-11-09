@@ -33,14 +33,22 @@ class FelicaStampAttemptRepository implements FelicaStampAttemptRepositoryInterf
      * @param  int  $companyId  会社ID
      * @param  int  $sinceId  この ID より大きい試行のみ取得
      * @param  int  $limit  最大取得件数
+     * @param  int|null  $departmentId  指定すると、その部署（主所属）のスタッフの試行と、スタッフを特定できない試行（未登録のカード等）だけにする
      * @return Collection<int, FelicaStampAttempt>
      */
-    public function findRecentByCompanyId(int $companyId, int $sinceId, int $limit = 20): Collection
+    public function findRecentByCompanyId(int $companyId, int $sinceId, int $limit = 20, ?int $departmentId = null): Collection
     {
         return $this->felicaStampAttempt->query()
             ->with('user:id,name')
             ->where('company_id', $companyId)
             ->where('id', '>', $sinceId)
+            ->when($departmentId !== null, fn ($query) => $query->where(
+                fn ($inner) => $inner
+                    ->whereNull('user_id')
+                    ->orWhereHas('user.departments', fn ($departments) => $departments
+                        ->where('departments.id', $departmentId)
+                        ->where('user_departments.is_primary', true))
+            ))
             ->orderBy('id')
             ->limit($limit)
             ->get();

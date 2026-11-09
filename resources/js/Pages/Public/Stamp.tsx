@@ -6,7 +6,10 @@ import { AlertCircle, CheckCircle, User, ChevronLeft, ChevronDown, Lock, Coffee,
 import axios from 'axios';
 import { useCurrentTime } from '@/hooks/useCurrentTime';
 import { useStampSound } from '@/hooks/useStampSound';
+import { useStampDisplay, type StampDepartment } from '@/hooks/useStampDisplay';
 import StampSoundControl from '@/Components/Stamp/StampSoundControl';
+import StampDisplayControl from '@/Components/Stamp/StampDisplayControl';
+import { resultFontSizes } from '@/utils/stampDisplay';
 
 /**
  * FeliCaカードによる打刻の試行結果（サーバー側でログ化されたもの）
@@ -28,7 +31,8 @@ interface FelicaEvent {
 // 1回あたりの問い合わせはcompany_id+idの絞り込みで軽量なため、この間隔でも
 // 負荷上の問題はない。
 const FELICA_EVENTS_POLL_INTERVAL_MS = 1000;
-const FELICA_TOAST_DURATION_MS = { success: 7000, warning: 12000 } as const;
+// 成功の表示は、打刻する人数が多いと次々に重なって見づらいため、以前（7秒）より1.5秒短くしている
+const FELICA_TOAST_DURATION_MS = { success: 5500, warning: 12000 } as const;
 // 休憩開始モードをつけたまま名前を選ばずに放置された場合、自動で通常モードへ戻すまでの時間
 const BREAK_MODE_TIMEOUT_MS = 30000;
 
@@ -63,10 +67,14 @@ interface CurrentStatus {
 interface Props {
   company: Company;
   users: UserItem[];
+  departments?: StampDepartment[];
 }
 
-export default function PublicStampPage({ company, users }: Props) {
+export default function PublicStampPage({ company, users, departments = [] }: Props) {
   const currentTime = useCurrentTime();
+  const display = useStampDisplay(departments);
+  const displayDepartmentId = display.settings.departmentId;
+  const resultSizes = resultFontSizes(display.settings.textSize);
   const sound = useStampSound();
   const playSound = sound.play;
   const [selectedUser, setSelectedUser] = useState<UserItem | null>(null);
@@ -166,6 +174,13 @@ export default function PublicStampPage({ company, users }: Props) {
   const soundedFelicaEventIdsRef = useRef<Set<number>>(new Set());
 
   // 数秒おきに新しいFeliCa打刻結果をポーリングする
+  // 表示する事業所を変えたときは、取得の起点から取り直し、いま出ている表示も消す
+  // （前の事業所の表示が残らないよう、また切り替え前の過去の打刻で音を鳴らさないため）
+  useEffect(() => {
+    felicaSinceIdRef.current = null;
+    setFelicaEvents([]);
+  }, [displayDepartmentId]);
+
   useEffect(() => {
     let cancelled = false;
     // 通信が遅れて前回のポーリングがまだ終わっていない場合に、同じ
@@ -178,9 +193,11 @@ export default function PublicStampPage({ company, users }: Props) {
 
       try {
         const isFirstPoll = felicaSinceIdRef.current === null;
-        const params = felicaSinceIdRef.current === null
-          ? {}
-          : { since_id: felicaSinceIdRef.current };
+        const params: { since_id?: number; department_id?: number } =
+          felicaSinceIdRef.current === null ? {} : { since_id: felicaSinceIdRef.current };
+        if (displayDepartmentId !== null) {
+          params.department_id = displayDepartmentId;
+        }
         const response = await axios.get(`/stamp/${company.uuid}/felica-events`, { params });
         if (cancelled) return;
 
@@ -219,7 +236,7 @@ export default function PublicStampPage({ company, users }: Props) {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [company.uuid, playSound]);
+  }, [company.uuid, playSound, displayDepartmentId]);
 
   // トーストは種類ごとの時間で自動的に消す
   useEffect(() => {
@@ -388,13 +405,21 @@ export default function PublicStampPage({ company, users }: Props) {
         <header className="bg-white shadow">
           <div className="max-w-4xl mx-auto px-4 py-4 flex items-start justify-between gap-4 flex-wrap">
             <h1 className="text-xl font-bold text-gray-900">{company.name}</h1>
-            <StampSoundControl
-              settings={sound.settings}
-              isBlocked={sound.isBlocked}
-              onEnabledChange={sound.setEnabled}
-              onVolumeChange={sound.setVolume}
-              onTest={sound.playTest}
-            />
+            <div className="flex items-start gap-2">
+              <StampDisplayControl
+                departments={departments}
+                settings={display.settings}
+                onDepartmentChange={display.setDepartmentId}
+                onTextSizeChange={display.setTextSize}
+              />
+              <StampSoundControl
+                settings={sound.settings}
+                isBlocked={sound.isBlocked}
+                onEnabledChange={sound.setEnabled}
+                onVolumeChange={sound.setVolume}
+                onTest={sound.playTest}
+              />
+            </div>
           </div>
         </header>
 
@@ -419,14 +444,14 @@ export default function PublicStampPage({ company, users }: Props) {
                     <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
                   )}
                   <div>
-                    <p className="font-semibold">
+                    <p className="font-semibold leading-tight" style={{ fontSize: resultSizes.main }}>
                       {event.userName ? `${event.userName}さん　${event.time}` : event.message}
                     </p>
-                    <p className={event.userName ? 'text-sm' : 'text-sm font-normal'}>
+                    <p className={event.userName ? 'leading-snug' : 'font-normal leading-snug'} style={{ fontSize: resultSizes.sub }}>
                       {event.userName ? event.message : event.detail}
                     </p>
                     {event.userName && event.detail && (
-                      <p className="text-sm">{event.detail}</p>
+                      <p className="leading-snug" style={{ fontSize: resultSizes.sub }}>{event.detail}</p>
                     )}
                     {event.status !== 'success' && (
                       <p className="text-xs opacity-75 mt-1">（カード: {event.maskedIdm}）</p>
@@ -502,7 +527,7 @@ export default function PublicStampPage({ company, users }: Props) {
               {/* 打刻したことが画面に残るようにする */}
               {lastStamp && (
                 <div className="mb-4 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-center">
-                  <p className="text-green-800 font-medium">
+                  <p className="text-green-800 font-medium" style={{ fontSize: resultSizes.main }}>
                     {lastStamp.name} さん　{lastStamp.time}　{lastStamp.label}
                   </p>
                 </div>

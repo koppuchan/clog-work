@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Controllers;
 
 use App\Models\Company;
+use App\Models\Department;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
@@ -208,5 +209,124 @@ class PublicStampFelicaEventsTest extends TestCase
 
         // Assert
         $response->assertNotFound();
+    }
+
+    private const IDM_B = 'abcdef0123456789';
+
+    private function departmentWith(User $user, string $name, bool $primary = true): Department
+    {
+        $department = Department::query()->create(['company_id' => $this->company->id, 'name' => $name]);
+        $user->departments()->attach($department->id, ['is_primary' => $primary]);
+
+        return $department;
+    }
+
+    private function staffB(): User
+    {
+        $user = User::factory()->create(['name' => 'テスト次郎', 'employee_code' => '000202', 'felica_idm' => self::IDM_B]);
+        $user->companies()->attach($this->company->id, ['is_primary' => true]);
+
+        return $user;
+    }
+
+    /**
+     * @return array<int, string|null>
+     */
+    private function userNames(int $sinceId, ?int $departmentId): array
+    {
+        $query = $departmentId === null ? '' : "&department_id={$departmentId}";
+
+        return array_column($this->getJson("/stamp/{$this->company->uuid}/felica-events?since_id={$sinceId}{$query}")->assertOk()->json('events'), 'userName');
+    }
+
+    /**
+     * @test
+     */
+    public function 事業所を指定すると、その事業所のスタッフの打刻だけが返る(): void
+    {
+        $honsha = $this->departmentWith($this->user, '本社');
+        $other = $this->staffB();
+        $jigyosho = $this->departmentWith($other, 'A事業所');
+        $since = (int) $this->baseline()->json('lastId');
+
+        $this->tap()->assertOk();
+        $this->tap(['idm' => self::IDM_B])->assertOk();
+
+        $this->assertSame(['テスト太郎'], $this->userNames($since, $honsha->id));
+        $this->assertSame(['テスト次郎'], $this->userNames($since, $jigyosho->id));
+        $this->assertSame(['テスト太郎', 'テスト次郎'], $this->userNames($since, null));
+    }
+
+    /**
+     * @test
+     */
+    public function 事業所を指定しても、スタッフを特定できない打刻（未登録のカード）は返る(): void
+    {
+        $honsha = $this->departmentWith($this->user, '本社');
+        $since = (int) $this->baseline()->json('lastId');
+
+        $this->tap(['idm' => 'ffffffffffffffff'])->assertNotFound();
+
+        $this->assertSame([null], $this->userNames($since, $honsha->id));
+    }
+
+    /**
+     * @test
+     */
+    public function 主所属でない部署を指定しても、そのスタッフの打刻は返らない(): void
+    {
+        $this->departmentWith($this->user, '本社');
+        $secondary = $this->departmentWith($this->user, 'A事業所', primary: false);
+        $since = (int) $this->baseline()->json('lastId');
+
+        $this->tap()->assertOk();
+
+        $this->assertSame([], $this->userNames($since, $secondary->id));
+    }
+
+    /**
+     * @test
+     */
+    public function 他の会社の部署を指定した場合は絞り込まずに全て返す(): void
+    {
+        $this->departmentWith($this->user, '本社');
+        $otherCompany = Company::factory()->create();
+        $foreign = Department::query()->create(['company_id' => $otherCompany->id, 'name' => '他社の部署']);
+        $since = (int) $this->baseline()->json('lastId');
+
+        $this->tap()->assertOk();
+
+        $this->assertSame(['テスト太郎'], $this->userNames($since, $foreign->id));
+    }
+
+    /**
+     * @test
+     */
+    public function 絞り込み中でも、他の事業所の打刻のあとに続く自分の事業所の打刻を取りこぼさない(): void
+    {
+        $honsha = $this->departmentWith($this->user, '本社');
+        $other = $this->staffB();
+        $this->departmentWith($other, 'A事業所');
+        $since = (int) $this->baseline()->json('lastId');
+
+        $this->tap(['idm' => self::IDM_B])->assertOk();
+        $first = $this->getJson("/stamp/{$this->company->uuid}/felica-events?since_id={$since}&department_id={$honsha->id}")->json();
+        $this->tap()->assertOk();
+        $second = $this->getJson("/stamp/{$this->company->uuid}/felica-events?since_id={$first['lastId']}&department_id={$honsha->id}")->json();
+
+        $this->assertSame([], $first['events']);
+        $this->assertSame(['テスト太郎'], array_column($second['events'], 'userName'));
+    }
+
+    /**
+     * @test
+     */
+    public function 打刻専用画面に事業所の一覧が渡される(): void
+    {
+        $this->departmentWith($this->user, '本社');
+
+        $this->get("/stamp/{$this->company->uuid}")->assertInertia(
+            fn ($page) => $page->component('Public/Stamp')->where('departments.0.name', '本社')
+        );
     }
 }

@@ -458,4 +458,29 @@ class NextDayShiftClockInTest extends TestCase
 
         $this->assertSame('2026-11-10 09:30:00', $updated->work_start->format('Y-m-d H:i:s'));
     }
+
+    /**
+     * @test
+     */
+    public function 翌日のシフト開始の4時間前までは2回目の出勤を打刻でき4時間より前は打刻できない(): void
+    {
+        $this->giveShift('2026-11-03');
+        $this->giveShift('2026-11-04');
+        $this->stampFirstShiftOfNov3();
+
+        // 翌日のシフトは 0:00 開始。20:45（開始の3時間15分前）は打刻できる
+        $this->at('2026-11-03 20:45:00');
+        $this->assertFalse($this->stamp->getCurrentStatus($this->company->id, $this->user->id)['hasClockInToday']);
+
+        // ちょうど4時間前（20:00）も打刻できる
+        $this->at('2026-11-03 20:00:00');
+        $this->assertFalse($this->stamp->getCurrentStatus($this->company->id, $this->user->id)['hasClockInToday']);
+
+        // 19:45（開始の4時間15分前）は打刻できない
+        $this->at('2026-11-03 19:45:00');
+        $this->assertTrue($this->stamp->getCurrentStatus($this->company->id, $this->user->id)['hasClockInToday']);
+        $this->expectException(BusinessException::class);
+        $this->expectExceptionMessage('本日は出勤と退勤の打刻ができております');
+        $this->stamp->clockIn($this->company->id, $this->user->id);
+    }
 }

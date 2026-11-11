@@ -608,18 +608,16 @@ class PublicStampService
      *
      * @param  int  $companyId  会社ID
      * @param  int  $sinceId  この ID より大きい試行のみ取得
-     * @param  int|null  $departmentId  指定すると、その事業所（部署）のスタッフの試行と、スタッフを特定できない試行だけにする。
-     *                                  会社に無い部署が指定された場合は、絞り込まない
+     * @param  array<int, int>  $departmentIds  指定すると、それらの事業所（部署）のスタッフの試行と、スタッフを特定できない試行だけにする。
+     *                                          会社に無い部署は無視し、有効な部署が1つも無ければ絞り込まない
      * @return array<int, array{id: int, status: string, message: string, detail: string|null, userName: string|null, time: string, maskedIdm: string}>
      */
-    public function getFelicaEventsSince(int $companyId, int $sinceId, ?int $departmentId = null): array
+    public function getFelicaEventsSince(int $companyId, int $sinceId, array $departmentIds = []): array
     {
-        if ($departmentId !== null && ! $this->isDepartmentInCompany($departmentId, $companyId)) {
-            $departmentId = null;
-        }
+        $departmentIds = $this->departmentsInCompany($departmentIds, $companyId);
 
         return $this->felicaStampAttemptRepository
-            ->findRecentByCompanyId($companyId, $sinceId, 20, $departmentId)
+            ->findRecentByCompanyId($companyId, $sinceId, 20, $departmentIds)
             ->map(fn (\App\Models\FelicaStampAttempt $attempt) => [
                 'id' => $attempt->id,
                 'status' => $attempt->status,
@@ -645,8 +643,22 @@ class PublicStampService
             ->all();
     }
 
-    private function isDepartmentInCompany(int $departmentId, int $companyId): bool
+    /**
+     * 指定された部署のうち、会社にあるものだけを返す
+     *
+     * @param  array<int, int>  $departmentIds
+     * @return array<int, int>
+     */
+    private function departmentsInCompany(array $departmentIds, int $companyId): array
     {
-        return $this->departmentRepository->findById($departmentId)?->company_id === $companyId;
+        if ($departmentIds === []) {
+            return [];
+        }
+
+        return $this->departmentRepository->findByCompanyId($companyId)
+            ->pluck('id')
+            ->intersect($departmentIds)
+            ->values()
+            ->all();
     }
 }

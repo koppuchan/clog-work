@@ -17,11 +17,11 @@ export interface StampDepartment {
 export function useStampDisplay(departments: StampDepartment[]) {
   const [stored, setStored] = useState<StampDisplaySettings>(loadStampDisplaySettings);
 
-  // 保存してある事業所が、いまの会社に無い（部署が削除された等）場合は、全事業所として扱う
+  // 保存してある事業所のうち、いまの会社に無いもの（部署が削除された等）は除く。1つも残らなければ全事業所として扱う
   const settings = useMemo<StampDisplaySettings>(
     () => ({
       ...stored,
-      departmentId: departments.some((d) => d.id === stored.departmentId) ? stored.departmentId : null,
+      departmentIds: stored.departmentIds.filter((id) => departments.some((d) => d.id === id)),
     }),
     [stored, departments]
   );
@@ -31,8 +31,8 @@ export function useStampDisplay(departments: StampDepartment[]) {
     saveStampDisplaySettings(next);
   }, []);
 
-  const setDepartmentId = useCallback((departmentId: number | null) => update({ ...settings, departmentId }), [settings, update]);
+  const setDepartmentIds = useCallback((departmentIds: number[]) => update({ ...settings, departmentIds }), [settings, update]);
   const setTextSize = useCallback((textSize: StampTextSize) => update({ ...settings, textSize }), [settings, update]);
 
-  return { settings, setDepartmentId, setTextSize };
+  return { settings, setDepartmentIds, setTextSize };
 }

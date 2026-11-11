@@ -73,7 +73,9 @@ interface Props {
 export default function PublicStampPage({ company, users, departments = [] }: Props) {
   const currentTime = useCurrentTime();
   const display = useStampDisplay(departments);
-  const displayDepartmentId = display.settings.departmentId;
+  const displayDepartmentIds = display.settings.departmentIds;
+  // 選んだ事業所が変わったかを調べるための印（配列は毎回別のものになるため、文字列にする）
+  const displayDepartmentKey = displayDepartmentIds.join(',');
   const resultSizes = resultFontSizes(display.settings.textSize);
   const sound = useStampSound();
   const playSound = sound.play;
@@ -179,7 +181,7 @@ export default function PublicStampPage({ company, users, departments = [] }: Pr
   useEffect(() => {
     felicaSinceIdRef.current = null;
     setFelicaEvents([]);
-  }, [displayDepartmentId]);
+  }, [displayDepartmentKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -193,10 +195,10 @@ export default function PublicStampPage({ company, users, departments = [] }: Pr
 
       try {
         const isFirstPoll = felicaSinceIdRef.current === null;
-        const params: { since_id?: number; department_id?: number } =
+        const params: { since_id?: number; department_ids?: number[] } =
           felicaSinceIdRef.current === null ? {} : { since_id: felicaSinceIdRef.current };
-        if (displayDepartmentId !== null) {
-          params.department_id = displayDepartmentId;
+        if (displayDepartmentIds.length > 0) {
+          params.department_ids = displayDepartmentIds;
         }
         const response = await axios.get(`/stamp/${company.uuid}/felica-events`, { params });
         if (cancelled) return;
@@ -236,7 +238,7 @@ export default function PublicStampPage({ company, users, departments = [] }: Pr
       cancelled = true;
       clearInterval(interval);
     };
-  }, [company.uuid, playSound, displayDepartmentId]);
+  }, [company.uuid, playSound, displayDepartmentKey]);
 
   // トーストは種類ごとの時間で自動的に消す
   useEffect(() => {
@@ -409,7 +411,7 @@ export default function PublicStampPage({ company, users, departments = [] }: Pr
               <StampDisplayControl
                 departments={departments}
                 settings={display.settings}
-                onDepartmentChange={display.setDepartmentId}
+                onDepartmentsChange={display.setDepartmentIds}
                 onTextSizeChange={display.setTextSize}
               />
               <StampSoundControl

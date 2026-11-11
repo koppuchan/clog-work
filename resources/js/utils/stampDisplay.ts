@@ -7,12 +7,12 @@
 export type StampTextSize = 'normal' | 'large' | 'xlarge';
 
 export interface StampDisplaySettings {
-  /** 表示する事業所（部署）のID。nullなら全事業所 */
-  departmentId: number | null;
+  /** 表示する事業所（部署）のID。複数選べる。空なら全事業所 */
+  departmentIds: number[];
   textSize: StampTextSize;
 }
 
-export const DEFAULT_STAMP_DISPLAY_SETTINGS: StampDisplaySettings = { departmentId: null, textSize: 'normal' };
+export const DEFAULT_STAMP_DISPLAY_SETTINGS: StampDisplaySettings = { departmentIds: [], textSize: 'normal' };
 
 export const TEXT_SIZE_OPTIONS: { value: StampTextSize; label: string }[] = [
   { value: 'normal', label: '標準' },
@@ -41,9 +41,15 @@ export function loadStampDisplaySettings(): StampDisplaySettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_STAMP_DISPLAY_SETTINGS;
 
-    const parsed = JSON.parse(raw) as Partial<StampDisplaySettings>;
+    // 以前は事業所を1つだけ選ぶ形（departmentId）で保存していたため、それも引き継ぐ
+    const parsed = JSON.parse(raw) as Partial<StampDisplaySettings> & { departmentId?: number | null };
+    const departmentIds = Array.isArray(parsed.departmentIds)
+      ? parsed.departmentIds.filter((id): id is number => typeof id === 'number')
+      : typeof parsed.departmentId === 'number'
+        ? [parsed.departmentId]
+        : [];
     return {
-      departmentId: typeof parsed.departmentId === 'number' ? parsed.departmentId : null,
+      departmentIds,
       textSize: TEXT_SIZE_OPTIONS.some((o) => o.value === parsed.textSize)
         ? (parsed.textSize as StampTextSize)
         : DEFAULT_STAMP_DISPLAY_SETTINGS.textSize,

@@ -329,4 +329,52 @@ class PublicStampFelicaEventsTest extends TestCase
             fn ($page) => $page->component('Public/Stamp')->where('departments.0.name', '本社')
         );
     }
+
+    /**
+     * @test
+     */
+    public function 事業所を複数指定すると、それらの事業所のスタッフの打刻が返る(): void
+    {
+        $honsha = $this->departmentWith($this->user, '本社');
+        $second = $this->staffB();
+        $seisan = $this->departmentWith($second, '生産部');
+        $third = User::factory()->create(['name' => 'テスト三郎', 'employee_code' => '000203', 'felica_idm' => '1111222233334444']);
+        $third->companies()->attach($this->company->id, ['is_primary' => true]);
+        $this->departmentWith($third, '貴崎店');
+        $since = (int) $this->baseline()->json('lastId');
+
+        $this->tap()->assertOk();
+        $this->tap(['idm' => self::IDM_B])->assertOk();
+        $this->tap(['idm' => '1111222233334444'])->assertOk();
+
+        $query = "department_ids[]={$honsha->id}&department_ids[]={$seisan->id}";
+        $names = array_column(
+            $this->getJson("/stamp/{$this->company->uuid}/felica-events?since_id={$since}&{$query}")->assertOk()->json('events'),
+            'userName'
+        );
+
+        $this->assertSame(['テスト太郎', 'テスト次郎'], $names);
+    }
+
+    /**
+     * @test
+     */
+    public function 複数指定の中に他の会社の部署が混ざっていても、有効な部署だけで絞り込む(): void
+    {
+        $honsha = $this->departmentWith($this->user, '本社');
+        $other = $this->staffB();
+        $this->departmentWith($other, 'A事業所');
+        $foreign = Department::query()->create(['company_id' => Company::factory()->create()->id, 'name' => '他社の部署']);
+        $since = (int) $this->baseline()->json('lastId');
+
+        $this->tap()->assertOk();
+        $this->tap(['idm' => self::IDM_B])->assertOk();
+
+        $names = array_column(
+            $this->getJson("/stamp/{$this->company->uuid}/felica-events?since_id={$since}&department_ids[]={$honsha->id}&department_ids[]={$foreign->id}")->json('events'),
+            'userName'
+        );
+
+        $this->assertSame(['テスト太郎'], $names);
+    }
 }

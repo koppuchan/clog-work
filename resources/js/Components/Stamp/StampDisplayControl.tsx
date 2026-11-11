@@ -6,7 +6,7 @@ import type { StampDepartment } from '@/hooks/useStampDisplay';
 interface StampDisplayControlProps {
   departments: StampDepartment[];
   settings: StampDisplaySettings;
-  onDepartmentChange: (departmentId: number | null) => void;
+  onDepartmentsChange: (departmentIds: number[]) => void;
   onTextSizeChange: (size: StampTextSize) => void;
 }
 
@@ -18,7 +18,7 @@ interface StampDisplayControlProps {
 export default function StampDisplayControl({
   departments,
   settings,
-  onDepartmentChange,
+  onDepartmentsChange,
   onTextSizeChange,
 }: StampDisplayControlProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -60,27 +60,41 @@ export default function StampDisplayControl({
       {isOpen && (
         <div className="absolute right-0 top-full z-20 mt-2 w-72 max-w-[90vw] rounded-lg border border-gray-200 bg-white p-4 shadow-lg space-y-4">
           {departments.length > 0 && (
-            <div>
-              <label htmlFor="stamp-department" className="block text-sm font-medium text-gray-800 mb-1">
-                表示する事業所
-              </label>
-              <select
-                id="stamp-department"
-                value={settings.departmentId ?? ''}
-                onChange={(e) => onDepartmentChange(e.target.value === '' ? null : Number(e.target.value))}
-                className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
-              >
-                <option value="">すべての事業所</option>
+            <fieldset>
+              <legend className="text-sm font-medium text-gray-800 mb-1">表示する事業所（複数選べます）</legend>
+              <div className="max-h-48 overflow-y-auto rounded-md border border-gray-300 divide-y divide-gray-100">
+                <label className="flex items-center gap-2 px-2 py-1.5 text-sm bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.departmentIds.length === 0}
+                    onChange={() => onDepartmentsChange([])}
+                    className="h-4 w-4"
+                  />
+                  <span className="font-medium">すべての事業所</span>
+                </label>
                 {departments.map((department) => (
-                  <option key={department.id} value={department.id}>
-                    {department.name}
-                  </option>
+                  <label key={department.id} className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.departmentIds.includes(department.id)}
+                      onChange={(e) =>
+                        onDepartmentsChange(
+                          e.target.checked
+                            ? [...settings.departmentIds, department.id]
+                            : settings.departmentIds.filter((id) => id !== department.id)
+                        )
+                      }
+                      className="h-4 w-4"
+                    />
+                    <span>{department.name}</span>
+                  </label>
                 ))}
-              </select>
+              </div>
               <p className="mt-1 text-xs text-gray-500">
                 選んだ事業所のスタッフがカードで打刻したときだけ、この画面に表示し、音を鳴らします。
+                本社の中の部門を、まとめて選ぶこともできます。
               </p>
-            </div>
+            </fieldset>
           )}
 
           <div>

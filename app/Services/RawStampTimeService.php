@@ -164,6 +164,10 @@ class RawStampTimeService
     /**
      * 打刻を勤務日ごとにまとめ、期間内の日だけを返す
      *
+     * 夜勤の退勤（日付越え退勤）と、その退勤より前の休憩は、打刻した日（翌日）ではなく、
+     * 出勤した日の勤務にまとめる。勤務実績の画面と同じ扱いにするため。まとめないと、
+     * 連続した夜勤で、前夜の退勤が翌日の行に出てしまう。
+     *
      * @param  \Illuminate\Support\Collection<int, TimeRecord>  $records  期間の前後1日を含む打刻
      * @return \Illuminate\Support\Collection<string, \Illuminate\Support\Collection<int, TimeRecord>>
      */
@@ -171,9 +175,51 @@ class RawStampTimeService
     {
         // 同じ日に2回目の出勤をして日付をまたいだ勤務は、翌日の勤務として扱う
         $movedWorkDates = $this->workSessionAttribution->movedWorkDates($records);
+        $previousNightWorkDates = $this->previousNightWorkDates($records, $movedWorkDates);
 
         return $records
-            ->groupBy(fn (TimeRecord $r) => $movedWorkDates[$r->id] ?? $r->record_time->format('Y-m-d'))
+            ->groupBy(fn (TimeRecord $r) => $movedWorkDates[$r->id] ?? $previousNightWorkDates[$r->id] ?? $r->record_time->format('Y-m-d'))
             ->filter(fn ($dayRecords, $date) => $date >= $startDate && $date <= $endDate);
+    }
+
+    /**
+     * 前夜の夜勤に属する打刻の、勤務日（前日）を返す
+     *
+     * 日付越え退勤と、その時刻以前の休憩は、打刻した日（翌日）の日付で保存されるが、
+     * 前日に出勤した勤務のもの。翌日の勤務として寄せた打刻（$movedWorkDates）は対象にしない。
+     *
+     * @param  \Illuminate\Support\Collection<int, TimeRecord>  $records  同じ従業員の打刻
+     * @param  array<int, string>  $movedWorkDates  翌日の勤務として寄せた打刻の勤務日
+     * @return array<int, string> 打刻IDをキー、勤務日（Y-m-d）を値とした連想配列
+     */
+    private function previousNightWorkDates(\Illuminate\Support\Collection $records, array $movedWorkDates): array
+    {
+        $candidates = $records
+            ->reject(fn (TimeRecord $r) => isset($movedWorkDates[$r->id]))
+            ->sortBy(fn (TimeRecord $r) => [$r->record_time->getTimestamp(), $r->id])
+            ->values();
+
+        $nightEnds = $candidates
+            ->filter(fn (TimeRecord $r) => $r->record_type === TimeRecordTypeEnum::WORK_END_NEXT_DAY)
+            ->groupBy(fn (TimeRecord $r) => $r->record_time->format('Y-m-d'))
+            ->map(fn ($ends) => $ends->first());
+
+        $result = [];
+
+        foreach ($candidates as $record) {
+            $nightEnd = $nightEnds->get($record->record_time->format('Y-m-d'));
+            if ($nightEnd === null) {
+                continue;
+            }
+
+            $belongsToPreviousNight = $record->record_type === TimeRecordTypeEnum::WORK_END_NEXT_DAY
+                || ($record->record_type->isBreak() && $record->record_time->lte($nightEnd->record_time));
+
+            if ($belongsToPreviousNight) {
+                $result[$record->id] = $record->record_time->subDay()->format('Y-m-d');
+            }
+        }
+
+        return $result;
     }
 }

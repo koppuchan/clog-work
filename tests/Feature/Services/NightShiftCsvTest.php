@@ -45,14 +45,14 @@ class NightShiftCsvTest extends TestCase
         $this->staff = User::factory()->forCompany($this->company->id)->employee()->create(['is_retired' => false, 'name' => '夜勤 太郎']);
     }
 
-    private function record(TimeRecordTypeEnum $type, string $time): void
+    private function record(TimeRecordTypeEnum $type, string $time, ?string $roundedTime = null): void
     {
         TimeRecord::query()->create([
             'company_id' => $this->company->id,
             'user_id' => $this->staff->id,
             'record_type' => $type,
             'record_time' => $time,
-            'rounded_time' => $time,
+            'rounded_time' => $roundedTime ?? $time,
             'record_source' => RecordSourceEnum::AUTO,
         ]);
     }
@@ -123,5 +123,29 @@ class NightShiftCsvTest extends TestCase
         // Assert
         $this->assertSame(['03:00', '04:30', '05:11'], [$rows['11/10'][self::BREAK_IN_1], $rows['11/10'][self::BREAK_OUT_1], $rows['11/10'][self::CLOCK_OUT]]);
         $this->assertSame(['', '', '05:14'], [$rows['11/11'][self::BREAK_IN_1], $rows['11/11'][self::BREAK_OUT_1], $rows['11/11'][self::CLOCK_OUT]]);
+    }
+
+    /**
+     * @test
+     */
+    public function 遅番で日付をまたぐ勤務の退勤は翌日が通常の勤務でも出勤した日の行に実打刻で出る(): void
+    {
+        // Arrange: クライアント報告の形。13:15〜22:00 のシフトで 0:13 まで勤務（丸めると 0:10）。
+        // 翌日は同じ日の中で終わる勤務、その次の日は休み
+        $this->record(TimeRecordTypeEnum::WORK_START, '2026-10-28 12:23:00', '2026-10-28 13:15:00');
+        $this->record(TimeRecordTypeEnum::WORK_END_NEXT_DAY, '2026-10-29 00:13:00', '2026-10-29 00:10:00');
+        $this->record(TimeRecordTypeEnum::WORK_START, '2026-10-29 13:03:00', '2026-10-29 13:15:00');
+        $this->record(TimeRecordTypeEnum::WORK_END, '2026-10-29 22:40:00', '2026-10-29 22:40:00');
+        $this->record(TimeRecordTypeEnum::WORK_START, '2026-11-01 12:09:00', '2026-11-01 13:15:00');
+        $this->record(TimeRecordTypeEnum::WORK_END_NEXT_DAY, '2026-11-02 01:31:00', '2026-11-02 01:30:00');
+
+        // Act
+        $rows = $this->csvRowsByDate('2026-10-28', '2026-11-03');
+
+        // Assert
+        $this->assertSame(['12:23', '00:13'], [$rows['10/28'][self::CLOCK_IN], $rows['10/28'][self::CLOCK_OUT]]);
+        $this->assertSame(['13:03', '22:40'], [$rows['10/29'][self::CLOCK_IN], $rows['10/29'][self::CLOCK_OUT]]);
+        $this->assertSame(['12:09', '01:31'], [$rows['11/1'][self::CLOCK_IN], $rows['11/1'][self::CLOCK_OUT]]);
+        $this->assertSame(['', ''], [$rows['11/2'][self::CLOCK_IN], $rows['11/2'][self::CLOCK_OUT]]);
     }
 }
